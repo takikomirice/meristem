@@ -1,0 +1,104 @@
+{
+  "capturedAt": "2026-11-14",
+  "officialSourceRef": "rust-v0.169.0",
+  "officialSourceCommit": "d32063f96c2dff1dc96af839b3952abb6acfeda4",
+  "installedBinarySourceMatch": "not-attested; generated types and help are the authority for the installed alpha binary",
+  "repositories": [
+    {
+      "repo": "whooperlove/cross-agent_mcp",
+      "commit": "c1b0e5428863b0df78fbe587a8510f6ab0a507ec",
+      "license": "MIT"
+    },
+    {
+      "repo": "FBisca/agent-runtime",
+      "commit": "74addfef66572827c14d538895965689c9107434",
+      "license": "MIT"
+    }
+  ],
+  "sources": [
+    {
+      "id": "crossShim",
+      "url": "https://github.com/whooperlove/cross-agent_mcp/blob/c1b0e5428863b0df78fbe587a8510f6ab0a507ec/src/cross_agent_mcp/appserver_shim.py",
+      "localPath": ".local/chat-control/2026-11-14/sources/crossShim.txt",
+      "savedFileSha256": "042839e925b8874afeecd01f79fa02943f4cc6c7c592ec7821663db808d8bb15"
+    },
+    {
+      "id": "crossServer",
+      "url": "https://github.com/whooperlove/cross-agent_mcp/blob/c1b0e5428863b0df78fbe587a8510f6ab0a507ec/src/cross_agent_mcp/server.py",
+      "localPath": ".local/chat-control/2026-11-14/sources/crossServer.txt",
+      "savedFileSha256": "7b0b4a8b7380eeabd0a4f66cfe564b3e4dddf8d3ebae80a29f0b48da25789bb4"
+    },
+    {
+      "id": "crossPanel",
+      "url": "https://github.com/whooperlove/cross-agent_mcp/blob/c1b0e5428863b0df78fbe587a8510f6ab0a507ec/src/cross_agent_mcp/panel.py",
+      "localPath": ".local/chat-control/2026-11-14/sources/crossPanel.txt",
+      "savedFileSha256": "9fb9c29cd4686238351545dc2648968d8a5e0786a44eb6c5fb3f29388ce4ab59"
+    },
+    {
+      "id": "crossScript",
+      "url": "https://github.com/whooperlove/cross-agent_mcp/blob/c1b0e5428863b0df78fbe587a8510f6ab0a507ec/codex-shim.sh",
+      "localPath": ".local/chat-control/2026-11-14/sources/crossScript.txt",
+      "savedFileSha256": "e27201a6f6de4e6fb128189f54211828c7a1e9cff45b0b0f649f148ea82d5e38"
+    },
+    {
+      "id": "agentInstall",
+      "url": "https://github.com/FBisca/agent-runtime/blob/74addfef66572827c14d538895965689c9107434/docs/install.md",
+      "localPath": ".local/chat-control/2026-11-14/sources/agentInstall.txt",
+      "savedFileSha256": "3570ccb355a2899723895a7fad29c53e3779e47adb72a546aef6760f4fc6ff26"
+    },
+    {
+      "id": "agentUsage",
+      "url": "https://github.com/FBisca/agent-runtime/blob/74addfef66572827c14d538895965689c9107434/docs/usage.md",
+      "localPath": ".local/chat-control/2026-11-14/sources/agentUsage.txt",
+      "savedFileSha256": "c7a6c0d0308440bda5ebfbcb1022b700ca39043e93f19ea7e8d068d50b4095cb"
+    },
+    {
+      "id": "agentRuntime",
+      "url": "https://github.com/FBisca/agent-runtime/blob/74addfef66572827c14d538895965689c9107434/packages/agent-runtime/src/agent_runtime/agent_runtime.py",
+      "localPath": ".local/chat-control/2026-11-14/sources/agentRuntime.txt",
+      "savedFileSha256": "4e1e4058200ece6cbb3ca386d01f2e4b4f0114e7ec419a2954b4e215230ecf5d"
+    },
+    {
+      "id": "queueSource",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/cli/src/queue_cmd.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/queueSource.txt",
+      "savedFileSha256": "abd3f48dcb01a075600de5ddbe7166e941719df83c2bad8a596d59c813dab310"
+    },
+    {
+      "id": "tuiQueue",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/tui/src/session_queue_commands.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/tuiQueue.txt",
+      "savedFileSha256": "79b5a04eafd710d8acda8add055a011fc0b90f2669dba38c8938537c0681f3f5"
+    },
+    {
+      "id": "queueProcessor",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/src/request_processors/thread_queue_processor.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/queueProcessor.txt",
+      "savedFileSha256": "d0f97aeb9c44f13a28750cb8b0d02d1f40e61fdab081f799a0dc50239de46ea0"
+    },
+    {
+      "id": "queueExtLib",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/ext/queue/src/lib.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/queueExtLib.txt",
+      "savedFileSha256": "898ac05d3975c1639e2f1919434dc75f6d5c175252f1b00681e6e49dd4590f9b"
+    },
+    {
+      "id": "queueExtService",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/ext/queue/src/service.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/queueExtService.txt",
+      "savedFileSha256": "aedd62c6baabe1fdd3d15d516954f1d54d969ae079eb17f078981c5c829bc880"
+    },
+    {
+      "id": "queueTests",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/tests/suite/v2/thread_queue.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/queueTests.txt",
+      "savedFileSha256": "ef318b2fd38df9382924649147480a3c8fee779635c339743b0afd6086c34f2d"
+    },
+    {
+      "id": "turnSettingsTests",
+      "url": "https://github.com/openai/codex/blob/rust-v0.169.0/codex-rs/app-server/tests/suite/v2/turn_settings_update.rs",
+      "localPath": ".local/chat-control/2026-11-14/sources/turnSettingsTests.txt",
+      "savedFileSha256": "dd0c2c482cde37096cb4d33da4a6535b24603787903072b4db299bed322b5545"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-real-turn-preflight-2026-11-15T040029Z",
+  "capturedAt": "2026-11-15T04:00:29Z",
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "worker_A"
+  ],
+  "workerAttemptIds": [
+    "attempt_A"
+  ],
+  "terminalBindings": [
+    "ownerPipe_A"
+  ],
+  "operationIds": [
+    "auth_status_A"
+  ],
+  "eventSeqs": [],
+  "requestedAgent": "one model turn explicitly authorized; preflight only",
+  "observedSettings": {
+    "authHome": "dedicated isolated CC-00R CLI home",
+    "authFilePresent": false,
+    "loginStatus": "unauthenticated",
+    "loginStatusExitCode": 1,
+    "model": "not selected",
+    "effort": "not selected",
+    "turn": {
+      "requested": false,
+      "sent": false,
+      "delivery": "not_sent"
+    }
+  },
+  "processIdentities": {
+    "owner": "Codex CLI login status preflight",
+    "worker": "not started"
+  },
+  "stopEvidence": {
+    "threadCreated": false,
+    "workerStop": false,
+    "workerHostExitCode": null
+  },
+  "artifactHashes": {},
+  "result": "not_run",
+  "limitations": [
+    "Dedicated profile CLI home had no auth.json and login status returned exit code 1",
+    "No model request was sent",
+    "No global credentials were read or copied",
+    "Dedicated VS Code extension-host named-pipe connection remains blocked by EPERM"
+  ]
+}

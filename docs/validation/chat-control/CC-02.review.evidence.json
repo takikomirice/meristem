@@ -1,0 +1,528 @@
+{
+  "stage": "CC-02",
+  "capturedAt": "2026-11-15T13:54:56.557Z",
+  "result": "accepted_fixture_scope",
+  "stageAccepted": true,
+  "validation": {
+    "command": "npm run verify",
+    "exitCode": 0,
+    "nativeBuild": "passed",
+    "typecheck": "passed",
+    "build": "passed",
+    "existingTests": 34,
+    "controlTests": 73,
+    "terminalTests": 14,
+    "total": 121,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "36699bf0c2cb3f948652fc4b4581567fbe77d0ced4cdbb6dae1963e99e850900"
+  },
+  "review": {
+    "independent": "no additional confirmed critical or important findings after fixes; final acceptance rollouts and hashes independently checked",
+    "fixed": [
+      "job_descendant_actor_spoof",
+      "local_human_MCP_approval_entry",
+      "completion_before_request_resolution",
+      "local_consent_without_connector_id",
+      "per_frame_RPC_bounds",
+      "bounded_transport_failure_diagnostics"
+    ],
+    "realTransportLossCause": "unresolved"
+  },
+  "authorization": {
+    "cumulativeTurnCeiling": 21,
+    "acceptance02Used": 5,
+    "acceptance03Used": 4,
+    "acceptance04Used": 3,
+    "acceptance05Used": 2,
+    "acceptance06Used": 7,
+    "conservativeUsed": 21,
+    "remaining": 0,
+    "metric": "App Server turn/start; unknown delivery consumes its reservation"
+  },
+  "earlierLiveTrials": [
+    {
+      "fixture": "acceptance-03",
+      "parentThreadId": "01a1df37-1581-7d61-bfe7-4f5aafe39f14",
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1df39-896d-7692-8aae-7cc265511807",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1df3b-d26e-73b3-abcd-57c218349f06",
+          "status": "completed"
+        }
+      ],
+      "run": {
+        "id": "cc02",
+        "state": "stopped",
+        "revision": 5,
+        "stop_generation": 1
+      },
+      "attempts": [
+        {
+          "worker": {
+            "ownerId": "16a75c47-5b5f-48c1-84ba-4e0a5b53bbbd",
+            "ownerEpoch": "f7fee308-a71d-4850-b07e-71d3489175e5",
+            "threadId": "01a1df3c-1e9d-7ac0-92a6-91132db141a2",
+            "workerId": "A",
+            "attemptId": "37d2652b-fe1f-450b-a8ba-273baf554401"
+          },
+          "state": "stopped",
+          "branch": "fixture-A",
+          "agent": {
+            "model": "gpt-6-luna",
+            "effort": "low"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "16a75c47-5b5f-48c1-84ba-4e0a5b53bbbd",
+              "ownerEpoch": "f7fee308-a71d-4850-b07e-71d3489175e5",
+              "threadId": "01a1df3c-1e9d-7ac0-92a6-91132db141a2",
+              "workerId": "A",
+              "attemptId": "37d2652b-fe1f-450b-a8ba-273baf554401"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          },
+          "identities": [
+            {
+              "role": "host",
+              "pid": 31080,
+              "created": "134392202202687731",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            },
+            {
+              "role": "child",
+              "pid": 18392,
+              "created": "134392202214564678",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            }
+          ],
+          "registrationComplete": true
+        },
+        {
+          "worker": {
+            "ownerId": "6e826cca-e4fc-4263-acaf-5bd05ca8f6d0",
+            "ownerEpoch": "e823883a-e236-4c8e-a84d-ee88dc1d6299",
+            "threadId": "01a1df3c-4aef-7ff3-b16e-2318332e3e24",
+            "workerId": "B",
+            "attemptId": "8f174040-d9b7-4dab-9404-7cce9b30d4bb"
+          },
+          "state": "stopped",
+          "branch": "fixture-B",
+          "agent": {
+            "model": "gpt-6-luna",
+            "effort": "low"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "6e826cca-e4fc-4263-acaf-5bd05ca8f6d0",
+              "ownerEpoch": "e823883a-e236-4c8e-a84d-ee88dc1d6299",
+              "threadId": "01a1df3c-4aef-7ff3-b16e-2318332e3e24",
+              "workerId": "B",
+              "attemptId": "8f174040-d9b7-4dab-9404-7cce9b30d4bb"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          },
+          "identities": [
+            {
+              "role": "host",
+              "pid": 12888,
+              "created": "134392202315711679",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            },
+            {
+              "role": "child",
+              "pid": 21060,
+              "created": "134392202328232900",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            }
+          ],
+          "registrationComplete": true
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc02-retest-create-A",
+          "state": "settled"
+        },
+        {
+          "id": "cc02-retest-create-B",
+          "state": "settled"
+        },
+        {
+          "id": "cc02-retest-send-A",
+          "state": "acked"
+        },
+        {
+          "id": "cc02-retest-send-B",
+          "state": "acked"
+        }
+      ],
+      "reportCount": 0,
+      "worktrees": [
+        {
+          "workerId": "A",
+          "branch": "fixture-A",
+          "clean": true
+        },
+        {
+          "workerId": "B",
+          "branch": "fixture-B",
+          "clean": true
+        }
+      ],
+      "cleanup": {
+        "phase": "restored",
+        "ownTestMcpBlockRemoved": true,
+        "profileSettingsRestored": true,
+        "dedicatedWindowAbsentObserved": true,
+        "recordedHostAndChildPidsAbsentObserved": true
+      }
+    },
+    {
+      "fixture": "acceptance-04",
+      "parentThreadId": "01a1df4b-591d-7be2-b784-f2a7669edb09",
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1df4c-a1a2-7fc0-865f-9066ff9c9445",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1df4f-b606-76f2-91ba-08af3abdad53",
+          "status": "completed"
+        }
+      ],
+      "run": {
+        "id": "cc02",
+        "state": "stopped",
+        "revision": 9,
+        "stop_generation": 3
+      },
+      "attempts": [
+        {
+          "worker": {
+            "ownerId": "0cfb30ac-44a9-4ff2-9400-aee3402dae1f",
+            "ownerEpoch": "d90797a2-c7ec-46b4-b456-a88f4fd4cb9d",
+            "threadId": "01a1df50-05e3-7361-8521-9eb9b3f0a892",
+            "workerId": "A",
+            "attemptId": "7631dae7-967b-4304-9c8c-6aa5c169068a"
+          },
+          "state": "unknown",
+          "branch": "fixture-A",
+          "agent": {
+            "model": "gpt-6-luna",
+            "effort": "low"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "0cfb30ac-44a9-4ff2-9400-aee3402dae1f",
+              "ownerEpoch": "d90797a2-c7ec-46b4-b456-a88f4fd4cb9d",
+              "threadId": "01a1df50-05e3-7361-8521-9eb9b3f0a892",
+              "workerId": "A",
+              "attemptId": "7631dae7-967b-4304-9c8c-6aa5c169068a"
+            },
+            "state": "unknown",
+            "evidenceRefs": [
+              "cleanup_unconfirmed"
+            ]
+          },
+          "identities": [
+            {
+              "role": "host",
+              "pid": 40704,
+              "created": "134392215243421033",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            },
+            {
+              "role": "child",
+              "pid": 40404,
+              "created": "134392215256177791",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            }
+          ],
+          "registrationComplete": true
+        },
+        {
+          "worker": {
+            "ownerId": "fc4b4580-1363-49d6-912a-b0b5a9346a37",
+            "ownerEpoch": "9a8168cc-3649-46ce-86d8-18d8ac42002d",
+            "threadId": "01a1df50-5979-79c3-8d04-7d8b532865ba",
+            "workerId": "B",
+            "attemptId": "cb6b113b-248b-40c6-bcba-09319bdacb12"
+          },
+          "state": "stopped",
+          "branch": "fixture-B",
+          "agent": {
+            "model": "gpt-6-luna",
+            "effort": "low"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "fc4b4580-1363-49d6-912a-b0b5a9346a37",
+              "ownerEpoch": "9a8168cc-3649-46ce-86d8-18d8ac42002d",
+              "threadId": "01a1df50-5979-79c3-8d04-7d8b532865ba",
+              "workerId": "B",
+              "attemptId": "cb6b113b-248b-40c6-bcba-09319bdacb12"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          },
+          "identities": [
+            {
+              "role": "host",
+              "pid": 34364,
+              "created": "134392215460825853",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            },
+            {
+              "role": "child",
+              "pid": 42820,
+              "created": "134392215472607818",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            }
+          ],
+          "registrationComplete": true
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc02-fixed-create-A",
+          "state": "settled"
+        },
+        {
+          "id": "cc02-fixed-create-B",
+          "state": "settled"
+        },
+        {
+          "id": "cc02-fixed-send-A",
+          "state": "sent_unknown"
+        }
+      ],
+      "reportCount": 0,
+      "worktrees": [
+        {
+          "workerId": "A",
+          "branch": "fixture-A",
+          "clean": true
+        },
+        {
+          "workerId": "B",
+          "branch": "fixture-B",
+          "clean": true
+        }
+      ],
+      "cleanup": {
+        "phase": "restored",
+        "ownTestMcpBlockRemoved": true,
+        "profileSettingsRestored": true,
+        "dedicatedWindowAbsentObserved": true,
+        "recordedHostAndChildPidsAbsentObserved": true
+      }
+    },
+    {
+      "fixture": "acceptance-05",
+      "parentThreadId": "01a1df5e-6f9b-7380-a858-257b63e6f53d",
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1df5f-42bd-72d0-ad19-6de7c375dba2",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1df61-e551-7ff0-b763-0f8744b3c0ea",
+          "status": "completed"
+        }
+      ],
+      "run": {
+        "id": "cc02",
+        "state": "stopped",
+        "revision": 4,
+        "stop_generation": 1
+      },
+      "attempts": [
+        {
+          "worker": {
+            "ownerId": "6fbdc572-ccf8-4f0b-abb9-deeec12f8192",
+            "ownerEpoch": "05252e47-0716-4a08-b7a5-eeedc104d6cf",
+            "threadId": "01a1df63-14bd-7013-9546-6a7d5dbc81f8",
+            "workerId": "A",
+            "attemptId": "2256061d-f85c-4e57-96d8-f24220f2450a"
+          },
+          "state": "stopped",
+          "branch": "fixture-A",
+          "agent": {
+            "model": "gpt-6-luna",
+            "effort": "low"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "6fbdc572-ccf8-4f0b-abb9-deeec12f8192",
+              "ownerEpoch": "05252e47-0716-4a08-b7a5-eeedc104d6cf",
+              "threadId": "01a1df63-14bd-7013-9546-6a7d5dbc81f8",
+              "workerId": "A",
+              "attemptId": "2256061d-f85c-4e57-96d8-f24220f2450a"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          },
+          "identities": [
+            {
+              "role": "host",
+              "pid": 38560,
+              "created": "134392227735598497",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            },
+            {
+              "role": "child",
+              "pid": 37956,
+              "created": "134392227748295254",
+              "identityProbeExitCode": 125,
+              "recordedIdentityObserved": false
+            }
+          ],
+          "registrationComplete": true
+        },
+        {
+          "worker": {
+            "ownerId": "7519f86d-8d6e-46ab-9e3f-529c4f90f2c1",
+            "ownerEpoch": "046ae061-9ed7-4c05-8428-00f4048805fe",
+            "threadId": "pending",
+            "workerId": "B",
+            "attemptId": "6809b6a3-4b41-41a7-8f3d-3e2fc04e6eea"
+          },
+          "state": "unknown",
+          "branch": "fixture-B",
+          "agent": {
+            "model": "gpt-6-luna",
+            "effort": "low"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "7519f86d-8d6e-46ab-9e3f-529c4f90f2c1",
+              "ownerEpoch": "046ae061-9ed7-4c05-8428-00f4048805fe",
+              "threadId": "pending",
+              "workerId": "B",
+              "attemptId": "6809b6a3-4b41-41a7-8f3d-3e2fc04e6eea"
+            },
+            "state": "unknown",
+            "evidenceRefs": [
+              "stop_unconfirmed"
+            ]
+          },
+          "identities": [],
+          "registrationComplete": false
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc02-diagnostic-create-A",
+          "state": "settled"
+        },
+        {
+          "id": "cc02-diagnostic-create-B",
+          "state": "sent_unknown"
+        }
+      ],
+      "reportCount": 0,
+      "worktrees": [
+        {
+          "workerId": "A",
+          "branch": "fixture-A",
+          "clean": true
+        },
+        {
+          "workerId": "B",
+          "branch": "fixture-B",
+          "clean": true
+        }
+      ],
+      "cleanup": {
+        "phase": "restored",
+        "ownTestMcpBlockRemoved": true,
+        "profileSettingsRestored": true,
+        "dedicatedWindowAbsentObserved": true,
+        "recordedHostAndChildPidsAbsentObserved": true
+      }
+    }
+  ],
+  "finalAcceptance": "CC-02.acceptance.evidence.json",
+  "currentPreflight": "CC-02.review.preflight.evidence.json",
+  "noInferenceStartupDiagnostic": {
+    "rounds": 3,
+    "childrenStarted": 6,
+    "allStopped": true,
+    "turnsSent": 0,
+    "sha256": "497b37a16476cd67a02ae9ea6d75a3db5a5015e00b79f4b3202896f4d0831bc2"
+  },
+  "limitations": [
+    "initial_A_report_rejected_stale_revision_and_not_saved",
+    "real_terminal_input_checked_after_completed_only",
+    "acceptance04_transport_loss_and_acceptance05_start_failure_causes_unresolved",
+    "CC04_limited_local_MCP_human_entry_only",
+    "no_automatic_parent_wake_Git_integration_or_normal_installation"
+  ],
+  "rawCommunicationIncluded": false,
+  "automaticChildApprovalReplies": 0,
+  "sourceHashes": {
+    "README.md": "10ba90a5ca8d0019de96699d8f2de93a5c17181cad187672498b6c3e76762ecd",
+    "docs/superpowers/plans/2026-11-15-codex-chat-control-implementation.md": "769a6b5c2bfdea17159ae65f58e2cdc174f96347777db66d1317d6661ff409a3",
+    "docs/validation/chat-control/CC-02.md": "a571ed4dad0236654375766e7b9b79a69f6fa86b440ad66c64edb40734bf198a",
+    "extension/package.json": "65c0e5ff51b196f0e09be82ffda77745c21a4b9203e2b25a68c2f78e8b788554",
+    "extension/src/extension.ts": "e83fd0aaaea7e147fdde4c1ec836cf0e2412e7e0a8c902442ff24aac97f98c80",
+    "extension/src/managed-client.ts": "da8573149012a80308cf9eb7695f1eb0082f8612c4b8ba026d5759c2852338ca",
+    "extension/test/terminal.test.ts": "17cbf0727e1a462cefffd5561f6c86cb94030fcbf93fe164b9267a9fb37e4886",
+    "native/ControlProgram.cs": "a873ba7a4cfd4631c96d33933e41732dada49ccad0ce9b077f77cecd5332f9ab",
+    "native/ProcessTree.cs": "b7fbd30112b2d19f14205275ef5ddb0e7e7a9bc17ca68dabdb13aa1b26a3b0fc",
+    "native/StdioRelay.cs": "6cab925057974eee5aecaf1ea4617dc40f1ff65a0f92e8bdeb408a69572ddc77",
+    "native/WorkerHost.cs": "5ec5af89564679676da874b49377e342b5b9e52a8479ffeb53ba95e1fdf1e528",
+    "scripts/build-native.ps1": "32341df07028b79e462d70605ec93102a7277907af724870cfb2d2a06c20f553",
+    "src/cli.ts": "c670c4046a9d519bea1f63a1b3eb3314c4c53406d91723277ec98271d864408e",
+    "src/protocol.ts": "b102655b51f708ecdef7ccaa813a6af01fda5fc97e3bbedb8b027723a3c4ea9d",
+    "src/workers.ts": "6a5f07fde269550fd7b0e10f4fe84ac850e3b3d5c66c57fcae0da70b8ad18d71",
+    "test/fixtures/MockCodex.cs": "e2af9056f3189b24069735d47d429173b53530773c6fa11eabf11d055bae3820",
+    "test/fixtures/native-mcp-client.ts": "837731893327a8c41fd32f35bff1a08eb7af9ec44ace9c2b10a277d2d2559cfc",
+    "test/fixtures/parent-view-extension/index.cjs": "6271140c797eadf315fa26aaf36e53eaa76ada1b3c431cd168dc0dc970d0cdd3",
+    "test/live/cc02-prepare.ts": "d74527af5bf7a5e43c04f1a4a92184b367088fc835bb3035e78c30ed2855b885",
+    "test/live/cc02-session.ts": "184a13f319e5f2a56d80e4ab80dbb507c131ca5bcf9f69513fc35e30981bff39",
+    "test/mcp-native.test.ts": "0f092a1d9362bf504405381c7429b5fbff51d6d7df1c461dcbb7cecbd35f7aad",
+    "test/worker-host.test.mjs": "ccb63574dc0ba6766ab341ebe9d575020c2a06040cc3ce5e614714477431ce97",
+    "test/workers.test.ts": "e0b8380d0f3af155cb58881cd46894e543300b3d127166d3b6d58a26cb50b325",
+    "docs/validation/chat-control/CC-02.acceptance.evidence.json": "4aedace42dd600f882773e31cdf4bdd8834d3e4b794e30caa6670b689e37d764",
+    "docs/validation/chat-control/CC-02.review.preflight.evidence.json": "65a90205e677e82c351817c073f001f084dafaeb0217cf0330299210cb6de73c",
+    "extension/src/approval.ts": "729dad62f1a23c82e211a0766cdbb8a0cbd653b3db0cde48d213a26294ac390d",
+    "native/McpPeer.cs": "d634dffc37ca30d95a3afb467a0cddc4f14349d1348fb835d64340e73b8221f9",
+    "src/requests.ts": "b1e7514cf91864683bdc2f47be45beea3b52ff8b659f1ec7628565e6c8bd44e4",
+    "test/protocol.test.ts": "c34ebb4d30ff753fbb112303d235919cee7adf7b6af78622729138baeb156be2",
+    "test/requests.test.ts": "ee9fbc8249a4f506456ae216ecdba2ecb429ecdaa9a6b579d11a6d8dd935894f"
+  }
+}

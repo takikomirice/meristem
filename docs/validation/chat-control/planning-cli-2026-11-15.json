@@ -1,0 +1,91 @@
+{
+  "kind": "implementation_plan_revision",
+  "planRevision": 2,
+  "dateJst": "2026-11-15",
+  "route": "extension_parent_cli_workers",
+  "scope": "documentation_only",
+  "nextImplementationStage": "CC-00R",
+  "newArchitectureImplemented": false,
+  "cc01PromotionAllowed": false,
+  "decisions": [
+    "Keep the ordinary Codex extension as parent and its narrowly scoped wake relay",
+    "Use one owned CLI App Server per worker attempt",
+    "Use read-only VS Code integrated Pseudoterminals for logs, state and human stop",
+    "Defer direct worker typing, interactive TUI and standalone terminal windows",
+    "Keep worktrees, uncommitted changes, Git results, reports and execution records after process disposal",
+    "Revalidate command termination and caller correlation before CC-01",
+    "Provide formal approval UI without relying on a worker Codex panel"
+  ],
+  "implementationChoices": {
+    "maxWorkers": 2,
+    "interruptGraceMs": 3000,
+    "terminationConfirmationTimeoutMs": 5000,
+    "markerIntervalMs": 500,
+    "markerStableObservationMs": 2000,
+    "terminalPollIntervalMs": 500,
+    "terminalPollMaxEvents": 100,
+    "maxLocalPipeClients": 16,
+    "displayEventMaxBytes": 65536,
+    "terminalPendingBytes": 1048576
+  },
+  "specCoverage": {
+    "purpose_and_changed_requirements": [
+      "CC-00R",
+      "CC-02",
+      "CC-05"
+    ],
+    "ownership_and_terminal": [
+      "CC-00R",
+      "CC-01",
+      "CC-02"
+    ],
+    "stop_and_reconcile": [
+      "CC-00R",
+      "CC-01",
+      "CC-06"
+    ],
+    "identity_and_storage": [
+      "CC-01",
+      "CC-02"
+    ],
+    "parent_wake_without_polling_model": [
+      "CC-03"
+    ],
+    "questions_and_human_approval": [
+      "CC-04"
+    ],
+    "plans_reports_and_git": [
+      "CC-05",
+      "CC-06"
+    ],
+    "skills_install_and_acceptance": [
+      "CC-07"
+    ]
+  },
+  "sources": [
+    "docs/validation/chat-control/CC-00.md",
+    "docs/validation/chat-control/CC-00.ui.evidence.json",
+    "package.json",
+    "https://code.visualstudio.com/api/references/vscode-api",
+    "https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects"
+  ],
+  "checks": {
+    "specAndPlanSelfReview": "passed",
+    "relativeLinks": "passed",
+    "codeFences": "passed",
+    "mermaidSourceReview": "passed",
+    "mermaidRendering": "not_run",
+    "oldEvidenceAndRuntimeFilesUnchanged": "passed",
+    "diffWhitespace": "passed",
+    "runtimeTests": "not_run: documentation-only change",
+    "newArchitectureLiveAcceptance": "not_run: no implementation in this revision",
+    "relativeLinkCount": 17,
+    "fencedBlockCount": 3
+  },
+  "checkedAt": "2026-11-15T01:37:01.959Z",
+  "documentSha256": {
+    "README.md": "e6ba6e933a848bbc4fa871dba527b0d8178723b95da88b459938ad906873261e",
+    "docs/superpowers/plans/2026-11-15-codex-chat-control-implementation.md": "505499c7a871db740d1fd1b0329091ced4a6200a0dc4d28b3203a13d2bb1f2d3",
+    "docs/superpowers/specs/2026-11-15-codex-chat-control-design.md": "37f76a2e08b6e48e792389be6280791d57c4cfa63d0df82e9466742a9490c4cd"
+  }
+}

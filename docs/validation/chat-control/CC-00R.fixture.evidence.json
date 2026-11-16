@@ -1,0 +1,53 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-fixture-stop",
+  "capturedAt": "2026-11-15T11:30:07+09:00",
+  "versions": {
+    "node": "v24.22.1",
+    "typescript": "5.9.3",
+    "codex": "not_used",
+    "vscode": "not_used"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "fixture",
+  "actorAliases": ["worker_A", "worker_B", "control_D"],
+  "workerAttemptIds": ["fixture-attempt-A", "fixture-attempt-B"],
+  "terminalBindings": ["fixture-pipe-A", "fixture-pipe-B"],
+  "operationIds": ["status-parallel-16", "stop-worker-A", "natural-completion-cleanup", "fixture-boundary-rejection"],
+  "eventSeqs": [1],
+  "requestedAgent": "mock ticker fixture",
+  "observedSettings": {
+    "approvalPolicy": "not_changed",
+    "sandboxPolicy": "not_changed",
+    "model": "not_used",
+    "effort": "not_used"
+  },
+  "processIdentities": {
+    "owner": "test-runner",
+    "workers": "separate CodexWorkerHost.exe instances with separate Job Objects",
+    "control_D": "independent marker process"
+  },
+  "stopEvidence": {
+    "workerA_jobAssigned": true,
+    "workerA_exitConfirmed": true,
+    "workerA_grandchildMarkerStopped": true,
+    "naturalCompletionGrandchildStopped": true,
+    "nonfixtureExecutableRejected": true,
+    "markerOutsideFixtureCwdRejected": true,
+    "workerB_markerContinued": true,
+    "controlD_markerContinued": true,
+    "sixteenConcurrentStatusRequests": true
+  },
+  "artifactHashes": {
+    "CodexWorkerHost.exe": "E372F3A91C32362BCEBB22A6B08EF3E8520F7B12C7EFEB7D37424CE8BE2FFF06",
+    "MockCodex.exe": "D9D8E7F38866D551924ED8AC05DA13983B7247311F1F833DE515873DAD981B72",
+    "extension/dist/src/extension.js": "693F07555F9890EB764A3B7C505232E30E3BE149F493112FF200527B64709400"
+  },
+  "result": "passed",
+  "limitations": [
+    "fixture-only; no real Codex model call",
+    "worker host does not yet drive an App Server conversation",
+    "worker stdio is discarded; displayed events are host-generated lifecycle facts",
+    "real VS Code, parent resume, metadata correlation, shell descendants, abnormal host exit, profile restore, and user-token ACL tests are not_run"
+  ]
+}

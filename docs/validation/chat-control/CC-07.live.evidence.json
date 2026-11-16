@@ -1,0 +1,893 @@
+{
+  "planRevision": 2,
+  "testId": "CC-07-live",
+  "capturedAt": "2026-11-16T08:52:25.084Z",
+  "versions": {
+    "node": "v24.22.1",
+    "codex": "codex-cli 0.169.0-alpha.11.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_vscode",
+  "result": "unknown",
+  "actorAliases": [
+    "P",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F"
+  ],
+  "workerAttemptIds": [
+    "A-1",
+    "B-2",
+    "C-3",
+    "D-4",
+    "E-5",
+    "F-6"
+  ],
+  "terminalBindings": [
+    {
+      "alias": "A",
+      "terminalId": "dcc390b7-acee-4b87-91c4-0bc8dafbb4c9"
+    },
+    {
+      "alias": "B",
+      "terminalId": "236395b0-4a43-4c0b-9eea-fdd8e2bba66d"
+    },
+    {
+      "alias": "C",
+      "terminalId": "231e9948-3c73-4185-87a5-940073f24f4d"
+    },
+    {
+      "alias": "D",
+      "terminalId": "184fa0e3-e2a5-4d24-b74c-c55965a14c53"
+    },
+    {
+      "alias": "E",
+      "terminalId": "e6711558-067d-498f-a22b-24ce6c63846c"
+    },
+    {
+      "alias": "F",
+      "terminalId": "7fab6537-af9e-44eb-9aea-8c2b8229d579"
+    }
+  ],
+  "operationIds": [
+    {
+      "id": "cc07-create-A-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-create-B-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-send-A-20261116-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-send-B-20261116-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-present-A-permissions-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-B-permissions-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-A-report-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-A-report-f0e6c6e9-20261116-1",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-B-report-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-B-report-request2-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "B-report-8ab7a743-20261116-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-accept-A-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-accept-B-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-prepare-AB-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-integrate-AB-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-create-C-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-create-D-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-send-C-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-send-D-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-present-C-permissions-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-D-permissions-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-C-report-request1-01",
+      "state": "settled"
+    },
+    {
+      "id": "C-report-1c20bf14-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-D-report-request1-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-present-D-report-request2-01",
+      "state": "settled"
+    },
+    {
+      "id": "D-report-9e6c35e4-20261116-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-accept-C-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-accept-D-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-prepare-CD-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-integrate-CD-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-create-E-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-create-F-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-send-E-stoptest-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-send-F-stoptest-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-present-F-stoptest-report-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-F-report-541eef1a-16f4-47c1-84cd-921d7ba6f705",
+      "state": "settled"
+    }
+  ],
+  "eventSeqs": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51
+  ],
+  "requestedAgent": {
+    "model": "gpt-6.1-sol",
+    "effort": "medium"
+  },
+  "observedSettings": {
+    "windowsSandbox": "mxc",
+    "helper": "installed_vsix",
+    "fixtureParentView": "development_extension",
+    "normalProfileChanged": false,
+    "remote": "local_bare"
+  },
+  "processIdentities": [
+    {
+      "hostPid": 16068,
+      "hostCreated": "134392902930387588",
+      "childPid": 46288,
+      "childCreated": "134392902943399939",
+      "jobId": "15a58169bce648ceac03d7847c19ca79"
+    },
+    {
+      "hostPid": 36384,
+      "hostCreated": "134392903247621186",
+      "childPid": 43744,
+      "childCreated": "134392903260454146",
+      "jobId": "507ca0ceb24648e68ea41c4cc69a58a8"
+    },
+    {
+      "hostPid": 18792,
+      "hostCreated": "134392914606889910",
+      "childPid": 1260,
+      "childCreated": "134392914619222380",
+      "jobId": "eb65b677bc504231be8331c1a712e08e"
+    },
+    {
+      "hostPid": 36576,
+      "hostCreated": "134392914850785691",
+      "childPid": 38772,
+      "childCreated": "134392914862610808",
+      "jobId": "b795b9f439b54f0e9e00b2e127e6a7c1"
+    },
+    {
+      "hostPid": 45860,
+      "hostCreated": "134392921429801942",
+      "childPid": 29396,
+      "childCreated": "134392921441682278",
+      "jobId": "1efb90d5845347b495dd1af38fc00427"
+    },
+    {
+      "hostPid": 27708,
+      "hostCreated": "134392921666477533",
+      "childPid": 46032,
+      "childCreated": "134392921678401270",
+      "jobId": "8d31e39394fe4e2888b3eb21c32a99ef"
+    }
+  ],
+  "stopEvidence": [
+    {
+      "alias": "A",
+      "state": "stopped",
+      "evidenceRefs": [
+        "native_job_empty",
+        "native_creation_identity"
+      ]
+    },
+    {
+      "alias": "B",
+      "state": "stopped",
+      "evidenceRefs": [
+        "native_job_empty",
+        "native_creation_identity"
+      ]
+    },
+    {
+      "alias": "C",
+      "state": "stopped",
+      "evidenceRefs": [
+        "native_job_empty",
+        "native_creation_identity"
+      ]
+    },
+    {
+      "alias": "D",
+      "state": "stopped",
+      "evidenceRefs": [
+        "native_job_empty",
+        "native_creation_identity"
+      ]
+    },
+    {
+      "alias": "E",
+      "state": "stopped",
+      "evidenceRefs": [
+        "native_job_empty",
+        "native_creation_identity"
+      ]
+    },
+    {
+      "alias": "F",
+      "state": "stopped",
+      "evidenceRefs": [
+        "native_job_empty",
+        "native_creation_identity"
+      ]
+    }
+  ],
+  "artifactHashes": {
+    "install.ts": "fc813b37a98d08dfb0c77576f597c90b03c5a8efa6eb94274f3724d6cfdafd2b",
+    "Program.cs": "62d9cf887c8a7535fa497b9ad5da9c7014e768f611dd3affad0de973f83d2787",
+    "SKILL.md": "4cc815a6faed8ed928dff1c17f52ded512a9cc27889a80f6e1a4295df6417562",
+    "meristem-chat-control-0.1.0.vsix": "7a4e803d3e14558694a958e975a84a5950b00554011b107db3d1b2ebaa216399"
+  },
+  "run": {
+    "id": "cc07",
+    "state": "needs_reconcile",
+    "revision": 27,
+    "stop_generation": 2
+  },
+  "attempts": [
+    {
+      "alias": "A",
+      "attempt": 1,
+      "state": "completed",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "processIdentity": {
+        "hostPid": 16068,
+        "hostCreated": "134392902930387588",
+        "childPid": 46288,
+        "childCreated": "134392902943399939",
+        "jobId": "15a58169bce648ceac03d7847c19ca79"
+      },
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "alias": "B",
+      "attempt": 2,
+      "state": "completed",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "processIdentity": {
+        "hostPid": 36384,
+        "hostCreated": "134392903247621186",
+        "childPid": 43744,
+        "childCreated": "134392903260454146",
+        "jobId": "507ca0ceb24648e68ea41c4cc69a58a8"
+      },
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "alias": "C",
+      "attempt": 3,
+      "state": "completed",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "processIdentity": {
+        "hostPid": 18792,
+        "hostCreated": "134392914606889910",
+        "childPid": 1260,
+        "childCreated": "134392914619222380",
+        "jobId": "eb65b677bc504231be8331c1a712e08e"
+      },
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "alias": "D",
+      "attempt": 4,
+      "state": "completed",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "processIdentity": {
+        "hostPid": 36576,
+        "hostCreated": "134392914850785691",
+        "childPid": 38772,
+        "childCreated": "134392914862610808",
+        "jobId": "b795b9f439b54f0e9e00b2e127e6a7c1"
+      },
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "alias": "E",
+      "attempt": 5,
+      "state": "stopped",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "processIdentity": {
+        "hostPid": 45860,
+        "hostCreated": "134392921429801942",
+        "childPid": 29396,
+        "childCreated": "134392921441682278",
+        "jobId": "1efb90d5845347b495dd1af38fc00427"
+      },
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "alias": "F",
+      "attempt": 6,
+      "state": "completed",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "processIdentity": {
+        "hostPid": 27708,
+        "hostCreated": "134392921666477533",
+        "childPid": 46032,
+        "childCreated": "134392921678401270",
+        "jobId": "8d31e39394fe4e2888b3eb21c32a99ef"
+      },
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task": "A",
+      "state": "integrated",
+      "candidateSha": "d59ac1830af698cda138184c5b819b08fcdb4d13",
+      "integrationSha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e",
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A B integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_A"
+          ],
+          "checked_sha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e"
+        },
+        {
+          "name": "B",
+          "command": "node checks.mjs A B integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_B"
+          ],
+          "checked_sha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e"
+        },
+        {
+          "name": "integration",
+          "command": "node checks.mjs A B integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_integration"
+          ],
+          "checked_sha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e"
+        }
+      ]
+    },
+    {
+      "task": "B",
+      "state": "integrated",
+      "candidateSha": "601220e3668d3c4f0c0be16b4a87eec060ee78a2",
+      "integrationSha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e",
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A B integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_A"
+          ],
+          "checked_sha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e"
+        },
+        {
+          "name": "B",
+          "command": "node checks.mjs A B integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_B"
+          ],
+          "checked_sha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e"
+        },
+        {
+          "name": "integration",
+          "command": "node checks.mjs A B integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_integration"
+          ],
+          "checked_sha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e"
+        }
+      ]
+    },
+    {
+      "task": "C",
+      "state": "integrated",
+      "candidateSha": "93adca15a1be22e39c763afc1e6dad4f107a238e",
+      "integrationSha": "500070b3ae2cea9135cbe10ab6528ca64644d933",
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_A_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "B",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_B_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "C",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_C_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "D",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_D_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "integration",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_integration_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        }
+      ]
+    },
+    {
+      "task": "D",
+      "state": "integrated",
+      "candidateSha": "da676193bfccd5ea79c1892ad70b37a57c3f72bf",
+      "integrationSha": "500070b3ae2cea9135cbe10ab6528ca64644d933",
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_A_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "B",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_B_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "C",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_C_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "D",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_D_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        },
+        {
+          "name": "integration",
+          "command": "node checks.mjs A B C D integration",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "check_integration_final"
+          ],
+          "checked_sha": "500070b3ae2cea9135cbe10ab6528ca64644d933"
+        }
+      ]
+    },
+    {
+      "task": "E",
+      "state": "assigned"
+    },
+    {
+      "task": "F",
+      "state": "assigned"
+    }
+  ],
+  "reports": [
+    {
+      "task": "A",
+      "status": "completed",
+      "baseSha": "86ba8b63b2633ddac18935fba57d0914315953e2",
+      "candidateSha": "d59ac1830af698cda138184c5b819b08fcdb4d13",
+      "pushStatus": "pushed",
+      "checks": [
+        {
+          "name": "A",
+          "result": "passed",
+          "exitCode": 0,
+          "checkedSha": "d59ac1830af698cda138184c5b819b08fcdb4d13"
+        }
+      ],
+      "remainingCount": 0
+    },
+    {
+      "task": "B",
+      "status": "completed",
+      "baseSha": "86ba8b63b2633ddac18935fba57d0914315953e2",
+      "candidateSha": "601220e3668d3c4f0c0be16b4a87eec060ee78a2",
+      "pushStatus": "pushed",
+      "checks": [
+        {
+          "name": "B",
+          "result": "passed",
+          "exitCode": 0,
+          "checkedSha": "601220e3668d3c4f0c0be16b4a87eec060ee78a2"
+        }
+      ],
+      "remainingCount": 0
+    },
+    {
+      "task": "C",
+      "status": "completed",
+      "baseSha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e",
+      "candidateSha": "93adca15a1be22e39c763afc1e6dad4f107a238e",
+      "pushStatus": "pushed",
+      "checks": [
+        {
+          "name": "C",
+          "result": "passed",
+          "exitCode": 0,
+          "checkedSha": "93adca15a1be22e39c763afc1e6dad4f107a238e"
+        }
+      ],
+      "remainingCount": 0
+    },
+    {
+      "task": "D",
+      "status": "completed",
+      "baseSha": "798d7435a5d3e839143d1b57eefc5e2e509d0c6e",
+      "candidateSha": "da676193bfccd5ea79c1892ad70b37a57c3f72bf",
+      "pushStatus": "pushed",
+      "checks": [
+        {
+          "name": "D",
+          "result": "passed",
+          "exitCode": 0,
+          "checkedSha": "da676193bfccd5ea79c1892ad70b37a57c3f72bf"
+        }
+      ],
+      "remainingCount": 0
+    },
+    {
+      "task": "F",
+      "status": "completed",
+      "baseSha": "500070b3ae2cea9135cbe10ab6528ca64644d933",
+      "candidateSha": null,
+      "pushStatus": "not_attempted",
+      "checks": [],
+      "remainingCount": 1
+    }
+  ],
+  "requests": [
+    {
+      "kind": "permissions",
+      "state": "resolved"
+    },
+    {
+      "kind": "permissions",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    },
+    {
+      "kind": "permissions",
+      "state": "resolved"
+    },
+    {
+      "kind": "permissions",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    },
+    {
+      "kind": "elicitation",
+      "state": "resolved"
+    }
+  ],
+  "parentTurns": 12,
+  "instructions": 6,
+  "receiptState": "restored",
+  "retainedSettings": [],
+  "limitations": [
+    "Dedicated profile, not normal-profile acceptance.",
+    "Local bare remote, no GitHub integration push/readback.",
+    "Human UI, internal subagents, restart and restoration are assessed separately in CC-07.md; saved records alone do not prove them.",
+    "Overall CC-07 acceptance remains incomplete: real serial correction/handoff, structured question, normal parent stop/model-switch, GitHub and normal profile are not re-demonstrated here.",
+    "Final run-level stopping display wording was typechecked and built after the live trial; no second live trial for that text-only change.",
+    "Initial uninstaller preserved a later start_run approval preference; the human then explicitly authorized removal of exactly that preference and the owned MCP block."
+  ],
+  "initialUninstallRetained": [
+    "MCP: user value retained or installation not applied"
+  ],
+  "restoration": {
+    "parentDisconnected": true,
+    "userApprovedAdditionalRemoval": true,
+    "removed": [
+      "owned mcp_servers.meristem block",
+      "mcp_servers.meristem.tools.start_run approval_mode"
+    ],
+    "otherConfigurationPreserved": true,
+    "settingsRestored": true,
+    "mcpRemoved": true,
+    "configHash": "9f6fd313dfbe3636c6e943b0d1f90ed7e6e85b18ed03db2741fee2c51300129f"
+  },
+  "observations": {
+    "vsixInstallation": "passed",
+    "parentChatAndModelDisplay": "passed",
+    "humanConfirmedABPermissionForms": "passed",
+    "humanConfirmedABIntegrationPermission": "passed",
+    "parallelIntegration": "passed",
+    "semanticFailureThenFix": "passed",
+    "childSkillReport": "passed",
+    "internalSubagentMetadata": "passed",
+    "humanClosedETerminal": "passed",
+    "nativeJobStopAndNoRemainingWorkerPids": "passed",
+    "stoppedSiblingReport": "passed",
+    "windowReloadNeedsReconcileWithoutNewAttempt": "passed",
+    "settingsRestoration": "passed",
+    "realSerialCorrectionAndHandoff": "not_run",
+    "realStructuredQuestion": "not_run",
+    "normalParentStopAndModelSwitch": "not_run",
+    "githubReadback": "not_run",
+    "normalProfileInstallation": "not_run"
+  },
+  "markerObservations": [
+    {
+      "phase": "after_E_close",
+      "E": 102,
+      "F": 69
+    },
+    {
+      "phase": "after_20_seconds",
+      "E": 102,
+      "F": 134
+    },
+    {
+      "phase": "after_F_completion_and_reload",
+      "E": 102,
+      "F": 178
+    }
+  ],
+  "internalSubagent": {
+    "parentAlias": "A",
+    "count": 1,
+    "source": "session_meta.source.subagent.thread_spawn",
+    "parentIdentityMatched": true
+  },
+  "totalObservedModelTurns": 19
+}

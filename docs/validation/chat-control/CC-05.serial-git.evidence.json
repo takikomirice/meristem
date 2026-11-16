@@ -1,0 +1,79 @@
+{
+  "planRevision": 2,
+  "testId": "CC-05-serial-git",
+  "capturedAt": "2026-11-16T00:56:06.226Z",
+  "versions": {
+    "node": "v24.22.1",
+    "git": "git version 2.52.0.windows.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "fixture",
+  "result": "passed",
+  "actorAliases": [
+    "P",
+    "A",
+    "A-correction",
+    "B"
+  ],
+  "workerAttemptIds": [
+    "A-1",
+    "A-2",
+    "B-1"
+  ],
+  "terminalBindings": [],
+  "operationIds": [
+    "recorded-in-private-fixture-db"
+  ],
+  "eventSeqs": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "requestedAgent": {
+    "model": "mock",
+    "effort": "low"
+  },
+  "observedSettings": {
+    "runtime": "deterministic",
+    "gitRemote": "local_bare"
+  },
+  "processIdentities": [],
+  "stopEvidence": {
+    "kind": "fixture",
+    "attemptsCompleted": true
+  },
+  "artifactHashes": {
+    "a.txt": "3def73f15b56a47bba6777da129db988df316fa2e8b10fb5a005442349585c43",
+    "b.txt": "249215fed826e1cff9368c2c7490760a16f7bd49f875d39a9f23eaf1505d076d"
+  },
+  "candidateShas": [
+    "efe581af45ca465cf7eaf4bb4a095d9cc2faf0bc",
+    "a6887a29d5c7b563f0d54a5f3ee0d10b89663ae6",
+    "4bd25cb21b6fef3f16bce4218f1a59edff46b84a"
+  ],
+  "integrationShas": [
+    "a6887a29d5c7b563f0d54a5f3ee0d10b89663ae6",
+    "4bd25cb21b6fef3f16bce4218f1a59edff46b84a"
+  ],
+  "assertions": {
+    "sameHistoryNewAttempt": true,
+    "newHandoffHistory": true,
+    "dependencyBaseIncludesIntegration": true,
+    "dirtySourcePreserved": true,
+    "progressPreservesProse": true
+  },
+  "limitations": [
+    "Runtime lifecycle/identity is a deterministic fixture; not real Codex or VS Code acceptance.",
+    "Local bare remote only; no GitHub acceptance.",
+    "CC-06 parallel dispatch and CC-07 installation excluded."
+  ]
+}

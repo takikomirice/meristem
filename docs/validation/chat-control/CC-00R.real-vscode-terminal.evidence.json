@@ -1,0 +1,51 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-real-vscode-terminal-2026-11-15",
+  "capturedAt": "2026-11-15T03:40:16Z",
+  "versions": {
+    "vscode": "1.146.0",
+    "node": "v24.22.1",
+    "codex": "codex-cli 0.169.0-alpha.11.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": ["worker_A"],
+  "workerAttemptIds": ["attempt_A"],
+  "terminalBindings": ["ownerPipe_A"],
+  "operationIds": ["initialize_A", "thread_start_A", "ui_terminal_connect_A"],
+  "eventSeqs": [],
+  "requestedAgent": "no inference request",
+  "observedSettings": {
+    "model": "not requested",
+    "effort": "not requested",
+    "authHome": "isolated empty fixture home",
+    "vsCodeProfile": "dedicated temporary user-data-dir"
+  },
+  "processIdentities": {
+    "owner": "CodexWorkerHost.exe",
+    "worker": "CodexRelay.exe with verified Codex executable hash",
+    "extension": "VS Code Extension Development Host"
+  },
+  "stopEvidence": {
+    "realRootThreadCreated": true,
+    "terminalCommandRegistered": true,
+    "terminalDisplayedOnFirstAttempt": true,
+    "controlConnectionEstablished": false,
+    "controlConnectionErrorCode": "EPERM",
+    "workerStopConfirmed": false
+  },
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "relay": "a0c34d1707a8e227d39082f5d44555ddfc13528e3843179fa4c4f1210666b1bd",
+    "workerHost": "5bc413b4bf0a2f5f120c7532536da40758359a8100e8a14b6fca76eb8aed278a"
+  },
+  "result": "blocked",
+  "limitations": [
+    "No model turn was sent",
+    "The terminal displayed generic control-connection retries on the first attempt; its close did not stop the worker",
+    "A preflight on the next attempt identified EPERM from the VS Code extension host when opening the ACL-protected named pipe",
+    "The ACL was not weakened; no direct VS Code terminal stop success is claimed",
+    "No authenticated parent P, child B, MCP metadata correlation, official shell fixture, or broker/VS Code exit test was run"
+  ],
+  "detail": "The dedicated profile loaded the test extension and registered its command. The actual worker status endpoint was reachable from the local probe process, but VS Code's extension host received EPERM. The route therefore remains unaccepted."
+}

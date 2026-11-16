@@ -1,0 +1,29 @@
+{
+  "stage": "CC-03",
+  "validation": {
+    "command": "npm run verify",
+    "exitCode": 0,
+    "nativeTests": 36,
+    "controlTests": 88,
+    "terminalTests": 14,
+    "total": 138,
+    "failed": 0,
+    "skipped": 0
+  },
+  "sourceSha256": {
+    "src/wake.ts": "8f445fe22e939c8c97b7cdc67a66516a5bde12f5711a0405801449683ec32820",
+    "src/broker.ts": "c431ab773bc83a3ed6f4f980253f3f4217c9bf89522bed013737e4a8ec9d3df5",
+    "src/store.ts": "9c7fdad974e7ee641f93ea783da8d43f4432432b63d9ea3a7ec30064737f896c",
+    "src/mcp.ts": "f6387841d94a9580e14bd1fdac3cc1d6f6f89f89d97612bd58278defc4f8f64f",
+    "src/cli.ts": "e711afadf0cb16a0a11a211c91f42bdba2e3e9c4b92942ac7395320491e79a48",
+    "src/protocol.ts": "3ee928a1ae03f2038ba1d1e1967953ca9286d0477a7695a7a43d56c00042d0b4",
+    "native/StdioRelay.cs": "037856c39339c7acd30db399f5a498f0007164f7b283967d5421c867daf79c2a",
+    "native/LocalPipe.cs": "5d49dab53e577de57fc5bd472369f56fde8264c825fecc1daeb561c76acc03ce",
+    "native/McpPeer.cs": "e42f652b3ae5a091ec767393478afca87a028b089403cf3657358e6bfbb8fe37",
+    "native/Program.cs": "6a38083ce953076452fe1648912b72902fe05cdecf311cbf13db51b6e04673e1",
+    "migrations/003-wake.sql": "dac6057345a1fa3bd3a83b256fd01252c6e6e2653e7d2c14b903f9777698e238"
+  },
+  "limitations": [
+    "Production implementation and isolated fixtures only; see CC-03.md for separate live acceptance and UI coverage."
+  ]
+}

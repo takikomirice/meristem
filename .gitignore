@@ -1,0 +1,9 @@
+/.local
+/node_modules
+/extension/dist
+/dist
+/debug.log
+.env
+.env.*
+!.env.example
+*.vsix

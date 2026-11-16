@@ -1,0 +1,94 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-additional-six-turn-budget-2026-11-15",
+  "capturedAt": "2026-11-15T04:50:54Z",
+  "versions": {
+    "codex": "0.169.0-alpha.11.1",
+    "vscode": "1.146.0",
+    "node": "v24.22.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "A_first",
+    "A_workspace",
+    "P"
+  ],
+  "workerAttemptIds": [
+    "A_first_attempt",
+    "A_workspace_attempt"
+  ],
+  "terminalBindings": [],
+  "operationIds": [
+    "MCP_metadata_turn",
+    "same_history_shell_attempt",
+    "workspace_profile_preflight",
+    "workspace_shell_attempt",
+    "parent_setup"
+  ],
+  "eventSeqs": [],
+  "requestedAgent": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "additionalTurnLimit": 6
+  },
+  "observedSettings": {
+    "additionalTurnsSent": 3,
+    "additionalTurnsCompleted": 1,
+    "additionalTurnsWithUnknownCompletionAndJobClosed": 2,
+    "remainingAuthorizedTurns": 3,
+    "modelTurnsFromEarlierSeparateApproval": 1,
+    "legacySandboxRequestReturned": "readOnly",
+    "officialWorkspaceProfileAllowed": true,
+    "officialWorkspaceProfileReturned": "workspaceWrite",
+    "fullAccessModeUsed": false,
+    "approvalPolicy": "on-request",
+    "effectiveModelAndEffort": "not independently verified"
+  },
+  "processIdentities": {
+    "A_first": "dedicated WorkerHost job, verified relay/executable, registered root thread",
+    "A_workspace": "new dedicated WorkerHost job and root thread after previous ownership was closed",
+    "P": "official extension in a separate temporary VS Code profile; no model turn sent"
+  },
+  "stopEvidence": {
+    "allAdditionalSuiteHostsAbsent": true,
+    "realModelStartedShellAndGrandchildStop": "not_verified",
+    "parentProfile": "open for official Windows setup approval",
+    "testMcpConfigRemoved": true,
+    "officialSetupChangesPreserved": true
+  },
+  "artifactHashes": {},
+  "result": "unknown",
+  "checks": {
+    "realMcpThreadCorrelation": true,
+    "realMcpTurnCorrelation": true,
+    "callerIdentityArgumentsAccepted": false,
+    "invalidModelRejected": true,
+    "busyStartRejected": true,
+    "nativeTests": "20/20 passed",
+    "allNodeTests": "24/24 passed",
+    "terminalTests": "4/4 passed",
+    "extensionTypecheck": "passed",
+    "extensionBuild": "passed"
+  },
+  "limitations": [
+    "Formal server request appeared during workspace shell turn; no response or synthetic approval was supplied",
+    "Parent UI reports Windows setup did not finish because approval was canceled",
+    "No parent first turn or relay wake turn has been sent",
+    "Same-history follow-up was accepted but did not reach confirmed completion",
+    "Real shell stop, peer shell survival, broker EOF and VS Code exit acceptance remain incomplete",
+    "Fixture EOF/host-death success is not real sandbox shell success",
+    "Temporary parent profile remains open pending user action; restoration is not complete"
+  ],
+  "evidence": [
+    "CC-00R.live-suite.evidence.json",
+    "CC-00R.live-suite-workspace-write.evidence.json",
+    "CC-00R.live-suite-permissions.evidence.json",
+    "CC-00R.live-suite-official-workspace.evidence.json"
+  ],
+  "reviewFixes": [
+    "broker EOF watcher starts before synchronous initialize",
+    "parent turns reserve the same six-slot ledger before sending",
+    "cleanup/restoration failure cannot finalize as passed"
+  ]
+}

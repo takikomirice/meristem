@@ -1,0 +1,215 @@
+{
+  "stage": "CC-02",
+  "capturedAt": "2026-11-15T12:05:00.407Z",
+  "result": "partial",
+  "stageAccepted": false,
+  "validation": {
+    "command": "npm run verify",
+    "exitCode": 0,
+    "nativeBuild": "passed",
+    "typecheck": "passed",
+    "build": "passed",
+    "existingTests": 34,
+    "controlTests": 48,
+    "terminalTests": 13,
+    "total": 95,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "ca0fccdc74bf8f634019af3a27f131d72c588b2ccf1c6ce274ae2e9d3efa3284"
+  },
+  "live": {
+    "authorization": {
+      "maxAdditionalTurns": 8,
+      "requestedAgent": {
+        "model": "gpt-6-luna",
+        "effort": "low"
+      },
+      "formalHumanRunPermitConfirmed": true,
+      "officialParentMcpPromptsAnsweredByHuman": true
+    },
+    "modelTurnMetric": "App Server turn/start calls",
+    "parentTurns": [
+      {
+        "delivery": "completed",
+        "turnId": "01a1deff-c5a0-7c02-a6b0-ddfe1e004b62",
+        "status": "completed"
+      },
+      {
+        "delivery": "completed",
+        "turnId": "01a1df03-0fa1-7ef0-8986-44d5b5b210bb",
+        "status": "completed"
+      },
+      {
+        "delivery": "completed",
+        "turnId": "01a1df05-8423-7732-acdf-d084187818bd",
+        "status": "completed"
+      }
+    ],
+    "workerTurns": 2,
+    "totalTurns": 5,
+    "realParentMcpAndOwnership": true,
+    "restartRebinding": true,
+    "workerCreationAndInstructionsAcked": true,
+    "reportsSaved": 0,
+    "historyResume": "not_run",
+    "reportAndHistoryBlocker": "workers require official MCP tool approval; child human approval delivery UI is CC-04 and is not implemented",
+    "effectivePerTurnModelTelemetry": "not_collected",
+    "attempts": [
+      {
+        "alias": "A",
+        "worker": {
+          "ownerId": "3bf8296f-4a51-41eb-abb8-55e8954771f4",
+          "ownerEpoch": "44ff8314-398c-45e8-a4bb-462e40021b59",
+          "threadId": "01a1df08-ce55-7702-b5c7-80514e795cf2",
+          "workerId": "A",
+          "attemptId": "f10c3606-f0ca-49d9-98f8-00c24f70d586"
+        },
+        "state": "stopped",
+        "stop": {
+          "state": "stopped",
+          "evidenceRefs": [
+            "native_job_empty",
+            "native_creation_identity"
+          ]
+        }
+      },
+      {
+        "alias": "B",
+        "worker": {
+          "ownerId": "90c923b2-c60d-497f-9331-0d5b54b76427",
+          "ownerEpoch": "d306046c-181c-4655-b8d4-313ea80f4059",
+          "threadId": "01a1df08-f4bd-77c1-a334-96cf3d46b80a",
+          "workerId": "B",
+          "attemptId": "ba03dee4-d904-4d83-8799-c5076ea398d2"
+        },
+        "state": "stopped",
+        "stop": {
+          "state": "stopped",
+          "evidenceRefs": [
+            "native_job_empty",
+            "native_creation_identity"
+          ]
+        }
+      }
+    ],
+    "events": [
+      {
+        "kind": "registered",
+        "count": 4
+      },
+      {
+        "kind": "stopped",
+        "count": 2
+      },
+      {
+        "kind": "stopping",
+        "count": 1
+      },
+      {
+        "kind": "waiting_approval",
+        "count": 2
+      }
+    ],
+    "operationStates": [
+      {
+        "state": "acked",
+        "count": 2
+      },
+      {
+        "state": "settled",
+        "count": 3
+      }
+    ],
+    "worktrees": [
+      {
+        "alias": "A",
+        "branch": "fixture-A",
+        "clean": true
+      },
+      {
+        "alias": "B",
+        "branch": "fixture-B",
+        "clean": true
+      }
+    ],
+    "ui": {
+      "parentConversationEditorObserved": true,
+      "managedTerminal": "not_run",
+      "terminalReason": "command reached native file picker; successful managed terminal display/input was not observed",
+      "fixtureWindowClosedObserved": true
+    },
+    "cleanup": {
+      "allRecordedProcessesAbsent": true,
+      "testMcpSectionsRemain": false,
+      "phase": "restored",
+      "profileSettingsRestored": true
+    },
+    "runtimeArtifactsAtLaunch": {
+      "codexSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+      "nodeSha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5",
+      "hostSha256": "3ecd8ad2cba22aa8e906e0b23cb77935d60c1c53d56ef1f3659b642af680accd",
+      "mcpEntrySha256": "c03c794ae28de3f59b89d9c178d89693d4c521c3017080a51b886fefec62a23d"
+    },
+    "rawCommunicationIncluded": false,
+    "automaticApprovalReplies": 0
+  },
+  "review": {
+    "independentReviews": 2,
+    "fixedImportantFindings": [
+      "human_self_authorization",
+      "actual_metadata_format",
+      "actual_git_scope",
+      "restart_binding",
+      "incomplete_pipe_frame_starvation",
+      "oversized_status",
+      "isolation_probe_ownership",
+      "byte_bounded_report_retrieval",
+      "live_attempt_visibility"
+    ],
+    "selfReview": "completed; acceptance gate remains open"
+  },
+  "remainingAcceptance": [
+    "real worker report after official approval",
+    "real A history resume and token recall in a new attempt",
+    "real managed terminal display, input isolation and completed close"
+  ],
+  "sourceHashes": {
+    "README.md": "540eccc95dd86ec107a84bc09701ffc72e965dcb3e0efbe20482d65744c02720",
+    "docs/superpowers/plans/2026-11-15-codex-chat-control-implementation.md": "6e43298705e8ca4aca4303a5c35afda56e21b88f3d8b9538b98e12aa11fc413a",
+    "extension/src/control-client.ts": "44aeecc6794c50ddc9951ee39ca548db56b64c6703fc63415194a23aab97a059",
+    "extension/src/extension.ts": "b263a7838e3f0d88fb4a3a4546512770d51209e6aab8ab32766346ce6d54d73e",
+    "extension/src/managed-client.ts": "e975f24f127d45004a069482951bc39fe54f00343aaff9ee42b77f1de220b9ab",
+    "extension/src/terminal.ts": "3bcc8599ebdcfb56092c5d4fa02db5930de1b471cdab3f11050145a43d600f9e",
+    "extension/test/terminal.test.ts": "6d47e557fa016b41c1878d3c595f7501b6b93773fe034375ea72398a5b0acc81",
+    "native/ControlProgram.cs": "b9541987c3be0d255fb9f400be6de3e4ff352ab30e029f4d9ba2400739b69287",
+    "native/StdioRelay.cs": "7a24f2c07beb03b39777f1a28a6ecbc7c0da7f8685099bcbb505814b2b0e7945",
+    "native/WorkerHost.cs": "7a71f5faded162dbeea83c505b0ab245114a659d231d260a61d9037a5402797c",
+    "scripts/run-live.ps1": "fba76cd153640dfc082a42030a7f8f898c73a7641e3b7b8c788ca5139d82c073",
+    "src/broker.ts": "a8996a86d7de1f7e9738a018d4ffa815b8689731df2c0471a2846108b6014b60",
+    "src/cli.ts": "a0e15a233e98614d8480c04f7904fc9448d6223a02be118b02db4312e7709d0b",
+    "src/failures.ts": "6acc2a1d607a1dbf3e7f9c3f6633c1f726df460f1bce9c4304c42f50ab56c046",
+    "src/protocol.ts": "47ddc5c2c39dd4b33c810c6b23fd785c107bfb2d18dc512cccce82560cbc9d7d",
+    "src/store.ts": "2c79c63e8f836d1dd485e6f37986e543e7c9c38561769f984b9df10fcc074618",
+    "src/workers.ts": "64ec3a6cbba98ee4736a5ca67ded549090555e38046a889b2abda5c75a5f9087",
+    "test/control.test.ts": "1b883d96c54772633f90ed62a8a13f479228bf6e106b662abe8160adacc03077",
+    "test/fixtures/MockCodex.cs": "3e6eafb022332a01d4e8881736c4238827d846dbeb824d2793b6212b7c6bc96e",
+    "test/live-suite.test.mjs": "af5bcef9acdbe738a65652347a77f878226a9229c167110140149b0efa8a5944",
+    "test/workers.test.ts": "148ec2ce803eb5b3ea301f0eeeb0cec8394231c57ffca7307441c070d9c2627b",
+    "docs/validation/chat-control/CC-02.md": "cc2855247e02d968db9013eca40d797657995b4c2c12dbd76af8c0e6f8fc4597",
+    "migrations/002-mcp.sql": "d8d649470439bdfc01eb9b9cae79011ceb8d2b2ca2d9d74cedb250d7898021fb",
+    "src/actors.ts": "8cfda853d675615394601e2655dc68f749d8a6fe523b51c9b0bdac41bdecfaaa",
+    "src/mcp.ts": "accaeae354438a6fdee9047d942a2bc14f1247064298ff1ffb74383c849910f8",
+    "test/actors.test.ts": "9633431f8f93b840f358337279b40a7fb94bbfe8479eb600e492943790afb3bd",
+    "test/fixtures/git-scope.ts": "95457d190a3939ede538e2dc509cebe642a1dffcc98a6448531b3487ea410a75",
+    "test/fixtures/mcp-client.ts": "c18018eb20a6ea54a514fa49ff47046ba74fe17416777565423473f22b0fe94f",
+    "test/fixtures/native-mcp-client.ts": "80f4d66d920338b4d5f3f3ace1f730bd6a13e576d9d54aeff30a747a2b123b01",
+    "test/fixtures/parent-view-extension/index.cjs": "666c2b99c3eca98676a975a4b1ef4467474ac9c9d9ec74b0057139511a3dd965",
+    "test/fixtures/parent-view-extension/package.json": "65bbbdca0eb880caca06ee2c15a0f62ec8c3ba292e38646107524faf467c5daf",
+    "test/live/cc02-prepare.ts": "c79c64364405eaddf9214677e0d1060dcef26cf7f696a61df4f8c0c8b8eb9ef3",
+    "test/live/cc02-restore.ts": "3532a996f08701b88f54cfee54ad08ea7c24707c84910e2bb170b85b467b7c3f",
+    "test/live/cc02-session.ts": "039ea4a2f9aa1c0db6c216f68b963dd1be39c9484a1af692a8749a095c7c15b9",
+    "test/live/cc02.ts": "5ec6c43b45c80807d8e716c7047f916d02ae9007a691e17589cb31660de51988",
+    "test/mcp-native.test.ts": "5a3fc507177706a59a39ff3b8759c4a11eec1fd6b8e7e36d867735e31f005643",
+    "test/mcp.test.ts": "7480023a4dca80733f165388c9741d26c98fa064bdf63b7641cdf938af6a61fa"
+  }
+}

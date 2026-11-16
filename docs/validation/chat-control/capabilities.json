@@ -1,0 +1,263 @@
+{
+  "schemaVersion": 1,
+  "investigatedOn": "2026-11-14",
+  "timezone": "Asia/Tokyo",
+  "scope": "feasibility investigation; not implementation or full R1-R7 acceptance",
+  "versions": {
+    "extension": "26.1111.21308",
+    "bundledCodex": "0.169.0-alpha.11.1",
+    "pathCodex": "0.164.0",
+    "node": "24.22.1",
+    "vscode": "1.146.0"
+  },
+  "definitions": {
+    "A": "Existing chat owned by ordinary VS Code Codex extension",
+    "B": "Externally created chat subsequently opened in ordinary extension",
+    "C": "Externally owned independent root chat",
+    "statuses": [
+      "確認済み",
+      "条件付きで確認済み",
+      "非対応を確認",
+      "未確認"
+    ]
+  },
+  "overall": {
+    "planExit": 4,
+    "reason": "No complete A/B/C inference, UI, stop, approval or unattended two-stage acceptance run; usable native primitives and implementation candidates identified."
+  },
+  "matrix": [
+    {
+      "id": "Q1",
+      "feasibility": "possible-with-conditions",
+      "evidence": [
+        "installed-generated-types: ThreadStatus, ThreadActiveFlag, TurnStatus, ServerRequest",
+        "official API documentation"
+      ],
+      "condition": "Full runtime observation requires the owning server's events. Another server's notLoaded is not proof of inactivity.",
+      "runtimeAcceptance": {
+        "A": {
+          "status": "未確認"
+        },
+        "B": {
+          "status": "未確認"
+        },
+        "C": {
+          "status": "未確認",
+          "scope": "full scenario not executed"
+        }
+      }
+    },
+    {
+      "id": "Q2",
+      "feasibility": "possible-with-conditions",
+      "evidence": [
+        "installed-generated-types: ThreadStartParams/Response",
+        "real-app-server-without-model-generation: evidence/metadata-smoke.json"
+      ],
+      "condition": "C only: unique IDs, root threads, explicit cwd and empty idle histories passed. Ephemeral only; no persisted conversation or UI proof.",
+      "runtimeAcceptance": {
+        "A": {
+          "status": "未確認"
+        },
+        "B": {
+          "status": "未確認"
+        },
+        "C": {
+          "status": "条件付きで確認済み",
+          "scope": "metadata-only ephemeral root-thread creation"
+        }
+      }
+    },
+    {
+      "id": "Q3",
+      "feasibility": "possible-with-conditions",
+      "evidence": [
+        "installed-help: queue-help.txt",
+        "installed-generated-types: TurnStartParams, TurnSteerParams, TurnInterruptParams",
+        "official-source-static: queueSource, tuiQueue, queueProcessor, queueExtService, queueTests"
+      ],
+      "condition": "Native queue can deliver to persisted threads; owning loaded runtime can detect external changes. Queue receipt is not execution. No live target or process-stop test.",
+      "runtimeAcceptance": {
+        "A": {
+          "status": "未確認"
+        },
+        "B": {
+          "status": "未確認"
+        },
+        "C": {
+          "status": "未確認",
+          "scope": "full scenario not executed"
+        }
+      }
+    },
+    {
+      "id": "Q4",
+      "feasibility": "possible-with-conditions",
+      "evidence": [
+        "installed-generated-types: Model, TurnStartParams",
+        "installed-experimental-types: ThreadSettingsUpdateParams, TurnSettingsUpdateParams",
+        "official-source-static: queueSource, turnSettingsTests"
+      ],
+      "condition": "Owning API supports model/effort. Native queue has no per-send model override. Active-turn settings update is experimental and is not retroactive.",
+      "runtimeAcceptance": {
+        "A": {
+          "status": "未確認"
+        },
+        "B": {
+          "status": "未確認"
+        },
+        "C": {
+          "status": "未確認",
+          "scope": "full scenario not executed"
+        }
+      }
+    },
+    {
+      "id": "R5",
+      "feasibility": "possible-with-conditions",
+      "evidence": [
+        "official-source-static: queueExtService, tuiQueue",
+        "official docs: Hooks Stop, MCP tool timeout",
+        "third-party-source-static: agentInstall, agentUsage"
+      ],
+      "condition": "wait result, loaded-idle parent via durable queue, unloaded resume and ended process are separate routes. No unattended two-stage run tested.",
+      "runtimeAcceptance": {
+        "A": {
+          "status": "未確認"
+        },
+        "B": {
+          "status": "未確認"
+        },
+        "C": {
+          "status": "未確認",
+          "scope": "full scenario not executed"
+        }
+      }
+    },
+    {
+      "id": "R6",
+      "feasibility": "possible-with-conditions",
+      "evidence": [
+        "installed-generated-types: ServerRequest",
+        "official-source-static: queueTests",
+        "source design assessment; no runtime failure injection"
+      ],
+      "condition": "Needs target binding, durable operation records, unknown-outcome reconciliation, approval attribution and persistent stop state.",
+      "runtimeAcceptance": {
+        "A": {
+          "status": "未確認"
+        },
+        "B": {
+          "status": "未確認"
+        },
+        "C": {
+          "status": "未確認",
+          "scope": "full scenario not executed"
+        }
+      }
+    }
+  ],
+  "nativeQueue": {
+    "presence": "確認済み",
+    "evidenceKind": [
+      "installed-help",
+      "official-source-static"
+    ],
+    "existingTarget": true,
+    "byExactUuid": true,
+    "perMessageModelOverride": false,
+    "stopRunningTurn": false,
+    "liveStateQuery": false,
+    "observedExternalDispatch": false,
+    "sourceWatchIntervalSeconds": 10,
+    "watchIntervalIsSla": false,
+    "resumeWarningMayCoexistWithSuccess": true,
+    "requiresCompatibleStorageAndOwningRuntime": true,
+    "ephemeralSupported": false
+  },
+  "experimental": {
+    "methods": [
+      "thread/settings/update",
+      "turn/settings/update",
+      "thread/queue/add",
+      "thread/queue/list",
+      "thread/queue/delete",
+      "thread/backgroundTerminals/list",
+      "thread/backgroundTerminals/terminate"
+    ],
+    "presence": "確認済み",
+    "evidenceKind": "installed-generated-types-with-experimental",
+    "behaviorTested": false,
+    "liveUpdateScope": "Later consumers in current turn; not an already-started step or all child sessions"
+  },
+  "routes": [
+    {
+      "id": "native-queue-and-reports",
+      "role": "first feasibility trial for existing extension chats",
+      "fullRequirementCoverage": false
+    },
+    {
+      "id": "mcp-owned-app-server",
+      "role": "simplest if external-owned children are acceptable",
+      "doesNotProve": "ordinary extension child chat control"
+    },
+    {
+      "id": "windows-stdio-relay",
+      "role": "conditional candidate for full control of extension-owned chats",
+      "dependsOn": "development-only cliExecutable setting; native Windows launcher; UI synchronization proof",
+      "implemented": false
+    },
+    {
+      "id": "shared-server",
+      "role": "conditional future integration",
+      "missing": "verified public existing-extension connection to the shared server"
+    },
+    {
+      "id": "ui-only",
+      "role": "limited supplementary navigation",
+      "recommendedAsControlPlane": false
+    }
+  ],
+  "thirdParty": [
+    {
+      "repository": "whooperlove/cross-agent_mcp",
+      "commit": "c1b0e5428863b0df78fbe587a8510f6ab0a507ec",
+      "license": "MIT",
+      "windowsDropIn": {
+        "status": "非対応を確認",
+        "evidenceKind": "static-source",
+        "reasons": [
+          "Bash and POSIX venv launcher",
+          "fcntl/flock/fchmod and Unix-socket permissions",
+          "real-binary lookup not native Windows exe oriented"
+        ]
+      },
+      "modelEffortToolArguments": false,
+      "interruptControlInInspectedCodexToolAndShim": false,
+      "installedOrExecuted": false
+    },
+    {
+      "repository": "FBisca/agent-runtime",
+      "commit": "74addfef66572827c14d538895965689c9107434",
+      "license": "MIT",
+      "requires": [
+        "Python >=3.11",
+        "Herdr hc worker panes"
+      ],
+      "ordinaryExtensionChatIntegration": "not-established",
+      "nativeWindowsAcceptance": "未確認",
+      "installedOrExecuted": false
+    }
+  ],
+  "actions": {
+    "modelGenerationRequests": 0,
+    "existingChatMessages": 0,
+    "existingChatInterrupts": 0,
+    "settingsChanged": false,
+    "pluginsInstalled": false,
+    "sourcePlanModified": false,
+    "gitManaged": false,
+    "committed": false,
+    "pushed": false
+  }
+}

@@ -1,0 +1,864 @@
+{
+  "publicationRedactions": ["private-acceptance-repository"],
+  "planRevision": 2,
+  "testId": "CC-07-continuation",
+  "capturedAt": "2026-11-16T11:23:52.797Z",
+  "versions": {
+    "node": "v24.22.1",
+    "codex": "codex-cli 0.169.0-alpha.11.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_vscode",
+  "result": "passed",
+  "actorAliases": [
+    "P",
+    "A",
+    "B"
+  ],
+  "workerAttemptIds": [
+    "A-1",
+    "A-2",
+    "A-3",
+    "B-4",
+    "B-5"
+  ],
+  "terminalBindings": [
+    {
+      "alias": "A-1",
+      "terminalId": "c0ad9673-7a1b-41a0-9b55-b562f3ef23d4"
+    },
+    {
+      "alias": "A-2",
+      "terminalId": "c5fa7552-afda-4aa4-843e-c0c15b74b021"
+    },
+    {
+      "alias": "A-3",
+      "terminalId": "e74a205a-dde4-431c-8b2d-9b2167e7bd54"
+    },
+    {
+      "alias": "B-4",
+      "terminalId": "33e15b09-f400-449f-abfe-9d107398d0f3"
+    },
+    {
+      "alias": "B-5",
+      "terminalId": "ca4ea616-f5c6-49f8-b526-7c79c5f6f7f6"
+    }
+  ],
+  "requestedAgent": {
+    "model": "gpt-6.1-sol",
+    "effort": "medium"
+  },
+  "observedSettings": {
+    "workerWindowsSandbox": "mxc",
+    "scenario": "serial",
+    "parentUiModelChange": {
+      "turnId": "01a1e40f-6cec-74a2-8765-e8cbad0c6ff4",
+      "trigger": "composer",
+      "model": "gpt-6-luna",
+      "effort": "low",
+      "status": "turn_aborted",
+      "reason": "interrupted",
+      "startedAt": "2026-11-16T11:12:58.651Z",
+      "completedAt": "2026-11-16T11:13:11.183Z"
+    }
+  },
+  "budget": {
+    "authorization": "User authorized continued trials until completion or interruption; no aggregate fixed cap.",
+    "runnerPerSession": {
+      "parent": 14,
+      "child": 6
+    },
+    "serial01": {
+      "parent": 2,
+      "child": 1,
+      "total": 3
+    },
+    "serial02": {
+      "runnerParent": 13,
+      "humanUiParent": 2,
+      "child": 6,
+      "total": 21
+    },
+    "additionalTotal": 24,
+    "subagentsThisContinuation": 0,
+    "unknownResent": 0,
+    "note": "Human UI turns are counted separately from runner reservations. Earlier CC-07 evidence is a separate trial."
+  },
+  "runSnapshots": {
+    "completed": {
+      "id": "cc07",
+      "state": "completed",
+      "revision": 27,
+      "stop_generation": 1
+    },
+    "afterUiStop": {
+      "id": "cc07",
+      "state": "stopped",
+      "revision": 28,
+      "stop_generation": 2
+    },
+    "afterWindowExit": {
+      "id": "cc07",
+      "state": "needs_reconcile",
+      "revision": 29,
+      "stop_generation": 3
+    }
+  },
+  "attempts": [
+    {
+      "alias": "A-1",
+      "task": "A",
+      "thread": "thread-1",
+      "state": "completed",
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      },
+      "hostPid": 18164,
+      "childPid": 48548,
+      "terminalId": "c0ad9673-7a1b-41a0-9b55-b562f3ef23d4"
+    },
+    {
+      "alias": "A-2",
+      "task": "A",
+      "thread": "thread-1",
+      "state": "stopped",
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      },
+      "hostPid": 29460,
+      "childPid": 25376,
+      "terminalId": "c5fa7552-afda-4aa4-843e-c0c15b74b021"
+    },
+    {
+      "alias": "A-3",
+      "task": "A",
+      "thread": "thread-2",
+      "state": "completed",
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      },
+      "hostPid": 11424,
+      "childPid": 41480,
+      "terminalId": "e74a205a-dde4-431c-8b2d-9b2167e7bd54"
+    },
+    {
+      "alias": "B-4",
+      "task": "B",
+      "thread": "thread-3",
+      "state": "completed",
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      },
+      "hostPid": 12500,
+      "childPid": 45228,
+      "terminalId": "33e15b09-f400-449f-abfe-9d107398d0f3"
+    },
+    {
+      "alias": "B-5",
+      "task": "B",
+      "thread": "thread-3",
+      "state": "completed",
+      "stop": {
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      },
+      "hostPid": 47108,
+      "childPid": 17548,
+      "terminalId": "ca4ea616-f5c6-49f8-b526-7c79c5f6f7f6"
+    }
+  ],
+  "reports": [
+    {
+      "attempt": "A-1",
+      "status": "failed",
+      "baseSha": "868eaebca6132ed880a6b1fcfb7f182ba24313bd",
+      "candidateSha": "dcf7b2bc71ded68efc0199c7e064906ff5539f1d",
+      "push": {
+        "status": "failed",
+        "remote": "origin",
+        "branch": "cc07-serial-integration-A-263fdf54-8265-418b-b795-55267f81e7d4"
+      },
+      "questionPresent": false,
+      "historyRecallConfirmed": false,
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A",
+          "result": "failed",
+          "exit_code": 1,
+          "evidence_refs": [
+            "terminal_check_A"
+          ],
+          "checked_sha": "dcf7b2bc71ded68efc0199c7e064906ff5539f1d"
+        }
+      ]
+    },
+    {
+      "attempt": "A-3",
+      "status": "completed",
+      "baseSha": "868eaebca6132ed880a6b1fcfb7f182ba24313bd",
+      "candidateSha": "219493f97ddaf9ba193e774f6df9ba2275aef690",
+      "push": {
+        "status": "pushed",
+        "remote": "origin",
+        "branch": "cc07-serial-integration-A-e391209b-9cad-47f6-9aba-9ad48b9f0467"
+      },
+      "questionPresent": false,
+      "historyRecallConfirmed": false,
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "terminal_check_A"
+          ],
+          "checked_sha": "219493f97ddaf9ba193e774f6df9ba2275aef690"
+        }
+      ]
+    },
+    {
+      "attempt": "B-5",
+      "status": "needs_input",
+      "baseSha": "219493f97ddaf9ba193e774f6df9ba2275aef690",
+      "candidateSha": null,
+      "push": {
+        "status": "not_attempted",
+        "remote": "origin",
+        "branch": "cc07-serial-integration-B-d6712f95-71dc-4613-8394-df39f0c26b9d"
+      },
+      "questionPresent": true,
+      "historyRecallConfirmed": false,
+      "checks": []
+    },
+    {
+      "attempt": "B-5",
+      "status": "completed",
+      "baseSha": "219493f97ddaf9ba193e774f6df9ba2275aef690",
+      "candidateSha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74",
+      "push": {
+        "status": "pushed",
+        "remote": "origin",
+        "branch": "cc07-serial-integration-B-d6712f95-71dc-4613-8394-df39f0c26b9d"
+      },
+      "questionPresent": false,
+      "historyRecallConfirmed": true,
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A B",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "ba6994"
+          ],
+          "checked_sha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74"
+        },
+        {
+          "name": "B",
+          "command": "node checks.mjs A B",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "ba6994"
+          ],
+          "checked_sha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74"
+        }
+      ]
+    }
+  ],
+  "operationIds": [
+    {
+      "id": "cc07-serial-create-A-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-send-A-02",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-serial-present-A-report-02",
+      "state": "settled"
+    },
+    {
+      "id": "a-first-report-76e04f6d-5529-49d2-8c1d-41931ba20a81",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-retry-A-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-create-A-correction-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-send-A-correction-02",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-serial-present-A-correction-permissions-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-resume-02-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-handoff-A-03",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-create-A-03",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-send-A-03",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-serial-present-A3-permissions-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-present-A3-report-01",
+      "state": "settled"
+    },
+    {
+      "id": "report-A-fresh-e391209b-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-accept-A3-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-integrate-A-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-create-B-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-send-B-01",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-serial-present-B-question-report-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-present-B-question-report-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-retry-B-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-create-B-02",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-send-B-02",
+      "state": "acked"
+    },
+    {
+      "id": "cc07-serial-present-B2-question-report-01",
+      "state": "settled"
+    },
+    {
+      "id": "b-recovery-question-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-answer-B2-value-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-present-B2-final-report-01",
+      "state": "settled"
+    },
+    {
+      "id": "b-completed-20261116-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-accept-B2-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-integrate-B-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-write-progress-final-01",
+      "state": "settled"
+    },
+    {
+      "id": "cc07-serial-finish-01",
+      "state": "settled"
+    }
+  ],
+  "requests": [
+    {
+      "alias": "request-1",
+      "attempt": "A-1",
+      "kind": "permissions",
+      "state": "resolved",
+      "formGeneration": "ae44c18a-ba30-417e-87cd-7b74cde78265"
+    },
+    {
+      "alias": "request-2",
+      "attempt": "A-1",
+      "kind": "elicitation",
+      "state": "resolved",
+      "formGeneration": "d6db951b-7f36-4ad8-9d67-6bc4125602d4"
+    },
+    {
+      "alias": "request-3",
+      "attempt": "A-2",
+      "kind": "permissions",
+      "state": "resolved",
+      "formGeneration": "5214eecd-5544-4630-9be1-f7d420874be0"
+    },
+    {
+      "alias": "request-4",
+      "attempt": "A-2",
+      "kind": "command",
+      "state": "cancelled",
+      "formGeneration": "4eba84e7-93ba-4951-b8b7-986fc3b4b1c7"
+    },
+    {
+      "alias": "request-5",
+      "attempt": "A-3",
+      "kind": "permissions",
+      "state": "resolved",
+      "formGeneration": "189ca1dc-e9dd-400d-b2df-f06e12a2fbaa"
+    },
+    {
+      "alias": "request-6",
+      "attempt": "A-3",
+      "kind": "elicitation",
+      "state": "resolved",
+      "formGeneration": "a31c1820-bb78-4522-a517-2500474b3fd1"
+    },
+    {
+      "alias": "request-7",
+      "attempt": "B-4",
+      "kind": "elicitation",
+      "state": "resolved",
+      "formGeneration": "0844b58d-adf9-4e65-86bb-33cbe89738ec"
+    },
+    {
+      "alias": "request-8",
+      "attempt": "B-4",
+      "kind": "elicitation",
+      "state": "resolved",
+      "formGeneration": "592d2409-817c-4210-89a0-91ea2fcd0fea"
+    },
+    {
+      "alias": "request-9",
+      "attempt": "B-5",
+      "kind": "elicitation",
+      "state": "resolved",
+      "formGeneration": "82bb012a-da6c-4b38-a7b4-d98001b0ab15"
+    },
+    {
+      "alias": "request-10",
+      "attempt": "B-5",
+      "kind": "question",
+      "state": "resolved",
+      "formGeneration": "efc1e9b3-9304-4866-ace8-01a8c98a5910"
+    },
+    {
+      "alias": "request-11",
+      "attempt": "B-5",
+      "kind": "permissions",
+      "state": "resolved",
+      "formGeneration": "e6729511-44dc-4805-a133-33226b9d096f"
+    },
+    {
+      "alias": "request-12",
+      "attempt": "B-5",
+      "kind": "elicitation",
+      "state": "resolved",
+      "formGeneration": "975e0401-7a56-4ff7-8b07-34079df303de"
+    }
+  ],
+  "decisions": [
+    {
+      "id": "cc07-serial-retry-A-02",
+      "task": "A",
+      "decision": "retry_same"
+    },
+    {
+      "id": "cc07-serial-handoff-A-03",
+      "task": "A",
+      "decision": "handoff_new"
+    },
+    {
+      "id": "cc07-serial-accept-A3-01",
+      "task": "A",
+      "decision": "accept_candidate",
+      "candidateSha": "219493f97ddaf9ba193e774f6df9ba2275aef690"
+    },
+    {
+      "id": "cc07-serial-integrate-A-01",
+      "task": "A",
+      "decision": "accept_integration",
+      "integrationSha": "219493f97ddaf9ba193e774f6df9ba2275aef690"
+    },
+    {
+      "id": "cc07-serial-retry-B-02",
+      "task": "B",
+      "decision": "retry_same"
+    },
+    {
+      "id": "cc07-serial-accept-B2-01",
+      "task": "B",
+      "decision": "accept_candidate",
+      "candidateSha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74"
+    },
+    {
+      "id": "cc07-serial-integrate-B-01",
+      "task": "B",
+      "decision": "accept_integration",
+      "integrationSha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74"
+    },
+    {
+      "id": "cc07-serial-finish-01",
+      "task": "B",
+      "decision": "finish"
+    }
+  ],
+  "checks": [
+    {
+      "task": "A",
+      "sha": "219493f97ddaf9ba193e774f6df9ba2275aef690",
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "serial_A"
+          ],
+          "checked_sha": "219493f97ddaf9ba193e774f6df9ba2275aef690"
+        }
+      ]
+    },
+    {
+      "task": "B",
+      "sha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74",
+      "checks": [
+        {
+          "name": "A",
+          "command": "node checks.mjs A B",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "serial_A"
+          ],
+          "checked_sha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74"
+        },
+        {
+          "name": "B",
+          "command": "node checks.mjs A B",
+          "result": "passed",
+          "exit_code": 0,
+          "evidence_refs": [
+            "serial_B"
+          ],
+          "checked_sha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74"
+        }
+      ]
+    }
+  ],
+  "sameHistory": {
+    "sameThread": true,
+    "sameWorktree": true,
+    "newOwner": true,
+    "newEpoch": true,
+    "newAttempt": true,
+    "attempts": [
+      "B-4",
+      "B-5"
+    ],
+    "correction": "Rejected question report schema corrected, then question answered in next turn and implementation completed.",
+    "historyOnlyRecall": true
+  },
+  "handoff": {
+    "newThread": true,
+    "newWorktree": true,
+    "attempts": [
+      "A-2",
+      "A-3"
+    ]
+  },
+  "parentUi": [
+    {
+      "turnId": "01a1e3f8-8cde-7940-aee0-01351718ec79",
+      "trigger": "composer",
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "status": "task_complete",
+      "startedAt": "2026-11-16T10:47:59.482Z",
+      "completedAt": "2026-11-16T10:48:15.517Z"
+    },
+    {
+      "turnId": "01a1e40f-6cec-74a2-8765-e8cbad0c6ff4",
+      "trigger": "composer",
+      "model": "gpt-6-luna",
+      "effort": "low",
+      "status": "turn_aborted",
+      "reason": "interrupted",
+      "startedAt": "2026-11-16T11:12:58.651Z",
+      "completedAt": "2026-11-16T11:13:11.183Z"
+    }
+  ],
+  "github": {
+    "repository": "<private-acceptance-repository>",
+    "visibility": "private",
+    "branch": "cc07-serial-integration",
+    "protected": false,
+    "integrationSha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74",
+    "remoteReadbackSha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74",
+    "freshCloneSha": "694bd021fadcfa5bfc3a66754fc97a3516c82a74",
+    "checks": {
+      "command": "node checks.mjs A B",
+      "exitCode": 0
+    },
+    "gitBlobContents": {
+      "a": "alpha followed by LF",
+      "b": "beta followed by LF"
+    },
+    "checkoutLineEndings": "CRLF from existing core.autocrlf=true; exact LF verified in Git blobs.",
+    "scope": "Only final integration pushed to GitHub. Worker candidate pushes use pinned local bare origin."
+  },
+  "processChecks": [
+    {
+      "attempt": "A-1",
+      "kind": "host",
+      "pid": 18164,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "A-1",
+      "kind": "child",
+      "pid": 48548,
+      "ownedIdentityAlive": false,
+      "pidReused": true,
+      "currentProcess": "conhost"
+    },
+    {
+      "attempt": "A-2",
+      "kind": "host",
+      "pid": 29460,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "A-2",
+      "kind": "child",
+      "pid": 25376,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "A-3",
+      "kind": "host",
+      "pid": 11424,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "A-3",
+      "kind": "child",
+      "pid": 41480,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "B-4",
+      "kind": "host",
+      "pid": 12500,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "B-4",
+      "kind": "child",
+      "pid": 45228,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "B-5",
+      "kind": "host",
+      "pid": 47108,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    },
+    {
+      "attempt": "B-5",
+      "kind": "child",
+      "pid": 17548,
+      "ownedIdentityAlive": false,
+      "pidReused": false,
+      "currentProcess": null
+    }
+  ],
+  "restoration": {
+    "serial01": {
+      "state": "restored",
+      "retained": []
+    },
+    "serial02": {
+      "capturedAt": "2026-11-16T11:14:31.485Z",
+      "installerRetained": [
+        "MCP: user value retained or installation not applied"
+      ],
+      "humanAuthorizedExactRemoval": true,
+      "removed": [
+        "installed_mcp_block",
+        "start_run_approval_mode"
+      ],
+      "unrelatedBytesPreserved": true,
+      "beforeSha256": "5b2d2e4fd4aaaa810493e0868cb235d9e0c6cd43f9cedb12a50fcfac0a9c0d14",
+      "afterSha256": "f886dc83cdff11ecc343ddddf6d98d4832d7abb7337cf2cc59ee32f9a2695697",
+      "finalMcpAbsent": true
+    },
+    "parentDisconnected": true,
+    "dedicatedWindowClosedByHuman": true,
+    "normalWindowPreserved": true,
+    "artifactsPreserved": true
+  },
+  "failuresRetained": [
+    {
+      "trial": "serial-01",
+      "outcome": "unsupported Git request included worktree; stopped; uncommitted draft preserved; not accepted"
+    },
+    {
+      "trial": "serial-02 A-1",
+      "outcome": "intentional check failure and MSYS local push failure; failed report saved"
+    },
+    {
+      "trial": "serial-02 A-2",
+      "outcome": "same-history alpha correction committed; unsupported broad escalation after local push failure; stopped without report; not accepted"
+    },
+    {
+      "trial": "serial-02 B-4",
+      "outcome": "empty check evidence_refs rejected; summary fallback also rejected; no saved report; normal cleanup"
+    },
+    {
+      "trial": "GitHub fresh clone extra byte check",
+      "outcome": "working-file LF assertion failed due to existing CRLF checkout conversion; semantic checks passed; exact Git blob LF then verified"
+    }
+  ],
+  "phases": {
+    "serialAssignment": "passed",
+    "sameHistoryReportCorrectionAndRecall": "passed",
+    "newWorkerHandoff": "passed",
+    "questionAndNextTurn": "passed",
+    "formalHumanApprovals": "passed",
+    "parentUiSendModelStop": "passed",
+    "githubReadback": "passed",
+    "settingsRestoration": "passed",
+    "parallelSubagentReloadLateReport": "separate_prior_CC-07.live.evidence.json",
+    "finalVerify": "passed"
+  },
+  "artifactHashes": {
+    "sourceBase": "246447c",
+    "runtimeAtTrial": {
+      "codex.exe": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+      "node.exe": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5",
+      "CodexRelay.exe": "e1af30b1ac7a4f3361df01d593aa161c8b28a7aae5c9dd40928c6efc1c50db76",
+      "CodexRelay.exe.json": "c9efe88d8c8d0cb1a6eff40092b33c1a0bf79d26a02cbc8e2d89e817d52202b8",
+      "control.json": "1559c24974d80e5703ba7446e4a844656328f2da1adad3eef0973613335fbfc6",
+      "MeristemControl.exe": "4dc71abaf8659846c7bd872991a617e577a4e396b4a8f842d3c63f3b537597ce",
+      "CodexWorkerHost.exe": "3e29063ac1c2dbc5ceed10d2fbe9c8839da8c255acda09deb7ace0a1202c1c04",
+      "cli.js": "2c4797ea141ed6ea3357bb65a726acca59b104178ccb7c352d3373eef025a607",
+      "mcp.js": "7e180fcfdcbcdbcf99b3d15072d8b7956d515f76f4781a78f99e28d05830946c",
+      "extension.js": "b97add02d383256da4d5f763d39ef63c2bb4bcfb71bbb676f13cf3fba4ef98ae"
+    },
+    "completedSnapshot": "e18871bcdc9054bf67d89a3e0c0f30a3b75406380c6934d09992d9d94eccce6d",
+    "stoppedSnapshot": "2f7de24589a7a86a820c209f0d503807dcdd22fcef33c245edb287a00eeeb0b3",
+    "postExitDatabase": {
+      "capturedAt": "2026-11-16T11:15:17.476Z",
+      "originalFileHashes": {
+        "main": "ae45a13d87457d0e48d5a0fa4534be87ce8bc3dc645f1546da4a1dc3e640ebd7"
+      },
+      "sourceUnchanged": true,
+      "copyReason": "Read-only open after exit requires WAL recovery; recover only byte-verified copy."
+    },
+    "plan": "4d91f89162cb29e151eeb264a04264af6e2956ce2c63dfb12485c60150675917",
+    "finalBuild": {
+      "MeristemControl.exe": "92300912e107b630d50ba608961ae82c7951a04608f061b94567f4a3637989f5",
+      "CodexWorkerHost.exe": "49ecea3873e04507ae7783803c14f9d129e4c22d9e2dd8832035fab9f07987b5",
+      "cli.js": "2c4797ea141ed6ea3357bb65a726acca59b104178ccb7c352d3373eef025a607",
+      "mcp.js": "7e180fcfdcbcdbcf99b3d15072d8b7956d515f76f4781a78f99e28d05830946c",
+      "extension.js": "b97add02d383256da4d5f763d39ef63c2bb4bcfb71bbb676f13cf3fba4ef98ae"
+    }
+  },
+  "limitations": [
+    "Dedicated pinned test profile; no normal-profile installation, public distribution or startup registration.",
+    "Fixed native remote-ext receive-pack trial transport to same approved local bare; ordinary local push remains affected by MXC MSYS limitation.",
+    "A code-correction attempt was stopped; successful same-history correction here is the B report schema and ensuing question/implementation.",
+    "No automatic wake in this serial fixture; controller dispatched saved-event-based parent turns. Earlier CC-03/CC-07 evidence covers separate wake/parallel/subagent/reload paths.",
+    "Backend effective model is not inferred; parent UI settings are observed turn_context values.",
+    "Original post-exit SQLite was not changed; byte-verified DB/WAL copy used for recovery and inspection."
+  ],
+  "redaction": {
+    "rawChats": false,
+    "credentials": false,
+    "fullConfig": false,
+    "discoveryTokens": false
+  },
+  "validation": {
+    "command": "npm run verify",
+    "exitCode": 0,
+    "native": 39,
+    "control": 181,
+    "terminal": 14,
+    "total": 234,
+    "typecheck": "passed",
+    "build": "passed",
+    "logSha256": "e65abfbc24f27e762f0070e11f98968a9c7d98dfd728ef0b492e916f4bfde99b",
+    "independentDiffReview": "no Critical/Important/Minor findings",
+    "finalEvidenceReviewedBy": "root",
+    "skillFrontmatter": "passed",
+    "relativeLinksChecked": 65
+  }
+}

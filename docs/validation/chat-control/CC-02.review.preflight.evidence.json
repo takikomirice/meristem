@@ -1,0 +1,31 @@
+{
+  "publicationRedactions": ["local-account-path"],
+  "stage": "CC-02",
+  "case": "no_inference_preflight",
+  "capturedAt": "2026-11-15T13:20:01.066Z",
+  "turnsSent": 0,
+  "result": "passed",
+  "node": {
+    "path": "C:\\Program Files\\nodejs\\node.exe",
+    "version": "v24.22.1",
+    "sha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5"
+  },
+  "codex": {
+    "path": "C:\\Users\\USER\\.vscode\\extensions\\openai.chatgpt-26.1111.21308-win32-x64\\bin\\windows-x86_64\\codex.exe",
+    "sha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "version": "codex-cli 0.169.0-alpha.11.1"
+  },
+  "artifactHashes": {
+    "host": "0f2ae85076fe0145a01ee4c3b3b80eac0bf9a6d3b91eab6521d2064b54cfd707",
+    "control": "608fdabe583f2ad9baf61ce46567d488e816342f269f50944927ee2246be919a",
+    "mcp": "90aa6b86bd5a52fdab318fed8cfeeee3ec347ff85ac1bc24fd67efec8e58177a",
+    "entry": "e3cf1987ada7d7dd52bbb9859468624feee0c9bac79435e7b1882bee2ef69c57"
+  },
+  "realRootAndManagedProfile": true,
+  "realMcpToolCatalog": true,
+  "isolationLeavesWorktreeClean": true,
+  "realWorkerStop": "stopped",
+  "hostAbsent": true,
+  "realParentWorkerTurns": "not_run",
+  "realVscodeTerminal": "not_run"
+}

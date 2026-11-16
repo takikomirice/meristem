@@ -1,0 +1,383 @@
+{
+  "publicationRedactions": ["local-workspace-path"],
+  "testId": "CC-00-ui-7291cf95-36ef-48c1-b971-c0ca088da0ce",
+  "capturedAt": "2026-11-14T16:26:58.042Z",
+  "extensionVersion": "26.1111.21308",
+  "realVersion": "codex-cli 0.169.0-alpha.11.1",
+  "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+  "uiTestedRelaySha256": "4abc893a83a2ea6b8066910d5425902d9ed0e5d35e7821ade08dcc80fb07b8e4",
+  "ownerId": "2c1c115261274f89a2546e8b51f79bdd",
+  "ownerEpoch": "76b90588a7434ddfae21f4f77c51f9cc",
+  "initializeCapabilities": {
+    "experimentalApi": true,
+    "extensions": {
+      "openai/elicitation": {
+        "form": {}
+      }
+    },
+    "mcpServerOpenaiFormElicitation": true,
+    "requestAttestation": false
+  },
+  "handshakeModified": false,
+  "jobAssigned": true,
+  "actualAcl": "D:P(D;;0x1f019f;;;NU)(A;;0x1f019f;;;SY)(A;;0x12019b;;;S-1-5-21-613363626-1649459864-722475183-1001)",
+  "parent": {
+    "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+    "source": "vscode",
+    "cwd": "C:\\work\\meristem\\.local\\chat-control\\CC-00\\試験 space-zkYfLf\\work",
+    "initialUiResponseObserved": true,
+    "followupUiResponseObserved": true,
+    "resumedTurnId": "01a1dadb-cc2f-7282-af83-7badcba6945b",
+    "resumedMarkerInUi": true
+  },
+  "childA": {
+    "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+    "source": "vscode",
+    "differentCwd": true,
+    "visibleInOrdinaryPanel": true,
+    "firstMarker": "CC00-A-READY",
+    "followupMarker": "CC00-A-FOLLOWUP BLUE-LEAF-731",
+    "sameThreadContinuity": true
+  },
+  "callerProbe": {
+    "actualMcpItemFound": true,
+    "resultKeys": [
+      "content",
+      "structuredContent",
+      "_meta"
+    ],
+    "metadataKeys": [
+      "callId",
+      "itemId",
+      "sessionId",
+      "threadId",
+      "windowId",
+      "x-codex-turn-metadata",
+      "x-codex-turn-metadata.auto_review_enabled",
+      "x-codex-turn-metadata.client_type",
+      "x-codex-turn-metadata.codex_version",
+      "x-codex-turn-metadata.in_space",
+      "x-codex-turn-metadata.model",
+      "x-codex-turn-metadata.node_repl_auto_review_required",
+      "x-codex-turn-metadata.node_repl_disabled",
+      "x-codex-turn-metadata.reasoning_effort",
+      "x-codex-turn-metadata.sandbox",
+      "x-codex-turn-metadata.sandbox_mode",
+      "x-codex-turn-metadata.session_id",
+      "x-codex-turn-metadata.source",
+      "x-codex-turn-metadata.thread_id",
+      "x-codex-turn-metadata.thread_source",
+      "x-codex-turn-metadata.turn_id",
+      "x-codex-turn-metadata.turn_started_at_unix_ms",
+      "x-codex-turn-metadata.turn_trigger",
+      "x-codex-turn-metadata.workspace_kind",
+      "x-codex-turn-metadata.workspaces"
+    ],
+    "correlation": {
+      "x-codex-turn-metadata.thread_id": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "x-codex-turn-metadata.turn_id": "01a1dada-83f9-7072-bf3e-b9b976924c76",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe"
+    },
+    "identityVerified": false
+  },
+  "settings": {
+    "requestedModel": "gpt-6-luna",
+    "requestedEffort": "low",
+    "threadStartReturnedModel": "gpt-6-luna",
+    "threadStartReturnedEffort": "high",
+    "afterTurnConfiguration": "not_checked",
+    "backendEffectiveExecution": "not_verified"
+  },
+  "stop": {
+    "ui": {
+      "later": 119,
+      "first": 115
+    },
+    "controlD": {
+      "later": 2087,
+      "first": 2027
+    },
+    "turnInterrupted": true,
+    "markerStillGrowing": true,
+    "observedCurrentMarkerSize": 237,
+    "externalInterrupt": "not_run: UI interruption already failed command-stop gate",
+    "controlDKind": "independent native fixture process; not a normal D chat"
+  },
+  "events": [
+    {
+      "seq": 2,
+      "method": "thread/start",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 8,
+      "method": "ui/turn/start",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": null
+    },
+    {
+      "seq": 9,
+      "method": "turn/start/acked",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dad4-c76e-7460-bc09-3fca1f2cd923",
+      "status": null
+    },
+    {
+      "seq": 10,
+      "method": "thread/status/changed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 11,
+      "method": "turn/started",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dad4-c76e-7460-bc09-3fca1f2cd923",
+      "status": "inProgress"
+    },
+    {
+      "seq": 12,
+      "method": "thread/status/changed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 13,
+      "method": "turn/completed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dad4-c76e-7460-bc09-3fca1f2cd923",
+      "status": "completed"
+    },
+    {
+      "seq": 18,
+      "method": "ui/turn/start",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": null
+    },
+    {
+      "seq": 19,
+      "method": "turn/start/acked",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dada-83f9-7072-bf3e-b9b976924c76",
+      "status": null
+    },
+    {
+      "seq": 20,
+      "method": "thread/status/changed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 21,
+      "method": "turn/started",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dada-83f9-7072-bf3e-b9b976924c76",
+      "status": "inProgress"
+    },
+    {
+      "seq": 22,
+      "method": "thread/status/changed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 23,
+      "method": "turn/completed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dada-83f9-7072-bf3e-b9b976924c76",
+      "status": "completed"
+    },
+    {
+      "seq": 24,
+      "method": "thread/read",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 25,
+      "method": "turn/start/acked",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dadb-cc2f-7282-af83-7badcba6945b",
+      "status": null
+    },
+    {
+      "seq": 26,
+      "method": "thread/status/changed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 27,
+      "method": "turn/started",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dadb-cc2f-7282-af83-7badcba6945b",
+      "status": "inProgress"
+    },
+    {
+      "seq": 28,
+      "method": "thread/status/changed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 29,
+      "method": "turn/completed",
+      "threadId": "01a1dad4-c27f-7ed2-bb45-733116676dbe",
+      "turnId": "01a1dadb-cc2f-7282-af83-7badcba6945b",
+      "status": "completed"
+    },
+    {
+      "seq": 30,
+      "method": "thread/start",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 31,
+      "method": "turn/start/acked",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadd-7bbb-7231-ad76-3636c163bd1e",
+      "status": null
+    },
+    {
+      "seq": 32,
+      "method": "thread/status/changed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 33,
+      "method": "turn/started",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadd-7bbb-7231-ad76-3636c163bd1e",
+      "status": "inProgress"
+    },
+    {
+      "seq": 34,
+      "method": "thread/status/changed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 35,
+      "method": "turn/completed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadd-7bbb-7231-ad76-3636c163bd1e",
+      "status": "completed"
+    },
+    {
+      "seq": 36,
+      "method": "thread/read",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 37,
+      "method": "thread/resume",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 38,
+      "method": "turn/start/acked",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dade-8bd1-7a13-9503-f2554c4b9a63",
+      "status": null
+    },
+    {
+      "seq": 39,
+      "method": "thread/status/changed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 40,
+      "method": "turn/started",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dade-8bd1-7a13-9503-f2554c4b9a63",
+      "status": "inProgress"
+    },
+    {
+      "seq": 41,
+      "method": "thread/status/changed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 42,
+      "method": "turn/completed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dade-8bd1-7a13-9503-f2554c4b9a63",
+      "status": "completed"
+    },
+    {
+      "seq": 43,
+      "method": "turn/start/acked",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadf-33d0-7fb0-b269-51e72ea0829a",
+      "status": null
+    },
+    {
+      "seq": 44,
+      "method": "thread/status/changed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 45,
+      "method": "turn/started",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadf-33d0-7fb0-b269-51e72ea0829a",
+      "status": "inProgress"
+    },
+    {
+      "seq": 46,
+      "method": "ui/turn/interrupt",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadf-33d0-7fb0-b269-51e72ea0829a",
+      "status": null
+    },
+    {
+      "seq": 47,
+      "method": "thread/status/changed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 48,
+      "method": "turn/completed",
+      "threadId": "01a1dadd-39ed-7390-91af-aaf5cff7b566",
+      "turnId": "01a1dadf-33d0-7fb0-b269-51e72ea0829a",
+      "status": "interrupted"
+    }
+  ],
+  "verdict": "needs_redesign",
+  "cc01PromotionAllowed": false,
+  "limitations": [
+    "UI-tested candidate predates EOF handling fix; final build separately transport-tested",
+    "No server-side effective model/effort proof",
+    "No UI D chat trial",
+    "No general reordered oversized RPC envelope guarantee",
+    "No controlled other-user denial trial"
+  ]
+}

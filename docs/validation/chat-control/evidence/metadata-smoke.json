@@ -1,0 +1,35 @@
+{
+  "testId": "isolated-metadata-only",
+  "capturedAt": "2026-11-14T13:47:27.553Z",
+  "evidence": "real-app-server-without-model-generation",
+  "server": "codex_vscode/0.169.0-alpha.11.1 (Windows 10.0.26300; x86_64) dumb (chat_control_investigation; 0.0.0)",
+  "auth": "not-authenticated",
+  "passed": true,
+  "distinctIds": true,
+  "rootThreads": true,
+  "cwdMatches": true,
+  "emptyHistories": true,
+  "ephemeral": true,
+  "observedStatuses": [
+    "idle",
+    "idle"
+  ],
+  "requestedModel": null,
+  "reportedSettings": {
+    "model": "gpt-6.1-sol",
+    "reasoningEffort": null
+  },
+  "limits": [
+    "No inference or independent conversation-content test",
+    "No VS Code panel test",
+    "No account model availability test"
+  ],
+  "requests": [
+    "initialize",
+    "account/read",
+    "thread/start",
+    "thread/start"
+  ],
+  "modelTurnsObserved": 0,
+  "exitObserved": true
+}

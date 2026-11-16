@@ -1,0 +1,57 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-live-suite-d0633e8c-b7a4-4bae-bee0-bdf3bd1b2f1c",
+  "capturedAt": "2026-11-15T04:38:14.504Z",
+  "versions": {
+    "node": "v24.22.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "A",
+    "B",
+    "C",
+    "P",
+    "D"
+  ],
+  "workerAttemptIds": [
+    "A1",
+    "B1",
+    "C1"
+  ],
+  "terminalBindings": [
+    "A1",
+    "B1"
+  ],
+  "operationIds": [],
+  "eventSeqs": [],
+  "requestedAgent": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "maxAdditionalTurns": 6
+  },
+  "observedSettings": {
+    "A": {
+      "returnedModel": "gpt-6-luna",
+      "returnedEffort": null,
+      "sandbox": {
+        "type": "readOnly",
+        "networkAccess": false
+      },
+      "approvalPolicy": "on-request",
+      "effectiveSettings": "not independently verified"
+    }
+  },
+  "processIdentities": {},
+  "stopEvidence": {},
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "relay": "2bb84011b43e1fd50ece17a9578ad0f0b87b74102edabff1625b3e942d24c16d",
+    "host": "909cc004d11e857ff31a653ec4507f96f25f80873261fde7f1556dfa9a639cfb"
+  },
+  "result": "failed",
+  "limitations": [],
+  "checks": [],
+  "failure": "official workspace-write was not confirmed; do not send a shell turn\n+ actual - expected\n\n+ 'readOnly'\n- 'workspaceWrite'\n",
+  "configRestored": true
+}

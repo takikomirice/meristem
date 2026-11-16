@@ -1,0 +1,73 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-real-child-894f3232-4608-4107-b086-821a8b8a085e",
+  "capturedAt": "2026-11-15T04:21:05.735Z",
+  "versions": {
+    "node": "v24.22.1",
+    "codex": "codex-cli 0.169.0-alpha.11.1",
+    "vscode": "1.146.0"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "worker_A"
+  ],
+  "workerAttemptIds": [
+    "attempt_A"
+  ],
+  "terminalBindings": [
+    "ownerPipe_A"
+  ],
+  "operationIds": [
+    "initialize_A",
+    "thread_start_A",
+    "stop_A"
+  ],
+  "eventSeqs": [],
+  "requestedAgent": "no inference requested",
+  "observedSettings": {
+    "model": "not requested",
+    "effort": "not requested",
+    "authHome": "isolated empty fixture home",
+    "turn": {
+      "requested": false,
+      "accepted": false,
+      "completed": false,
+      "delivery": "not_sent"
+    }
+  },
+  "processIdentities": {
+    "owner": "WorkerHost fixture runner",
+    "worker": "CodexRelay.exe with verified Codex executable hash"
+  },
+  "stopEvidence": {
+    "threadCreated": true,
+    "workerStop": true,
+    "workerHostExitCode": 0
+  },
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "relay": "c28b614a068b680cb21f422536fa4cf07b42cd6a03f2abe6af5654001cce11f4",
+    "host": "dbb7cd9ca0fc0e4aeefea239abc649f457cc8151de670694989427b7ca2006aa"
+  },
+  "result": "passed",
+  "limitations": [
+    "No model turn was sent",
+    "Model turn completion and terminal closure were separate probes",
+    "Parent P/B and MCP metadata correlation not exercised",
+    "Official sandbox shell and grandchildren stop not exercised"
+  ],
+  "detail": "{\"account\":\"unauthenticated\",\"models\":[{\"model\":\"gpt-6.1-sol\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]},{\"model\":\"gpt-6-astra\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]},{\"model\":\"gpt-6-sol\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]},{\"model\":\"gpt-6-luna\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"model\":\"gpt-5.6-sol\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]},{\"model\":\"gpt-6.1-terra\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]},{\"model\":\"gpt-5.6-terra\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\",\"ultra\"]},{\"model\":\"gpt-5.6-luna\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\",\"max\"]},{\"model\":\"gpt-5.5\",\"efforts\":[\"low\",\"medium\",\"high\",\"xhigh\"]}],\"selectedModel\":\"not requested\",\"selectedEffort\":\"not requested\",\"turn\":{\"requested\":false,\"accepted\":false,\"completed\":false,\"delivery\":\"not_sent\"},\"rootThread\":true,\"cwdMatched\":true,\"childJobAssigned\":true,\"terminalClose\":\"observed\"}",
+  "uiObservations": {
+    "dedicatedProfile": true,
+    "workerTerminalVisible": true,
+    "initializationLogVisible": true,
+    "panelHiddenWithoutStop": true,
+    "activeWorkerTerminalKilled": true,
+    "workerTerminalAbsentAfterClose": true,
+    "ownedHostAbsentAfterClose": true,
+    "aclChanged": false,
+    "hostAndVsCodeSameUser": true,
+    "previousFailedHostUsedDifferentSandboxUser": true
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-11-14T13:55:33.851Z",
+  "passed": true,
+  "checks": {
+    "jsonAndLocalLinks": "5 JSON files parsed; 15 local links resolved",
+    "schemaMethods": "8 regular and 7 experimental methods matched generated contracts",
+    "sourceSnapshots": "14 saved source hashes matched",
+    "metadataSmoke": "passed; 2 ephemeral root threads; 0 model turns; child exit observed",
+    "sourcePlan": "unchanged SHA-256",
+    "fixtureSyntax": "node --check passed",
+    "selfReview": "separated API existence, source evidence, metadata execution and untested UI/inference; no unrelated existing files modified",
+    "reportSha256": "8421181269aab17b957cc5efb474bfc95986a7cdac921eb46365687f76b4c36e"
+  },
+  "git": {
+    "managed": false,
+    "branch": null,
+    "commit": null,
+    "push": null
+  },
+  "readmeUpdated": false,
+  "notVerified": [
+    "Ordinary VS Code chat control",
+    "Unattended two-stage inference run",
+    "Current account model availability and effective effort",
+    "Live process stopping, approval routing and crash recovery"
+  ]
+}

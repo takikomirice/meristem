@@ -1,0 +1,10 @@
+{
+  "name": "meristem-cc02-parent-view-fixture",
+  "displayName": "CC02 Parent View Fixture",
+  "version": "0.0.0",
+  "license": "MIT",
+  "private": true,
+  "engines": { "vscode": "^1.90.0" },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./index.cjs"
+}

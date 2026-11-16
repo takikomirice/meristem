@@ -1,0 +1,13 @@
+{
+  "name": "meristem-chat-control-fixture",
+  "displayName": "Meristem Chat Control",
+  "description": "Read-only worker terminals, stop controls and human approval for a bound local run.",
+  "publisher": "meristem-local",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "engines": { "vscode": "^1.90.0" },
+  "main": "./dist/src/extension.js",
+  "activationEvents": [ "onStartupFinished" ],
+  "contributes": { "commands": [{ "command": "meristem.chatControl.openManaged", "title": "Meristem: Open Managed Worker Terminals" }, { "command": "meristem.chatControl.reviewRequest", "title": "Meristem: Review Worker MCP Request" }, { "command": "meristem.chatControl.openFixture", "title": "Meristem: Open Fixture Worker Terminal" }, { "command": "meristem.chatControl.stopFixture", "title": "Meristem: Stop Current Worker" }] }
+}

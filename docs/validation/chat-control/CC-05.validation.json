@@ -1,0 +1,81 @@
+{
+  "planRevision": 2,
+  "testId": "CC-05-verification",
+  "capturedAt": "2026-11-16T01:05:42.430Z",
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "fixture",
+  "result": "passed",
+  "versions": {
+    "node": "v24.22.1",
+    "nodeSha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5",
+    "git": "git version 2.52.0.windows.1",
+    "yaml": "2.8.2"
+  },
+  "command": "npm run verify",
+  "exitCode": 0,
+  "tests": {
+    "nativeProtocol": 38,
+    "control": 139,
+    "terminal": 14,
+    "total": 191,
+    "failed": 0
+  },
+  "actorAliases": [],
+  "workerAttemptIds": [],
+  "terminalBindings": [],
+  "operationIds": [],
+  "eventSeqs": [],
+  "requestedAgent": null,
+  "observedSettings": {
+    "runtime": "fixtures_only",
+    "githubTestRequests": 0,
+    "modelRequests": 0
+  },
+  "processIdentities": [],
+  "stopEvidence": {
+    "coveredBy": [
+      "broker",
+      "workers",
+      "native-control",
+      "terminal",
+      "plan-control"
+    ]
+  },
+  "artifactHashes": {
+    "src/plan.ts": "f163d745d2906d65571bb813be854314b7acad42518fb2ff3bd750bdbb3f3619",
+    "src/git-evidence.ts": "40013b26c2402a72f6c792ffc4832f8892c833456dfdb755d8c0c1c9d1860030",
+    "src/broker.ts": "07d724d63edbd23ae477ae14de9271b8cb07f15b3914afbfd0a9d012831a9d15",
+    "src/mcp.ts": "53ece3b676c107e9644c872e987d31447af779f68e19d891da41b7aea99c9669",
+    "src/store.ts": "ab1f288a299e2c36fe07375470cd9c653360d729d14e4e2bce029064e62a3ce6",
+    "migrations/005-plan.sql": "44064709613d7f1cee554d37f10c2d1932c980a787b661384467205c42b7271b",
+    "package.json": "a4f589c42a083f54c458d88cfb0d2de2b35731c38ef3165efb8bab14b356c421",
+    "package-lock.json": "d8a0b314feae477fceaa7d7d0aaf4020befcbc15b903333573dcd845aebbb039",
+    "test/plan.test.ts": "2a993188f9c0051514a4e61abf54170714a07fa0efb6380d8be576427967e2a2",
+    "test/git-evidence.test.ts": "8a618c36f77c131f45f351617decfa075cb2f606e1c8ae58be6ce58069efbade",
+    "test/plan-control.test.ts": "d1d913270f4bd83710d6ebe552e72914b97fab2ec1e9234772195eb0fce5fe5b",
+    "test/serial-git.test.ts": "3f3ee24ac24ca248f4c719c42ff320f632614babdff85871af47d25cc965c9eb",
+    "test/live/serial-git.ts": "b25bf88244d43fe40d5b5fc279db061dc6f6dc76cb13692f54b312659e5e3c36"
+  },
+  "review": {
+    "independent": true,
+    "importantFindings": 2,
+    "resolved": 2,
+    "deferredMinors": 0,
+    "regressions": [
+      "history_correction_checks_cumulative_task_scope",
+      "cross_task_history_cannot_adopt_unintegrated_source_commits",
+      "worktree_specific_origin_rewrite_cannot_fake_push_reachability",
+      "candidate_must_reach_pinned_push_url_when_fetch_url_differs",
+      "decision_audit_failure_cannot_release_dependencies",
+      "remote_verification_yields_to_control_requests",
+      "stop_fence_wins_over_candidate_verification",
+      "plan_status_does_not_overflow_native_response_with_historical_checks"
+    ]
+  },
+  "limitations": [
+    "Real Git with local bare remote and deterministic runtime only.",
+    "No real Codex, VS Code or GitHub acceptance added in CC-05.",
+    "CC-06 parallel dispatch and CC-07 installation excluded.",
+    "Git URL rewrite rules and multiple remote URLs are unsupported in plan mode."
+  ]
+}

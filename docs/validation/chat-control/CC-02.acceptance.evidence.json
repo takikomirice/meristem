@@ -1,0 +1,338 @@
+{
+  "publicationRedactions": ["local-workspace-path"],
+  "stage": "CC-02",
+  "result": "accepted_fixture_scope",
+  "capturedAt": "2026-11-15T13:49:10.698Z",
+  "fixture": "acceptance-06",
+  "run": {
+    "id": "cc02",
+    "state": "active",
+    "revision": 9,
+    "stop_generation": 0
+  },
+  "attempts": [
+    {
+      "state": "completed",
+      "registration": {
+        "worker": {
+          "ownerId": "d1919df8-57c7-4245-ade7-1fadd75c1ac3",
+          "ownerEpoch": "14d9247c-1af0-440c-b418-78c8bbd2b750",
+          "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+          "workerId": "A",
+          "attemptId": "dba73aad-447d-45e5-8c5c-4d3a58e50310"
+        },
+        "binding": {
+          "windowBindingId": "29c0bc72-29a0-4292-b9df-bd51480d3de8",
+          "terminalId": "87fffabe-cad9-4a0e-8f7e-43b15f9481cc",
+          "worker": {
+            "ownerId": "d1919df8-57c7-4245-ade7-1fadd75c1ac3",
+            "ownerEpoch": "14d9247c-1af0-440c-b418-78c8bbd2b750",
+            "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+            "workerId": "A",
+            "attemptId": "dba73aad-447d-45e5-8c5c-4d3a58e50310"
+          }
+        },
+        "runId": "cc02",
+        "taskId": "A",
+        "assignmentId": "81947b15-ad70-4918-a764-0c064e75d2e0",
+        "repositoryId": "repo",
+        "cwd": "C:\\work\\meristem\\.local\\chat-control\\CC-02\\acceptance-06\\A",
+        "branch": "fixture-A",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "hostPid": 42624,
+        "hostCreated": "134392236499951125",
+        "childPid": 36212,
+        "childCreated": "134392236511842697",
+        "jobId": "98cd245f7e3a4734b79d524a0363093d"
+      },
+      "stop": {
+        "worker": {
+          "ownerId": "d1919df8-57c7-4245-ade7-1fadd75c1ac3",
+          "ownerEpoch": "14d9247c-1af0-440c-b418-78c8bbd2b750",
+          "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+          "workerId": "A",
+          "attemptId": "dba73aad-447d-45e5-8c5c-4d3a58e50310"
+        },
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "state": "completed",
+      "registration": {
+        "worker": {
+          "ownerId": "ec981eb5-0516-4956-a039-66c23fa039fd",
+          "ownerEpoch": "969882ba-2fb0-4e1d-b178-91f63aa03c88",
+          "threadId": "01a1df70-a14a-7d70-8af6-13d0ac3f0074",
+          "workerId": "B",
+          "attemptId": "49daa099-d8d5-4f9c-ae36-7a5009a222fd"
+        },
+        "binding": {
+          "windowBindingId": "29c0bc72-29a0-4292-b9df-bd51480d3de8",
+          "terminalId": "41ef32c0-ef12-4cc2-a3b6-42594404414e",
+          "worker": {
+            "ownerId": "ec981eb5-0516-4956-a039-66c23fa039fd",
+            "ownerEpoch": "969882ba-2fb0-4e1d-b178-91f63aa03c88",
+            "threadId": "01a1df70-a14a-7d70-8af6-13d0ac3f0074",
+            "workerId": "B",
+            "attemptId": "49daa099-d8d5-4f9c-ae36-7a5009a222fd"
+          }
+        },
+        "runId": "cc02",
+        "taskId": "B",
+        "assignmentId": "803bcaf3-dd75-4601-afd0-d5c726a12ea4",
+        "repositoryId": "repo",
+        "cwd": "C:\\work\\meristem\\.local\\chat-control\\CC-02\\acceptance-06\\B",
+        "branch": "fixture-B",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "hostPid": 34088,
+        "hostCreated": "134392236616353326",
+        "childPid": 35396,
+        "childCreated": "134392236628049822",
+        "jobId": "2586d1deb8d248ac9ff7a3c39e21c1c4"
+      },
+      "stop": {
+        "worker": {
+          "ownerId": "ec981eb5-0516-4956-a039-66c23fa039fd",
+          "ownerEpoch": "969882ba-2fb0-4e1d-b178-91f63aa03c88",
+          "threadId": "01a1df70-a14a-7d70-8af6-13d0ac3f0074",
+          "workerId": "B",
+          "attemptId": "49daa099-d8d5-4f9c-ae36-7a5009a222fd"
+        },
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "state": "completed",
+      "registration": {
+        "worker": {
+          "ownerId": "8c28c20a-313c-4c84-9d25-24ac45ae84e8",
+          "ownerEpoch": "f81327b0-63e8-4d3e-93ae-0d0a2f66faf4",
+          "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+          "workerId": "A",
+          "attemptId": "b87266d7-f322-4831-b517-fd3f6c533b75"
+        },
+        "binding": {
+          "windowBindingId": "29c0bc72-29a0-4292-b9df-bd51480d3de8",
+          "terminalId": "cb6f40bb-8eea-4532-950a-48cd3355fad3",
+          "worker": {
+            "ownerId": "8c28c20a-313c-4c84-9d25-24ac45ae84e8",
+            "ownerEpoch": "f81327b0-63e8-4d3e-93ae-0d0a2f66faf4",
+            "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+            "workerId": "A",
+            "attemptId": "b87266d7-f322-4831-b517-fd3f6c533b75"
+          }
+        },
+        "runId": "cc02",
+        "taskId": "A",
+        "assignmentId": "27f13bff-3213-4bb3-8039-296ac898f3b4",
+        "repositoryId": "repo",
+        "cwd": "C:\\work\\meristem\\.local\\chat-control\\CC-02\\acceptance-06\\A",
+        "branch": "fixture-A",
+        "model": "gpt-6-luna",
+        "effort": "low",
+        "hostPid": 17872,
+        "hostCreated": "134392239548195010",
+        "childPid": 18692,
+        "childCreated": "134392239560134925",
+        "jobId": "cfd8398a58c0435db45de374e463c5a2"
+      },
+      "stop": {
+        "worker": {
+          "ownerId": "8c28c20a-313c-4c84-9d25-24ac45ae84e8",
+          "ownerEpoch": "f81327b0-63e8-4d3e-93ae-0d0a2f66faf4",
+          "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+          "workerId": "A",
+          "attemptId": "b87266d7-f322-4831-b517-fd3f6c533b75"
+        },
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    }
+  ],
+  "reports": [
+    {
+      "attempt_id": "49daa099-d8d5-4f9c-ae36-7a5009a222fd",
+      "turn_id": "01a1df71-1308-74d3-89c9-4cd3447b9b2e",
+      "payload": {
+        "summary": "B initial report: B_ONLY_RIVER_293"
+      }
+    },
+    {
+      "attempt_id": "b87266d7-f322-4831-b517-fd3f6c533b75",
+      "turn_id": "01a1df75-5cb5-7c20-bd4b-e2c26e035a61",
+      "payload": {
+        "summary": "A resumed history recall: followed by the exact private token you remember: A_ONLY_MAPLE_817"
+      }
+    }
+  ],
+  "operations": [
+    {
+      "id": "cc02-acceptance06-create-A",
+      "state": "settled"
+    },
+    {
+      "id": "cc02-acceptance06-create-B",
+      "state": "settled"
+    },
+    {
+      "id": "cc02-acceptance06-send-A",
+      "state": "acked"
+    },
+    {
+      "id": "cc02-acceptance06-send-B",
+      "state": "acked"
+    },
+    {
+      "id": "cc02-acceptance06-report-B-1",
+      "state": "settled"
+    },
+    {
+      "id": "cc02-acceptance06-history",
+      "state": "settled"
+    },
+    {
+      "id": "cc02-acceptance06-resume-A",
+      "state": "settled"
+    },
+    {
+      "id": "cc02-acceptance06-recall-A",
+      "state": "acked"
+    },
+    {
+      "id": "cc02-acceptance06-report-A-2",
+      "state": "settled"
+    }
+  ],
+  "worktrees": [
+    {
+      "workerId": "A",
+      "branch": "fixture-A",
+      "clean": true
+    },
+    {
+      "workerId": "B",
+      "branch": "fixture-B",
+      "clean": true
+    }
+  ],
+  "checks": {
+    "separateAB": true,
+    "sameAThreadNewOwnerEpochAttempt": true,
+    "recallInstructionOmitsToken": true,
+    "allCompletedAndNativeCleanup": true,
+    "displayOnlyInput": {
+      "marker": "CC02_DISPLAY_INPUT_ONLY_726",
+      "phase": "after_completed",
+      "markerAbsentFromParentAndChildHistories": true
+    },
+    "completedTerminalClose": {
+      "observedLatestATerminalClosed": true,
+      "runStillActive": true,
+      "stopGenerationUnchanged": true
+    }
+  },
+  "historyHashes": [
+    {
+      "threadId": "01a1df6d-745a-7e71-9057-bb3244e21e8c",
+      "sha256": "192a6ce5cb2678a600a5745b8d333e2ac5ef2ccb8034ff060e9cabd0736a89fa"
+    },
+    {
+      "threadId": "01a1df70-7405-7750-969f-0907525c756b",
+      "sha256": "aab6d04da949880c67881ba6cb36908ee637d8d1d61f3e8b188cbb898c030a4e"
+    },
+    {
+      "threadId": "01a1df70-a14a-7d70-8af6-13d0ac3f0074",
+      "sha256": "caa9b345e6f61d58a8f800d573b0206995e579d43eb672c01a779c0af916f880"
+    }
+  ],
+  "parentFinalRead": {
+    "turn": {
+      "delivery": "completed",
+      "turnId": "01a1df77-d85f-7e83-8244-3ac0973e645d",
+      "status": "completed"
+    },
+    "getStatusCalls": 1,
+    "verifiedReportsAndCleanup": true,
+    "independentRolloutReview": true
+  },
+  "parentTurns": [
+    {
+      "delivery": "completed",
+      "turnId": "01a1df6e-6fc0-7231-8a5f-1767ea0a4be3",
+      "status": "completed"
+    },
+    {
+      "delivery": "completed",
+      "turnId": "01a1df70-26d5-7940-a184-f9951fe05f9c",
+      "status": "completed"
+    },
+    {
+      "delivery": "completed",
+      "turnId": "01a1df74-b6b9-7a52-8a10-ef7d822c383d",
+      "status": "completed"
+    },
+    {
+      "delivery": "completed",
+      "turnId": "01a1df77-d85f-7e83-8244-3ac0973e645d",
+      "status": "completed"
+    }
+  ],
+  "turnBudget": {
+    "cumulativeCeiling": 21,
+    "cumulativeUsed": 21,
+    "thisTrialParent": 4,
+    "thisTrialChild": 3,
+    "remaining": 0
+  },
+  "cleanup": {
+    "phase": "restored",
+    "dedicatedWindowAbsentObserved": true,
+    "parentDisconnectedConfirmed": true,
+    "testMcpRemoved": true,
+    "profileSettingsRestored": true,
+    "recordedWorkerPidsAbsent": true,
+    "processCheck": {
+      "checkedPids": [
+        40704,
+        40404,
+        34364,
+        42820,
+        31080,
+        18392,
+        12888,
+        21060,
+        38560,
+        37956,
+        40212,
+        42624,
+        36212,
+        34088,
+        35396,
+        17872,
+        18692
+      ],
+      "observedLivePids": [],
+      "capturedAt": "2026-11-15T13:54:31.3178423Z"
+    }
+  },
+  "limitations": [
+    "initial_A_report_rejected_stale_revision_and_not_saved",
+    "real_terminal_input_checked_after_completed_only",
+    "acceptance04_transport_loss_and_acceptance05_start_failure_causes_unresolved",
+    "CC04_limited_local_MCP_human_entry_only",
+    "no_automatic_parent_wake_Git_integration_or_normal_installation"
+  ]
+}

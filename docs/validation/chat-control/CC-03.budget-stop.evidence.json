@@ -1,0 +1,357 @@
+{
+  "stage": "CC-03",
+  "run": {
+    "id": "cc03",
+    "state": "stopped",
+    "revision": 7,
+    "stop_generation": 1
+  },
+  "attempts": [
+    {
+      "attemptId": "74adfdea-a9a8-48ab-92ae-6489a8a0dda4",
+      "state": "completed",
+      "worker": {
+        "ownerId": "491975ec-603e-4f8f-a4dc-3c1991a1a2f3",
+        "ownerEpoch": "89840912-381e-4ae0-8a17-60ad83a2604e",
+        "threadId": "01a1df94-7da6-71d0-b62c-2ad1969f6b91",
+        "workerId": "A",
+        "attemptId": "74adfdea-a9a8-48ab-92ae-6489a8a0dda4"
+      },
+      "stop": {
+        "worker": {
+          "ownerId": "491975ec-603e-4f8f-a4dc-3c1991a1a2f3",
+          "ownerEpoch": "89840912-381e-4ae0-8a17-60ad83a2604e",
+          "threadId": "01a1df94-7da6-71d0-b62c-2ad1969f6b91",
+          "workerId": "A",
+          "attemptId": "74adfdea-a9a8-48ab-92ae-6489a8a0dda4"
+        },
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    },
+    {
+      "attemptId": "2940f67d-e1d0-4fb6-99ab-5f60c78898ae",
+      "state": "completed",
+      "worker": {
+        "ownerId": "4c04503c-8c7a-44d3-8431-e2bed3318546",
+        "ownerEpoch": "1158b953-66b7-41fa-b835-21fec6f93037",
+        "threadId": "01a1df97-4a8a-71a3-93cb-8199f2410e25",
+        "workerId": "B",
+        "attemptId": "2940f67d-e1d0-4fb6-99ab-5f60c78898ae"
+      },
+      "stop": {
+        "worker": {
+          "ownerId": "4c04503c-8c7a-44d3-8431-e2bed3318546",
+          "ownerEpoch": "1158b953-66b7-41fa-b835-21fec6f93037",
+          "threadId": "01a1df97-4a8a-71a3-93cb-8199f2410e25",
+          "workerId": "B",
+          "attemptId": "2940f67d-e1d0-4fb6-99ab-5f60c78898ae"
+        },
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    }
+  ],
+  "reports": [
+    {
+      "attempt_id": "74adfdea-a9a8-48ab-92ae-6489a8a0dda4",
+      "turn_id": "01a1df94-b344-7453-9a67-1821b62e618d"
+    },
+    {
+      "attempt_id": "2940f67d-e1d0-4fb6-99ab-5f60c78898ae",
+      "turn_id": "01a1df97-7946-7051-ac14-d184a462c151"
+    }
+  ],
+  "wakes": [
+    {
+      "id": "a681ab19-8528-46c1-afaf-6c308e652daf",
+      "state": "acked",
+      "source_seq": 3,
+      "stop_generation": 0,
+      "turn_id": "01a1df94-d9ee-7ad3-b4fa-20b82c90a298"
+    },
+    {
+      "id": "755b4b16-47fd-4349-880c-b6ccccc27443",
+      "state": "acked",
+      "source_seq": 7,
+      "stop_generation": 0,
+      "turn_id": "01a1df97-2da0-7cc3-a829-c9e7211bde38"
+    },
+    {
+      "id": "bfb45a11-8ee3-478d-863d-7fb3eddfb7fb",
+      "state": "acked",
+      "source_seq": 10,
+      "stop_generation": 0,
+      "turn_id": "01a1df97-a369-7490-a04d-d560b96acb42"
+    }
+  ],
+  "cursor": {
+    "run_id": "cc03",
+    "scanned_seq": 16,
+    "pending_seq": 14,
+    "delivered_seq": 14,
+    "read_seq": 10
+  },
+  "consumed": 7,
+  "approvedMaxTurns": 7,
+  "parentEvents": [
+    {
+      "seq": 1,
+      "method": "thread/read",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "notLoaded"
+    },
+    {
+      "seq": 2,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 3,
+      "method": "thread/resume",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 4,
+      "method": "turn/start/acked",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df92-6165-75e2-8419-5307b65f9f2b",
+      "status": null
+    },
+    {
+      "seq": 5,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 6,
+      "method": "turn/started",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df92-6165-75e2-8419-5307b65f9f2b",
+      "status": "inProgress"
+    },
+    {
+      "seq": 7,
+      "method": "thread/read",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 8,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 9,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 10,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 11,
+      "method": "turn/completed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df92-6165-75e2-8419-5307b65f9f2b",
+      "status": "completed"
+    },
+    {
+      "seq": 12,
+      "method": "turn/start/acked",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df94-2a81-7051-b3cf-e3bf8d0eda66",
+      "status": null
+    },
+    {
+      "seq": 13,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 14,
+      "method": "turn/started",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df94-2a81-7051-b3cf-e3bf8d0eda66",
+      "status": "inProgress"
+    },
+    {
+      "seq": 15,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 16,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 17,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 18,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 19,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 20,
+      "method": "turn/completed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df94-2a81-7051-b3cf-e3bf8d0eda66",
+      "status": "completed"
+    },
+    {
+      "seq": 21,
+      "method": "turn/start/acked",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df94-d9ee-7ad3-b4fa-20b82c90a298",
+      "status": null
+    },
+    {
+      "seq": 22,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 23,
+      "method": "turn/started",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df94-d9ee-7ad3-b4fa-20b82c90a298",
+      "status": "inProgress"
+    },
+    {
+      "seq": 24,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 25,
+      "method": "turn/completed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df94-d9ee-7ad3-b4fa-20b82c90a298",
+      "status": "completed"
+    },
+    {
+      "seq": 26,
+      "method": "turn/start/acked",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df97-2da0-7cc3-a829-c9e7211bde38",
+      "status": null
+    },
+    {
+      "seq": 27,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 28,
+      "method": "turn/started",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df97-2da0-7cc3-a829-c9e7211bde38",
+      "status": "inProgress"
+    },
+    {
+      "seq": 29,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 30,
+      "method": "turn/completed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df97-2da0-7cc3-a829-c9e7211bde38",
+      "status": "completed"
+    },
+    {
+      "seq": 31,
+      "method": "turn/start/acked",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df97-a369-7490-a04d-d560b96acb42",
+      "status": null
+    },
+    {
+      "seq": 32,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 33,
+      "method": "turn/started",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df97-a369-7490-a04d-d560b96acb42",
+      "status": "inProgress"
+    },
+    {
+      "seq": 34,
+      "method": "thread/status/changed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 35,
+      "method": "turn/completed",
+      "threadId": "01a1df91-5cb4-7a71-b157-d152f52a65d6",
+      "turnId": "01a1df97-a369-7490-a04d-d560b96acb42",
+      "status": "completed"
+    }
+  ],
+  "UI": {
+    "active": "not_observed",
+    "idle": "protocol_only",
+    "hidden": "not_run",
+    "panelClosed": "not_run",
+    "vscodeExit": "not_run"
+  }
+}

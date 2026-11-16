@@ -1,0 +1,89 @@
+{
+  "publicationRedactions": ["local-account-path"],
+  "stage": "CC-01",
+  "capturedAt": "2026-11-15T07:48:15.914Z",
+  "turnsSent": 0,
+  "result": "passed",
+  "node": {
+    "path": "C:\\Program Files\\nodejs\\node.exe",
+    "version": "v24.22.1",
+    "sha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5"
+  },
+  "codex": {
+    "path": "C:/Users/USER/.vscode/extensions/openai.chatgpt-26.1111.21308-win32-x64/bin/windows-x86_64/codex.exe",
+    "sha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "version": "codex-cli 0.169.0-alpha.11.1"
+  },
+  "artifactHashes": {
+    "host": "5b53e4de8113ea0c764673dc635f0ce3bf41b8ddad2ef58647ff1ad16f2275fa",
+    "control": "ae7ddcc72d2add2dd7a44315d22aa396f5cd41555e633daf0c3af5535a9e2a43",
+    "entry": "96a51c530f1f18bf76666e9a59b593a6972c79bf2cd163dc3ef840d126f7fc9a"
+  },
+  "fixtureState": "C:\\Users\\USER\\AppData\\Local\\Temp\\cc01-live-DolNj0\\state",
+  "fixtureWork": "C:\\Users\\USER\\AppData\\Local\\Temp\\cc01-live-work-62GbzK",
+  "child_cannot_read_control_state": {
+    "denied": true,
+    "sandboxExitCode": 0
+  },
+  "realWorkerRootAndProfile": true,
+  "realWorkerStop": "stopped",
+  "nativeGatewayStatus": true,
+  "hostAbsent": true,
+  "validation": {
+    "command": "npm run verify",
+    "existingTests": 33,
+    "typecheck": "passed",
+    "failed": 0,
+    "logSha256": "3e129e3983912e7c51488e2c24d49ab43ef30b26411e7eb3c2f8aae20c0c3dcb",
+    "build": "passed",
+    "controlTests": 31,
+    "nativeBuild": "passed",
+    "terminalTests": 12,
+    "skipped": 0,
+    "exitCode": 0
+  },
+  "review": {
+    "regressions": [
+      "appserver_crash_stops_descendants_without_later_request",
+      "unexpected_worker_host_exit_is_persisted_and_blocks_wake",
+      "actual_completion_cleanup_leaves_run_active_and_closed_tab_is_display_only",
+      "registration_failure_cleans_unregistered_worker_and_exits",
+      "known_auth_limit_and_local_rejections_are_not_ack_loss"
+    ],
+    "independentReviewer": "completed",
+    "resolved": 4,
+    "importantFindings": 4,
+    "selfReview": "completed"
+  },
+  "notRun": [
+    "real model turns in the managed path",
+    "real VS Code GUI operation of the managed command",
+    "CC-02 and later stages",
+    "normal-profile installation"
+  ],
+  "sources": {
+    "scripts/run-live.ps1": "5a6968c70fd26c82e6a029d2f492d6caddd546b9a59c33071177037528c5ceb5",
+    "native/Program.cs": "5e1799de63ed7b7db14451dfb3adb0c404c3f83bffc4e589d50f12965b5383c3",
+    "native/WorkerProgram.cs": "4060e4490a61d5efb711700ff2ff3d2fba44d40eabb34c191dbc75156285cce2",
+    "extension/src/managed-client.ts": "24d424c929474a61918d29c3e64e8ee2ced3608edcb0fdd5ab517ea6c0aac3aa",
+    "src/broker.ts": "3cf8625e25fc2c8df106fef1fd49b53749d9481d790513f28a7168fa134dc186",
+    "scripts/build-native.ps1": "05511832ffa8f2547eb67249e489a0f25643de4ffc99b2791702a4430c6fd825",
+    "src/terminal-events.ts": "09b86614489272ac5e5594f47e3b35c55c198417e08eb5a76c420223622308df",
+    "extension/src/control-client.ts": "2b1875c42b1ec49c8b06f2c095c1db3b53b8a95100c5a55521dc913a7f067b39",
+    "native/LocalPipe.cs": "496d42f44e7da7f4eec3eb4ab13bb706a76090d97087c148d01b7867eab4f334",
+    "src/protocol.ts": "59bd87b73269d8d8189dc3f17be54f971fb6055306deb3d12f7d1a4e3d519aac",
+    "native/StdioRelay.cs": "a4b1e5fa72d87368f57bc6d8077aec13415538da1d972e7ed1a5fc06b7f5be8e",
+    "src/cli.ts": "b9105a0bcd49fb1361d7fc327a867c2b041389c681e9a1074ff4875ad6863f3c",
+    "package.json": "a29508a619625c745ca5af3bd3f12457c27af90e1e668c85f2129b9d03f4ee8c",
+    "native/WorkerHost.cs": "16c42037194cdb101ba942521b74c01c7797c721469d97607869556ee1532350",
+    "src/failures.ts": "8c0b7ae6ef644b2e16563db405b979ad6c69c4c0ba25b7cb69e5ea9e073dfd9a",
+    "src/contracts.ts": "77eb59781609f0635db6ab8a1fa10ec836b85b9298cb9a0f5572ffcdfbaff058",
+    "src/workers.ts": "cb80333424013a36b2c4b1fc6459f3faba30a717b01528016e6ccbb67113275c",
+    "native/ControlProgram.cs": "72d369894c74642e3c7171bf4ff92b88e909d50d31a9cefd60b41045fe878dd3",
+    "src/store.ts": "882b033a6f187ef1bc062f93833ef8292eaeda06e39c37d51993635d15eba9b6",
+    "tsconfig.json": "06cb3fc103798d820da7e0c7816b794fc9ac0865fabe41b5e7522da90878ef49",
+    "extension/src/extension.ts": "2293f27fdcb4ae1ccc6d678ebccf108516d5a96d170a662a45536be82faa8b4a",
+    "native/ProcessTree.cs": "82630f8610ce3e610ba994b15058abfb90407e87614d61aca922c93e584d947f",
+    "migrations/001-control.sql": "1a2bd207dc48b91c3bc6d84ed7c6c6df0527666cc8e25cf3289cac6f12b03aaa"
+  }
+}

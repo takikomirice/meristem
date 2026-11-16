@@ -1,0 +1,151 @@
+{
+  "publicationRedactions": ["local-account-path","local-workspace-path"],
+  "capturedAt": "2026-11-14T13:48:21.298Z",
+  "workspace": "C:/work/meristem",
+  "gitManaged": false,
+  "platform": "win32",
+  "node": "v24.22.1",
+  "vscodeVersion": "1.146.0 (CLI output; no UI verification)",
+  "extension": {
+    "id": "openai.chatgpt",
+    "version": "26.1111.21308",
+    "packageSha256": "8100d020b2c5e17bb99456330e63eee9de5900b95f395aa0c62ac73909ecc496",
+    "bundleSha256": "aa93a1b5aaa79746f3b583133355c659a0f059ff98d1956adf9da0e4afbcf817",
+    "commands": [
+      "chatgpt.implementTodo",
+      "chatgpt.openSidebar",
+      "chatgpt.openCommandMenu",
+      "chatgpt.newCodexPanel",
+      "chatgpt.addToThread",
+      "chatgpt.addFileToThread",
+      "chatgpt.newChat",
+      "chatgpt.showLspMcpCliArgs",
+      "chatgpt.dumpNuxState",
+      "chatgpt.resetNuxState"
+    ],
+    "cliExecutableSetting": {
+      "description": "DEVELOPMENT ONLY: Path to the Codex CLI executable. You do NOT need to set this unless you are actively developing the Codex CLI. If set this manually, parts of the extension may not work as expected.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null,
+      "scope": "application",
+      "restricted": true
+    },
+    "exports": "activate/deactivate only in inspected bundle; no chat-control API returned by activate"
+  },
+  "codex": {
+    "executable": "C:/Users/USER/.vscode/extensions/openai.chatgpt-26.1111.21308-win32-x64/bin/windows-x86_64/codex.exe",
+    "version": "codex-cli 0.169.0-alpha.11.1",
+    "sha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "pathCliVersion": "0.164.0",
+    "activeExtensionProcessExecutable": "not verified: Win32_Process inventory denied"
+  },
+  "extensionEvidenceOffsets": {
+    "stdioSpawn": 2191760,
+    "spawnArgs": 2195396,
+    "cliExecutableResolution": 2193050,
+    "newPanelCommand": 2525500,
+    "newChatCommand": 2526239,
+    "uriHandler": 2515068,
+    "publicModuleExports": 2171880
+  },
+  "protocol": [
+    {
+      "kind": "protocol",
+      "files": 784,
+      "sha256": "d54d41b39b926d28ecbb8f58d9217d45b53b626422a41868fd4dd78096c2d613",
+      "methods": [
+        "thread/start",
+        "thread/resume",
+        "thread/loaded/list",
+        "thread/read",
+        "turn/start",
+        "turn/steer",
+        "turn/interrupt",
+        "model/list"
+      ]
+    },
+    {
+      "kind": "protocol-experimental",
+      "files": 951,
+      "sha256": "d9bacb7ece9dc2ddf26900564df8d195818be23437f1617df2eed6c873789261",
+      "methods": [
+        "thread/start",
+        "thread/resume",
+        "thread/queue/add",
+        "thread/queue/list",
+        "thread/queue/update",
+        "thread/queue/delete",
+        "thread/queue/reorder",
+        "thread/queue/start",
+        "thread/settings/update",
+        "thread/backgroundTerminals/clean",
+        "thread/backgroundTerminals/list",
+        "thread/backgroundTerminals/terminate",
+        "thread/loaded/list",
+        "thread/read",
+        "thread/readState/update",
+        "turn/start",
+        "turn/settings/update",
+        "turn/steer",
+        "turn/interrupt",
+        "model/list"
+      ]
+    }
+  ],
+  "contracts": {
+    "protocol/v2/ThreadStatus.ts": {
+      "sha256": "374f9ea8a23a06808bda3435d0854aa92303547bc87a92046b6af22b6e962352",
+      "type": "export type ThreadStatus = { \"type\": \"notLoaded\" } | { \"type\": \"idle\" } | { \"type\": \"systemError\" } | { \"type\": \"active\", activeFlags: Array<ThreadActiveFlag>, };"
+    },
+    "protocol/v2/ThreadActiveFlag.ts": {
+      "sha256": "0e17998362c085d594478d3fac2a330e89ab49669f8481e9f4791272932e3cfd",
+      "type": "export type ThreadActiveFlag = \"waitingOnApproval\" | \"waitingOnUserInput\";"
+    },
+    "protocol/v2/TurnStatus.ts": {
+      "sha256": "c69049363f97e97844e9fc851f0cd4122da057ba1371de003a28c00ab7a6ef1a",
+      "type": "export type TurnStatus = \"completed\" | \"interrupted\" | \"failed\" | \"inProgress\";"
+    },
+    "protocol/v2/TurnStartParams.ts": {
+      "sha256": "abaede48b0df0c0c597dc120331b88558bf000630ddca49901cf015208bfff08",
+      "type": "export type TurnStartParams = {threadId: string, disabledPluginIds?: Array<string> | null, clientUserMessageId?: string | null, input: Array<UserInput>, turnTrigger?: string | null, parentTurnId?: string | null, rootTurnId?: string | null, toolOutput?: TurnToolOutput | null, cwd?: string | null, approvalPolicy?: AskForApproval | null, approvalsReviewer?: ApprovalsReviewer | null, sandboxPolicy?: SandboxPolicy | null, model?: string | null, serviceTier?: string | null | null, serviceTierForTurn?: string | null, effort?: ReasoningEffort | null, summary?: ReasoningSummary | null, personality?: Personality | null, outputSchema?: JsonValue | null};"
+    },
+    "protocol/v2/TurnSteerParams.ts": {
+      "sha256": "47cdc50a4b0b350c00d7b921beb6b620f63642684f4b48a1e574089e8f1690be",
+      "type": "export type TurnSteerParams = {threadId: string, clientUserMessageId?: string | null, input: Array<UserInput>, expectedTurnId: string};"
+    },
+    "protocol/v2/TurnStartResponse.ts": {
+      "sha256": "974c520197188b7399836fda0ef1b11e43df618d25295463d2e229e1efa88ffd",
+      "type": "export type TurnStartResponse = { turn: Turn, };"
+    },
+    "protocol/v2/ModelReroutedNotification.ts": {
+      "sha256": "6beb04909e0acdbe0486fa58d8d823aa964f8e70dd9e2133dc4b43761e22edf6",
+      "type": "export type ModelReroutedNotification = { threadId: string, turnId: string, fromModel: string, toModel: string, reason: ModelRerouteReason, };"
+    },
+    "protocol-experimental/v2/TurnSettingsUpdateParams.ts": {
+      "sha256": "130b0a0f617c1a5596954d4be57f1fdbc7df1d82019779693665af799a0a45b7",
+      "type": "export type TurnSettingsUpdateParams = { threadId: string, turnId: string, approvalsReviewer?: ApprovalsReviewer | null, environments?: Array<TurnEnvironmentParams> | null, model?: string | null, effort?: ReasoningEffort | null, summary?: ReasoningSummary | null, serviceTier?: string | null | null, };"
+    },
+    "protocol-experimental/v2/TurnSettingsUpdateStatus.ts": {
+      "sha256": "f44944d6142796b6fec02842b3e14dc3a1da0c7fff19ac1bae76d195bc7c4fc5",
+      "type": "export type TurnSettingsUpdateStatus = \"applied\" | \"targetUnavailable\";"
+    },
+    "protocol-experimental/v2/ThreadSettingsUpdateParams.ts": {
+      "sha256": "86422a04421de14e8533fab6ab9101d74738132643f217b03b2e77ed8241ed3a",
+      "type": "export type ThreadSettingsUpdateParams = { threadId: string, disabledPluginIds?: Array<string> | null, cwd?: string | null, environments?: Array<TurnEnvironmentParams> | null, approvalPolicy?: AskForApproval | null, approvalsReviewer?: ApprovalsReviewer | null, sandboxPolicy?: SandboxPolicy | null, permissions?: string | null, model?: string | null, serviceTier?: string | null | null, effort?: ReasoningEffort | null, summary?: ReasoningSummary | null, collaborationMode?: CollaborationMode | null, multiAgentMode?: MultiAgentMode | null, personality?: Personality | null, };"
+    },
+    "protocol-experimental/v2/ThreadQueueAddParams.ts": {
+      "sha256": "450a09d5b5105552ad977e9d08531ef17c5c1a6d05de2ca1b78dc9b9c435c3a7",
+      "type": "export type ThreadQueueAddParams = { threadId: string, input: Array<UserInput>, clientUserMessageId: string, responsesapiClientMetadata?: { [key in string]?: string } | null, };"
+    }
+  },
+  "sourcePlanSha256": "678f9cf9762cd387487fd141f3b455535046789e4b9eaa05da7fd29d1ad09169",
+  "limitations": [
+    "Source metadata and type generation do not prove UI behavior or live inference",
+    "Public official source reference is release 0.169.0; installed bundled binary is alpha.11.1",
+    "Public repository fetch used GitHub connector after sandbox network denial; no source installation",
+    "No live thread IDs or credentials retained"
+  ]
+}

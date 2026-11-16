@@ -1,0 +1,83 @@
+{
+  "planRevision": 2,
+  "testId": "CC-06-parallel-merge",
+  "capturedAt": "2026-11-16T01:28:57.957Z",
+  "versions": {
+    "node": "v24.22.1",
+    "git": "git version 2.52.0.windows.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "fixture",
+  "result": "passed",
+  "actorAliases": [
+    "P",
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "workerAttemptIds": [
+    "A-1",
+    "B-1",
+    "C-1",
+    "D-1"
+  ],
+  "terminalBindings": [],
+  "operationIds": [
+    "private-fixture-db"
+  ],
+  "eventSeqs": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16
+  ],
+  "requestedAgent": {
+    "model": "mock",
+    "effort": "low"
+  },
+  "observedSettings": {
+    "runtime": "deterministic",
+    "gitRemote": "local_bare"
+  },
+  "processIdentities": [],
+  "stopEvidence": {
+    "attemptsCompleted": true
+  },
+  "artifactHashes": {
+    "view.mjs": "d197194ac0bf54e1c55eaa13fa35f1fcc6a91d7020b45b04a3f5621e3bfbbe2b"
+  },
+  "candidateShas": [
+    "500f20b73716e66d1369ccb51ae036f69b173e14",
+    "83d14f0c64dcd36552907fa49754be604f84d5e3",
+    "743ba1c20fc2dd2dd1c703a129d89c575c388d3b",
+    "7406e31afaae9c7b110e50b5e24c1d2a847cdd11"
+  ],
+  "integrationShas": [
+    "2f73cbc3a6e271f2f6f9caa110be89e6b6b76ec0",
+    "d8a8079f02f7c21567ca92beac52ff5e38ddf01c"
+  ],
+  "assertions": {
+    "cleanMerge": true,
+    "semanticFailureBeforeResolution": true,
+    "checksBoundToResult": true,
+    "dirtySourcePreserved": true
+  },
+  "limitations": [
+    "Runtime is deterministic; not real Codex/VS Code acceptance.",
+    "No GitHub push.",
+    "Tab closure is covered separately by native fixture and live UI observations."
+  ]
+}

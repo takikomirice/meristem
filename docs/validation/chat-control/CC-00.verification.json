@@ -1,0 +1,59 @@
+{
+  "baseCommit": "5522c33cbb1b809d5580ee2f3b2f5451bd97b14a",
+  "branch": "feat/cc-00-relay-spike",
+  "stage": "CC-00",
+  "capturedAt": "2026-11-14T16:33:25.7364118Z",
+  "stageVerdict": "needs_redesign",
+  "tests": {
+    "tests": 16,
+    "failed": 0,
+    "tapSha256": "5c6a6c7a1cd058139deed3bffb682ea7575089bc41cff344eec176d423b6106f",
+    "passed": 16,
+    "command": "node --test --test-reporter=tap test/*.test.mjs",
+    "exitCode": 0
+  },
+  "build": {
+    "command": "powershell.exe -NoProfile -File scripts/build-native.ps1 -OutputDirectory .local/chat-control-build -WithFixtures",
+    "exitCode": 0,
+    "relaySha256": "3f4727e30888bec163a8dbc2d32583b175dbf9ab6a963460a67379c4256b08c2"
+  },
+  "cc01PromotionAllowed": false,
+  "realTransport": {
+    "modelTurnsObserved": 0,
+    "exitCode": 0,
+    "result": "passed"
+  },
+  "review": {
+    "importantFixed": 2,
+    "critical": 0,
+    "independentReadOnly": true,
+    "deferred": [
+      "ID-first envelope dependency for oversized/partial frames",
+      "Exact outstanding ID collision branch lacks dedicated test"
+    ],
+    "profileRestore": "preserves unrelated edits",
+    "important": 2,
+    "selfReviewAdditionalFix": "malformed owned management response isolation",
+    "regressions": [
+      "never_leaks_an_unterminated_management_reply_on_eof",
+      "transport_runner_records_failure_on_early_exit",
+      "transport_runner_records_failure_on_timeout"
+    ]
+  },
+  "fileSha256": {
+    "native/LocalPipe.cs": "9c9d8c3fdc8c72e672b8d61a10ed286126b1dc09932c05060cb698fb65890fb6",
+    "test/caller-probe.test.mjs": "326247574cdd68e605ca3b79104ef67ddcdbdd7c3ccfe1c38e6c08972044a2c5",
+    "native/ProcessTree.cs": "386b7176d5afd9774fcb3d939f22c3d65e646505ef2fc9fc7a831517b04b7664",
+    "spikes/chat-control/no-model-smoke.mjs": "701a0682c8688eb9045dc960e7e99be1284679dfaca47ad5409dcb70f1126007",
+    "test/fixtures/MockCodex.cs": "e0224fd620a1c38cba6eb252181f44223f44bfb349e34f00081c6bd5098f7739",
+    "test/relay-spike.test.mjs": "73035f604bc7a36ec6b4158b02cde038e0494e49aa0a1ac070fc726e099f63a2",
+    "scripts/build-native.ps1": "3db644a56643b66f246af0b62a869d85ce7fbf757a20a78ae7fbafcc4da45275",
+    "spikes/chat-control/relay-probe.mjs": "e665414e9169b5ccbaab6d6053f4dba522b963c364754c718eb4326017efbf05",
+    "spikes/chat-control/caller-probe.mjs": "ee17bf59327ef15de04f84a2056f5316091482faea9ed06ceb1e52c556d7d91c",
+    "native/Program.cs": "c0ec3a3fa4f8eb1b0641d7d941350a4edfe58f41c2cb699cd2de3b46940d867d",
+    "native/StdioRelay.cs": "acaca79607fc9497e14a53042b0f7a88860e7fe30070a2f65e454b809c564530",
+    "spikes/chat-control/relay-client.mjs": "2102aed0903abf161a526a3bf021086ba1abc15ded789ec34e2c6569bcf37362"
+  },
+  "readmeUpdated": true,
+  "unrelatedExistingChangesIncluded": false
+}

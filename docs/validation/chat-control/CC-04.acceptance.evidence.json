@@ -1,0 +1,1088 @@
+{
+  "planRevision": "2026-11-15 implementation / CC-04",
+  "testId": "CC04-supported-fixture-acceptance",
+  "capturedAt": "2026-11-16T00:26:34.313Z",
+  "result": "passed",
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "versions": {
+    "codex": "0.169.0-alpha.11.1",
+    "codexSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "node": "v24.22.1",
+    "nodeSha256": "d702daa815eabbff763c7d3808e235cf031cf2ca70211b56847bc72f51e240e5"
+  },
+  "requestedAgent": {
+    "model": "gpt-6-luna",
+    "effort": "low"
+  },
+  "validation": {
+    "verify": {
+      "command": "npm run verify",
+      "exitCode": 0,
+      "tests": 162,
+      "passed": 162,
+      "failed": 0
+    },
+    "requests": {
+      "command": "node --test dist/test/requests.test.js",
+      "exitCode": 0,
+      "tests": 15,
+      "passed": 15,
+      "failed": 0
+    },
+    "review": "Independent read-only review and self-review; native gateway and revision regressions reproduced before fixing."
+  },
+  "outcomes": [
+    {
+      "case": "question_next_turn_and_artifact",
+      "trial": "acceptance-03",
+      "result": "passed",
+      "evidence": "Reported question -> same-thread next turn -> CC04_JSON_CONFIRMED artifact -> final report -> native job empty. Two modal Accept actions were confirmed by the user."
+    },
+    {
+      "case": "formal_accept",
+      "trial": "acceptance-05",
+      "request": "[\"85b3daf3-5f19-4561-963f-d985f292c5c1\",\"f23d9f5b-4a8c-4cb5-ae45-be9727603e4c\",0]",
+      "result": "passed",
+      "humanAction": "Accept",
+      "humanEvidence": "User confirmed pressing the observed parent elicitation form.",
+      "evidence": "Original serverRequest/resolved and exactly one accepted report persisted."
+    },
+    {
+      "case": "formal_decline",
+      "trial": "acceptance-05",
+      "request": "[\"bae5b75a-13f6-4bbd-8e89-28813145dad5\",\"cf7bb7e1-8341-4658-b7a0-11f8b52bb321\",0]",
+      "result": "passed",
+      "humanAction": "Deny",
+      "humanEvidence": "User confirmed pressing Deny on the observed parent form.",
+      "evidence": "Original serverRequest/resolved, no declined report persisted."
+    },
+    {
+      "case": "formal_cancel",
+      "trial": "acceptance-06",
+      "request": "[\"6b23cb89-2c43-48b5-a89d-fe4d25a90e57\",\"0977d9ab-803f-4530-b077-2522ab5f734f\",0]",
+      "result": "passed",
+      "humanAction": "Cancel",
+      "humanEvidence": "User confirmed pressing Cancel on the observed parent form.",
+      "evidence": "Original serverRequest/resolved, no cancelled report persisted."
+    },
+    {
+      "case": "stop_before_answer",
+      "trial": "acceptance-06",
+      "request": "[\"a5753eaa-6256-4bc5-9cf7-6babe4e44bf8\",\"ee1467c3-0059-4837-bd67-a555c6915b5c\",0]",
+      "result": "passed",
+      "humanAction": null,
+      "evidence": "Observed pending source and open parent form before official stop; request cancelled, no report, native job empty."
+    }
+  ],
+  "trials": [
+    {
+      "id": "acceptance-02",
+      "result": "failed",
+      "restored": true,
+      "planHash": "757800318b3550d57ddde11c5e5cbc493c1f9b272ece119d712af952916a90b4",
+      "approvedMaxTurns": 8,
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1e187-c3f6-7272-9bf5-c47ed15a1a4a",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e189-f759-7c22-8c3a-88d18375bf71",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e18b-0261-72f2-859a-f9b1fa4526ec",
+          "status": "completed"
+        }
+      ],
+      "childInstructions": 0,
+      "requests": [],
+      "workers": [
+        {
+          "worker": {
+            "ownerId": "7d15f72a-cb62-4a79-be7b-0ea5ac67d1b5",
+            "ownerEpoch": "6cd0f91e-b04d-41af-9da9-b69531e7b67f",
+            "threadId": "pending",
+            "workerId": "A",
+            "attemptId": "3207ee9e-a3fb-4254-bed2-9a9e8a3e0551"
+          },
+          "state": "unknown",
+          "terminalBinding": {
+            "windowBindingId": "73b0ed7a-f522-4d0a-ba91-4228ac0b1608",
+            "terminalId": "8e48bea1-c3ec-4f11-a530-ecd87ce4794d",
+            "worker": {
+              "ownerId": "7d15f72a-cb62-4a79-be7b-0ea5ac67d1b5",
+              "ownerEpoch": "6cd0f91e-b04d-41af-9da9-b69531e7b67f",
+              "threadId": "pending",
+              "workerId": "A",
+              "attemptId": "3207ee9e-a3fb-4254-bed2-9a9e8a3e0551"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 0,
+            "hostCreated": "unconfirmed",
+            "childPid": 0,
+            "childCreated": "unconfirmed",
+            "jobId": "unconfirmed"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "7d15f72a-cb62-4a79-be7b-0ea5ac67d1b5",
+              "ownerEpoch": "6cd0f91e-b04d-41af-9da9-b69531e7b67f",
+              "threadId": "pending",
+              "workerId": "A",
+              "attemptId": "3207ee9e-a3fb-4254-bed2-9a9e8a3e0551"
+            },
+            "state": "unknown",
+            "evidenceRefs": [
+              "stop_unconfirmed"
+            ]
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc04-create",
+          "state": "sent_unknown"
+        }
+      ],
+      "reports": [],
+      "events": [
+        {
+          "seq": 1,
+          "kind": "registered",
+          "attempt_id": "3207ee9e-a3fb-4254-bed2-9a9e8a3e0551"
+        },
+        {
+          "seq": 2,
+          "kind": "stopping",
+          "attempt_id": null
+        },
+        {
+          "seq": 3,
+          "kind": "unknown",
+          "attempt_id": "3207ee9e-a3fb-4254-bed2-9a9e8a3e0551"
+        }
+      ],
+      "artifacts": [
+        {
+          "workerId": "A",
+          "path": "acceptance-02/A/cc04-result.txt",
+          "exists": false
+        },
+        {
+          "workerId": "B",
+          "path": "acceptance-02/B/cc04-result.txt",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "id": "acceptance-03",
+      "result": "passed",
+      "restored": true,
+      "planHash": "757800318b3550d57ddde11c5e5cbc493c1f9b272ece119d712af952916a90b4",
+      "approvedMaxTurns": 8,
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1e197-4a94-7f30-896e-954c3a5c6550",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e199-9de1-75d2-b8dc-23eb4bdd55a2",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e19b-0acb-7120-8971-f8f1723d6d8a",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e19c-209b-7b21-86be-1b276501d443",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e19d-f155-7cc0-a77d-7b6e2ca2b55f",
+          "status": "completed"
+        }
+      ],
+      "childInstructions": 2,
+      "requests": [
+        {
+          "id": "[\"8d311585-2410-4a6f-8494-8b63a46a7cb9\",\"6c43d269-03cc-43d5-a3b6-94083a71ad1d\",0]",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d",
+          "kind": "elicitation",
+          "state": "resolved",
+          "payload_hash": "81c5b0aa8a35d785b709bdb4e665b3ac1d07d065405a0d2bd3be35c4e5d04d95",
+          "form_generation": "2bbfca49-e5e8-4b1a-be7e-e7e91cb8c447"
+        },
+        {
+          "id": "[\"8d311585-2410-4a6f-8494-8b63a46a7cb9\",\"6c43d269-03cc-43d5-a3b6-94083a71ad1d\",\"followup-cc8c42dc-287b-41e8-a65c-807d4e0e204d\"]",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d",
+          "kind": "question",
+          "state": "resolved",
+          "payload_hash": "20a7446130ab62f73c3cfb9b75f4163c78d0bb6cad82484296428ecf07bdae0a",
+          "form_generation": "f380d407-d419-4df3-a3fd-d90dcff476e9"
+        },
+        {
+          "id": "[\"8d311585-2410-4a6f-8494-8b63a46a7cb9\",\"6c43d269-03cc-43d5-a3b6-94083a71ad1d\",1]",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d",
+          "kind": "elicitation",
+          "state": "resolved",
+          "payload_hash": "001e31dfbe35d4510d78547c6d7d162381327eff0090233c2ce58405603c3b9e",
+          "form_generation": "4c243435-2ce9-4ef4-a350-44f75d6a9211"
+        }
+      ],
+      "workers": [
+        {
+          "worker": {
+            "ownerId": "8d311585-2410-4a6f-8494-8b63a46a7cb9",
+            "ownerEpoch": "6c43d269-03cc-43d5-a3b6-94083a71ad1d",
+            "threadId": "01a1e19a-060a-76a2-8204-adcf336a722e",
+            "workerId": "A",
+            "attemptId": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+          },
+          "state": "completed",
+          "terminalBinding": {
+            "windowBindingId": "ca28e4ec-0a4e-436f-98fb-0c73de6a0443",
+            "terminalId": "44db09b6-3a86-48c7-9c7d-8ac64f28d191",
+            "worker": {
+              "ownerId": "8d311585-2410-4a6f-8494-8b63a46a7cb9",
+              "ownerEpoch": "6c43d269-03cc-43d5-a3b6-94083a71ad1d",
+              "threadId": "01a1e19a-060a-76a2-8204-adcf336a722e",
+              "workerId": "A",
+              "attemptId": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 6328,
+            "hostCreated": "134392599283133518",
+            "childPid": 45944,
+            "childCreated": "134392599297493134",
+            "jobId": "3d764f3ca398450e8fd2c029f2594793"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "8d311585-2410-4a6f-8494-8b63a46a7cb9",
+              "ownerEpoch": "6c43d269-03cc-43d5-a3b6-94083a71ad1d",
+              "threadId": "01a1e19a-060a-76a2-8204-adcf336a722e",
+              "workerId": "A",
+              "attemptId": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc04-create",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-send",
+          "state": "acked"
+        },
+        {
+          "id": "cc04-question-report",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-human-form",
+          "state": "prepared"
+        },
+        {
+          "id": "cc04-format-answer",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-final-report",
+          "state": "settled"
+        }
+      ],
+      "reports": [
+        {
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d",
+          "turn_id": "01a1e19a-6bcd-7053-8f05-707eb2b56f04",
+          "payload": {
+            "summary": "Need a format decision",
+            "question": "Which format should I use, JSON or YAML?"
+          }
+        },
+        {
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d",
+          "turn_id": "01a1e19e-1d29-7552-8641-50b76e22dc5f",
+          "payload": {
+            "summary": "CC04_JSON_CONFIRMED",
+            "evidenceRefs": [
+              "cc04-result.txt"
+            ]
+          }
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "kind": "registered",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 2,
+          "kind": "registered",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 3,
+          "kind": "waiting_approval",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 4,
+          "kind": "running",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 5,
+          "kind": "waiting_input",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 6,
+          "kind": "late_report",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 7,
+          "kind": "waiting_input",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 8,
+          "kind": "running",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 9,
+          "kind": "waiting_approval",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 10,
+          "kind": "running",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 11,
+          "kind": "report_saved",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 12,
+          "kind": "turn_completed",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        },
+        {
+          "seq": 13,
+          "kind": "completed",
+          "attempt_id": "c99b370a-7c29-4a07-8158-cda8995b4f0d"
+        }
+      ],
+      "artifacts": [
+        {
+          "workerId": "A",
+          "path": "acceptance-03/A/cc04-result.txt",
+          "exists": true,
+          "sha256": "0b3bb8087450d8f79199f82dc0af77eb2505953fac25b106b7de6ac73df917fc",
+          "content": "CC04_JSON_CONFIRMED"
+        },
+        {
+          "workerId": "B",
+          "path": "acceptance-03/B/cc04-result.txt",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "id": "acceptance-04",
+      "result": "failed",
+      "restored": true,
+      "planHash": "158bd03129e50c81d9cf36e10c2d82cc8d0447058a0822e48aa87d7aec8dbfbb",
+      "approvedMaxTurns": 8,
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1a1-c8e7-7bc1-8e88-288fa63ea3ce",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1a3-f8e1-7ab2-8d52-10dc3f6886b5",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1a5-b000-7cf1-ad84-67ccc6fd64a6",
+          "status": "completed"
+        }
+      ],
+      "childInstructions": 1,
+      "requests": [
+        {
+          "id": "[\"168cc4bf-c476-4d9a-854d-fe94a1035047\",\"cf287ec1-a0bf-4f8c-9f14-4935fe54f62d\",0]",
+          "attempt_id": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9",
+          "kind": "elicitation",
+          "state": "cancelled",
+          "payload_hash": "81308a4835a0219b209332f6b837945ce915630db0a40a0a59f9330efd113565",
+          "form_generation": "be3acdae-8e99-4f12-aa11-90dde6c0ae90"
+        }
+      ],
+      "workers": [
+        {
+          "worker": {
+            "ownerId": "168cc4bf-c476-4d9a-854d-fe94a1035047",
+            "ownerEpoch": "cf287ec1-a0bf-4f8c-9f14-4935fe54f62d",
+            "threadId": "01a1e1a4-5183-7ea0-b7e0-77c312f6c50d",
+            "workerId": "A",
+            "attemptId": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+          },
+          "state": "stopped",
+          "terminalBinding": {
+            "windowBindingId": "4f2bbf70-cafe-4921-9769-00f14fae0350",
+            "terminalId": "bef85b14-597e-4744-a2f1-2d96d16f9c10",
+            "worker": {
+              "ownerId": "168cc4bf-c476-4d9a-854d-fe94a1035047",
+              "ownerEpoch": "cf287ec1-a0bf-4f8c-9f14-4935fe54f62d",
+              "threadId": "01a1e1a4-5183-7ea0-b7e0-77c312f6c50d",
+              "workerId": "A",
+              "attemptId": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 37944,
+            "hostCreated": "134392606030385874",
+            "childPid": 14084,
+            "childCreated": "134392606044311208",
+            "jobId": "49d50bfe09ea4743b9fc51535ab2fad1"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "168cc4bf-c476-4d9a-854d-fe94a1035047",
+              "ownerEpoch": "cf287ec1-a0bf-4f8c-9f14-4935fe54f62d",
+              "threadId": "01a1e1a4-5183-7ea0-b7e0-77c312f6c50d",
+              "workerId": "A",
+              "attemptId": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc04-create",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-send",
+          "state": "acked"
+        },
+        {
+          "id": "cc04-present-accept",
+          "state": "settled"
+        }
+      ],
+      "reports": [],
+      "events": [
+        {
+          "seq": 1,
+          "kind": "registered",
+          "attempt_id": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+        },
+        {
+          "seq": 2,
+          "kind": "registered",
+          "attempt_id": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+        },
+        {
+          "seq": 3,
+          "kind": "waiting_approval",
+          "attempt_id": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+        },
+        {
+          "seq": 4,
+          "kind": "stopping",
+          "attempt_id": null
+        },
+        {
+          "seq": 5,
+          "kind": "stopped",
+          "attempt_id": "39dbd5ad-1fc8-4e8b-9e63-3706d62462d9"
+        }
+      ],
+      "artifacts": [
+        {
+          "workerId": "A",
+          "path": "acceptance-04/A/cc04-result.txt",
+          "exists": false
+        },
+        {
+          "workerId": "B",
+          "path": "acceptance-04/B/cc04-result.txt",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "id": "acceptance-05",
+      "result": "passed",
+      "restored": true,
+      "planHash": "158bd03129e50c81d9cf36e10c2d82cc8d0447058a0822e48aa87d7aec8dbfbb",
+      "approvedMaxTurns": 8,
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1af-27a5-7111-ad75-648c135c932a",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1af-fac7-7750-89fc-6f4b35b8bc71",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1b1-6a31-7733-98e5-2e16977ab801",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1b4-161f-7813-9559-ad2bca4857ee",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1b5-4891-7750-bdcf-d0e8340c917c",
+          "status": "completed"
+        }
+      ],
+      "childInstructions": 2,
+      "requests": [
+        {
+          "id": "[\"85b3daf3-5f19-4561-963f-d985f292c5c1\",\"f23d9f5b-4a8c-4cb5-ae45-be9727603e4c\",0]",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434",
+          "kind": "elicitation",
+          "state": "resolved",
+          "payload_hash": "e33112b91dcea8bffda85aec88e90f3a0b1c6ba4b9772f909265af04082ba51c",
+          "form_generation": "0b619c3d-f756-41b8-a97a-8aaaf41917d8"
+        },
+        {
+          "id": "[\"bae5b75a-13f6-4bbd-8e89-28813145dad5\",\"cf7bb7e1-8341-4658-b7a0-11f8b52bb321\",0]",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b",
+          "kind": "elicitation",
+          "state": "resolved",
+          "payload_hash": "83da01a0a71aa691ffb8cd3b9af90c4e5849d0f8ed20540ee61ee95783e7d806",
+          "form_generation": "43c5fdd8-7dab-402e-a69d-a0d74509c5c3"
+        }
+      ],
+      "workers": [
+        {
+          "worker": {
+            "ownerId": "85b3daf3-5f19-4561-963f-d985f292c5c1",
+            "ownerEpoch": "f23d9f5b-4a8c-4cb5-ae45-be9727603e4c",
+            "threadId": "01a1e1b0-5110-7513-9504-baec1de3dee6",
+            "workerId": "A",
+            "attemptId": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+          },
+          "state": "completed",
+          "terminalBinding": {
+            "windowBindingId": "52ec1213-ba05-4918-96e4-4c257f61295e",
+            "terminalId": "28c55ed2-cb4a-4f0e-9f2f-27757b1b61d8",
+            "worker": {
+              "ownerId": "85b3daf3-5f19-4561-963f-d985f292c5c1",
+              "ownerEpoch": "f23d9f5b-4a8c-4cb5-ae45-be9727603e4c",
+              "threadId": "01a1e1b0-5110-7513-9504-baec1de3dee6",
+              "workerId": "A",
+              "attemptId": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 47332,
+            "hostCreated": "134392613893539494",
+            "childPid": 40648,
+            "childCreated": "134392613907231908",
+            "jobId": "847b2d26067d438c8b31eccbd17fc5a4"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "85b3daf3-5f19-4561-963f-d985f292c5c1",
+              "ownerEpoch": "f23d9f5b-4a8c-4cb5-ae45-be9727603e4c",
+              "threadId": "01a1e1b0-5110-7513-9504-baec1de3dee6",
+              "workerId": "A",
+              "attemptId": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        },
+        {
+          "worker": {
+            "ownerId": "bae5b75a-13f6-4bbd-8e89-28813145dad5",
+            "ownerEpoch": "cf7bb7e1-8341-4658-b7a0-11f8b52bb321",
+            "threadId": "01a1e1b4-5505-76d1-9f66-b280d3592e2d",
+            "workerId": "A",
+            "attemptId": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+          },
+          "state": "completed",
+          "terminalBinding": {
+            "windowBindingId": "52ec1213-ba05-4918-96e4-4c257f61295e",
+            "terminalId": "2d51ef85-4c49-44e8-b3cb-8d7bc72ffede",
+            "worker": {
+              "ownerId": "bae5b75a-13f6-4bbd-8e89-28813145dad5",
+              "ownerEpoch": "cf7bb7e1-8341-4658-b7a0-11f8b52bb321",
+              "threadId": "01a1e1b4-5505-76d1-9f66-b280d3592e2d",
+              "workerId": "A",
+              "attemptId": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 12084,
+            "hostCreated": "134392616525402364",
+            "childPid": 42912,
+            "childCreated": "134392616539320573",
+            "jobId": "3b7e092bdb4745ae93e790b1cc9c104c"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "bae5b75a-13f6-4bbd-8e89-28813145dad5",
+              "ownerEpoch": "cf7bb7e1-8341-4658-b7a0-11f8b52bb321",
+              "threadId": "01a1e1b4-5505-76d1-9f66-b280d3592e2d",
+              "workerId": "A",
+              "attemptId": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc04-create",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-send",
+          "state": "acked"
+        },
+        {
+          "id": "cc04-present-accept",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-case-accept",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-create-negative",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-send-negative",
+          "state": "acked"
+        },
+        {
+          "id": "cc04-present-decline",
+          "state": "settled"
+        }
+      ],
+      "reports": [
+        {
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434",
+          "turn_id": "01a1e1b0-c700-7823-a331-f432c806d7b8",
+          "payload": {
+            "summary": "CC04_CASE_ACCEPT"
+          }
+        }
+      ],
+      "events": [
+        {
+          "seq": 1,
+          "kind": "registered",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 2,
+          "kind": "registered",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 3,
+          "kind": "waiting_approval",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 4,
+          "kind": "running",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 5,
+          "kind": "report_saved",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 6,
+          "kind": "turn_completed",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 7,
+          "kind": "completed",
+          "attempt_id": "d8bbc5d1-5cdc-4aab-a6b2-a2f9e3be3434"
+        },
+        {
+          "seq": 8,
+          "kind": "registered",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        },
+        {
+          "seq": 9,
+          "kind": "registered",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        },
+        {
+          "seq": 10,
+          "kind": "waiting_approval",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        },
+        {
+          "seq": 11,
+          "kind": "running",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        },
+        {
+          "seq": 12,
+          "kind": "turn_completed",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        },
+        {
+          "seq": 13,
+          "kind": "completed",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        },
+        {
+          "seq": 14,
+          "kind": "failed",
+          "attempt_id": "f519a3f2-1cb9-40dc-88a7-d723f505592b"
+        }
+      ],
+      "artifacts": [
+        {
+          "workerId": "A",
+          "path": "acceptance-05/A/cc04-result.txt",
+          "exists": false
+        },
+        {
+          "workerId": "B",
+          "path": "acceptance-05/B/cc04-result.txt",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "id": "acceptance-06",
+      "result": "passed",
+      "restored": true,
+      "planHash": "6caab72f7714ef429f49265871d60bb1eb367e67d22bc0400bd35650d5ad9f38",
+      "approvedMaxTurns": 8,
+      "parentTurns": [
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1b8-aac9-7511-bca9-d94e3a847700",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1b9-d7c5-7da2-9a37-beb45df3d608",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1bb-1dd9-7291-95a0-7cb0cc9a785b",
+          "status": "completed"
+        },
+        {
+          "delivery": "completed",
+          "turnId": "01a1e1bc-eb5a-7421-ac08-f50b28cc64c4",
+          "status": "completed"
+        },
+        {
+          "delivery": "acked",
+          "turnId": "01a1e1be-8895-7dd0-9f67-211b5b2b6964"
+        }
+      ],
+      "childInstructions": 2,
+      "requests": [
+        {
+          "id": "[\"6b23cb89-2c43-48b5-a89d-fe4d25a90e57\",\"0977d9ab-803f-4530-b077-2522ab5f734f\",0]",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3",
+          "kind": "elicitation",
+          "state": "resolved",
+          "payload_hash": "6d3f6d39dac9147e01bf75d2111f846994aca05751d24ce3c119291592514bd0",
+          "form_generation": "be297483-c31a-479f-bd68-207edf772521"
+        },
+        {
+          "id": "[\"a5753eaa-6256-4bc5-9cf7-6babe4e44bf8\",\"ee1467c3-0059-4837-bd67-a555c6915b5c\",0]",
+          "attempt_id": "4328e500-0b1e-4be7-9ae4-47cb095be066",
+          "kind": "elicitation",
+          "state": "cancelled",
+          "payload_hash": "d4a49d34ac06bdd020a9048ee602a553c95b0206be37c221597c8403c939ca4b",
+          "form_generation": "363952da-a67a-49e9-b853-29765e8278fb"
+        }
+      ],
+      "workers": [
+        {
+          "worker": {
+            "ownerId": "6b23cb89-2c43-48b5-a89d-fe4d25a90e57",
+            "ownerEpoch": "0977d9ab-803f-4530-b077-2522ab5f734f",
+            "threadId": "01a1e1ba-31d6-7ee2-b59c-8b05e719e3ff",
+            "workerId": "A",
+            "attemptId": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+          },
+          "state": "completed",
+          "terminalBinding": {
+            "windowBindingId": "985097a2-edc0-4e67-acd6-4a16fcd7af81",
+            "terminalId": "e30ffc2b-4ef9-414d-90a4-74835135ac83",
+            "worker": {
+              "ownerId": "6b23cb89-2c43-48b5-a89d-fe4d25a90e57",
+              "ownerEpoch": "0977d9ab-803f-4530-b077-2522ab5f734f",
+              "threadId": "01a1e1ba-31d6-7ee2-b59c-8b05e719e3ff",
+              "workerId": "A",
+              "attemptId": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 22320,
+            "hostCreated": "134392620367699366",
+            "childPid": 26448,
+            "childCreated": "134392620380873648",
+            "jobId": "ad65bbd51dff45ecb503cf43c673a061"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "6b23cb89-2c43-48b5-a89d-fe4d25a90e57",
+              "ownerEpoch": "0977d9ab-803f-4530-b077-2522ab5f734f",
+              "threadId": "01a1e1ba-31d6-7ee2-b59c-8b05e719e3ff",
+              "workerId": "A",
+              "attemptId": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        },
+        {
+          "worker": {
+            "ownerId": "a5753eaa-6256-4bc5-9cf7-6babe4e44bf8",
+            "ownerEpoch": "ee1467c3-0059-4837-bd67-a555c6915b5c",
+            "threadId": "01a1e1bd-235d-76e2-859c-84c54d463d93",
+            "workerId": "A",
+            "attemptId": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+          },
+          "state": "stopped",
+          "terminalBinding": {
+            "windowBindingId": "985097a2-edc0-4e67-acd6-4a16fcd7af81",
+            "terminalId": "12209d3b-507b-4adc-a618-366cc4e35081",
+            "worker": {
+              "ownerId": "a5753eaa-6256-4bc5-9cf7-6babe4e44bf8",
+              "ownerEpoch": "ee1467c3-0059-4837-bd67-a555c6915b5c",
+              "threadId": "01a1e1bd-235d-76e2-859c-84c54d463d93",
+              "workerId": "A",
+              "attemptId": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+            }
+          },
+          "processIdentities": {
+            "hostPid": 43780,
+            "hostCreated": "134392622296287619",
+            "childPid": 20856,
+            "childCreated": "134392622310462976",
+            "jobId": "0cbd39a41c2947ffa2e3b5d828f5e28b"
+          },
+          "stopEvidence": {
+            "worker": {
+              "ownerId": "a5753eaa-6256-4bc5-9cf7-6babe4e44bf8",
+              "ownerEpoch": "ee1467c3-0059-4837-bd67-a555c6915b5c",
+              "threadId": "01a1e1bd-235d-76e2-859c-84c54d463d93",
+              "workerId": "A",
+              "attemptId": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        }
+      ],
+      "operations": [
+        {
+          "id": "cc04-create-cancel",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-send-cancel",
+          "state": "acked"
+        },
+        {
+          "id": "cc04-present-cancel",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-create-stop",
+          "state": "settled"
+        },
+        {
+          "id": "cc04-send-stop",
+          "state": "acked"
+        },
+        {
+          "id": "cc04-present-stop",
+          "state": "settled"
+        }
+      ],
+      "reports": [],
+      "events": [
+        {
+          "seq": 1,
+          "kind": "registered",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 2,
+          "kind": "registered",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 3,
+          "kind": "waiting_approval",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 4,
+          "kind": "running",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 5,
+          "kind": "turn_completed",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 6,
+          "kind": "completed",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 7,
+          "kind": "failed",
+          "attempt_id": "7cfca427-80af-4208-b901-40a16bfd3dc3"
+        },
+        {
+          "seq": 8,
+          "kind": "registered",
+          "attempt_id": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+        },
+        {
+          "seq": 9,
+          "kind": "registered",
+          "attempt_id": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+        },
+        {
+          "seq": 10,
+          "kind": "waiting_approval",
+          "attempt_id": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+        },
+        {
+          "seq": 11,
+          "kind": "stopping",
+          "attempt_id": null
+        },
+        {
+          "seq": 12,
+          "kind": "stopped",
+          "attempt_id": "4328e500-0b1e-4be7-9ae4-47cb095be066"
+        }
+      ],
+      "artifacts": [
+        {
+          "workerId": "A",
+          "path": "acceptance-06/A/cc04-result.txt",
+          "exists": false
+        },
+        {
+          "workerId": "B",
+          "path": "acceptance-06/B/cc04-result.txt",
+          "exists": false
+        }
+      ]
+    }
+  ],
+  "modelRequests": {
+    "monitoring": 0,
+    "parentTotal": 21,
+    "childTotal": 7,
+    "note": "Counts come from pre-send parent and instruction reservations; failed/unknown reservations are not refunded. acceptance-01 sent zero turns. No claim of zero history-input cost."
+  },
+  "artifactHashes": {
+    "host": "2ee290cf7943bfedda5eedecfb3a79680998c9bbba8a1a4449d168bf824a80ce",
+    "control": "490c042899309ab5db7546dd5048b87bac868e40168c8970177c27f47226fef2",
+    "entry": "37491e8701d73911cad2cd0daa571d49d4efa8da6c08f4a5480602c30ba859bc",
+    "mcp": "d0874db44467c7dd65f6bef4967ee5fff67c17ca774b2d709ccfe93cff08c432"
+  },
+  "sourceHashes": {
+    "native/ControlProgram.cs": "c35aec7c4aba11bf9569e43608fb13f44444010ab390f4d763ea8b09edbdec18",
+    "test/mcp-native.test.ts": "d2e977b581f74d20ab4733d4598c346ae36559c7c0c291128dae7ba44eea759a",
+    "test/fixtures/native-mcp-client.ts": "6d174f1cc2e954c21648d9cacee7e827f0a9dcd5d241677d56ea0b46797556aa",
+    "src/cli.ts": "a013fb3c10c2f56b0c796d2ae4d408677c00e0d7f96b9fbaa0f41659c5f160c2",
+    "src/mcp.ts": "57fcf26131f02f4de0990d6b068058cb9d274ca57f9d8b47995dacae9e9728f7",
+    "src/requests.ts": "ccc47b0715a07f280956efb017d05a3a50ee1472b59952420b37f80df84dfad6",
+    "src/store.ts": "5b56e12509f5de6c932ea064049fba67eaa150bd020a10c59a5faf86aa4ef2f0",
+    "src/workers.ts": "6341f4cebe7eae1bf156b3eb5467cd9cfeed845db9f21ea0e922abd999989d43",
+    "src/wake.ts": "ae57467a4e33658a5c2ef6a2c3b34f17f1d95883f351298dfb1261b7f9493ceb",
+    "migrations/004-requests.sql": "4dc85c22a570cc7a00843f6ddbf596c49f84222488360d241563cc57948a9252",
+    "test/mcp.test.ts": "c53b55c401e28e69e57e5e85469dc3e0d3434fb9751a8868cf1adfcafb2b98cd",
+    "test/requests.test.ts": "961487fbd9a31a2911b1156f155832271befdddc00f994efd3df6c959f5d000d",
+    "test/store.test.ts": "aec7c88b054bd74a33e3758d4d72e50dc17e40d97c5ca15633c0f377e75d54ab",
+    "test/workers.test.ts": "16d16be279db2a4f3134af0d6484d529448236181f717aadad4ea2f975894788",
+    "test/live/approval-roundtrip.ts": "d2f8ec5f2ad803019eca0b35734f0fc8d37926f69c58cacbacb1d70ab67504cd"
+  },
+  "limitations": [
+    "Only correlated non-secret questions and empty local meristem report/get_status consent are supported; command/file/permissions/connector/auth/reviewer requests remain unsupported and are not counted as accepted APIs.",
+    "Structured requestUserInput original-RPC routing is fixture-verified. The real question case uses explicit report.question and next-turn delivery; natural text is not guessed.",
+    "acceptance-02 worker startup was unknown and not retried; acceptance-04 exposed native callback allowlist and revision bugs, fixed and regression-tested.",
+    "Real models sometimes ended turns while tool execution was still pending or after denial. Independent cases were split into fresh attempts; this is not a general continuous-work stability guarantee.",
+    "Binding in trials 05/06 was entered through the official CLI under explicit user delegation. Actual tested Accept/Deny/Cancel decisions were made by the user in the UI.",
+    "All test MCP/profile settings restored; authentication and Windows setup previously completed by the user remain in the dedicated home. No ordinary workspace setup or CC-05 acceptance is claimed."
+  ]
+}

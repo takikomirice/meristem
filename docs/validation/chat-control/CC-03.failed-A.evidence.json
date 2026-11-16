@@ -1,0 +1,239 @@
+{
+  "stage": "CC-03",
+  "run": {
+    "id": "cc03",
+    "state": "active",
+    "revision": 2,
+    "stop_generation": 0
+  },
+  "attempts": [
+    {
+      "attemptId": "bbdb38fe-3e75-45e7-8f3f-463db22b8f93",
+      "state": "completed",
+      "worker": {
+        "ownerId": "2d25478f-4058-4382-a9fc-7c5c81e8056d",
+        "ownerEpoch": "e1b5a2a3-b920-4838-bfb1-d929d0433e58",
+        "threadId": "01a1df9c-2417-73e3-ade2-31bb9d158eee",
+        "workerId": "A",
+        "attemptId": "bbdb38fe-3e75-45e7-8f3f-463db22b8f93"
+      },
+      "stop": {
+        "worker": {
+          "ownerId": "2d25478f-4058-4382-a9fc-7c5c81e8056d",
+          "ownerEpoch": "e1b5a2a3-b920-4838-bfb1-d929d0433e58",
+          "threadId": "01a1df9c-2417-73e3-ade2-31bb9d158eee",
+          "workerId": "A",
+          "attemptId": "bbdb38fe-3e75-45e7-8f3f-463db22b8f93"
+        },
+        "state": "stopped",
+        "evidenceRefs": [
+          "native_job_empty",
+          "native_creation_identity"
+        ]
+      }
+    }
+  ],
+  "reports": [],
+  "wakes": [
+    {
+      "id": "185a05fc-9549-4676-bb2f-820a43595736",
+      "state": "acked",
+      "source_seq": 5,
+      "stop_generation": 0,
+      "turn_id": "01a1df9c-96bb-7662-8e7a-226613cb4b6e"
+    }
+  ],
+  "cursor": {
+    "run_id": "cc03",
+    "scanned_seq": 5,
+    "pending_seq": 5,
+    "delivered_seq": 5,
+    "read_seq": 5
+  },
+  "consumed": 4,
+  "approvedMaxTurns": 8,
+  "parentEvents": [
+    {
+      "seq": 1,
+      "method": "thread/read",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "notLoaded"
+    },
+    {
+      "seq": 2,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 3,
+      "method": "thread/resume",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 4,
+      "method": "turn/start/acked",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9a-d038-7cf2-b408-3221625690cc",
+      "status": null
+    },
+    {
+      "seq": 5,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 6,
+      "method": "turn/started",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9a-d038-7cf2-b408-3221625690cc",
+      "status": "inProgress"
+    },
+    {
+      "seq": 7,
+      "method": "thread/read",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 8,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 9,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 10,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 11,
+      "method": "turn/completed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9a-d038-7cf2-b408-3221625690cc",
+      "status": "completed"
+    },
+    {
+      "seq": 12,
+      "method": "turn/start/acked",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9b-e33e-7f82-8cd5-551ba468acaa",
+      "status": null
+    },
+    {
+      "seq": 13,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 14,
+      "method": "turn/started",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9b-e33e-7f82-8cd5-551ba468acaa",
+      "status": "inProgress"
+    },
+    {
+      "seq": 15,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 16,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 17,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 18,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 19,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 20,
+      "method": "turn/completed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9b-e33e-7f82-8cd5-551ba468acaa",
+      "status": "completed"
+    },
+    {
+      "seq": 21,
+      "method": "turn/start/acked",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9c-96bb-7662-8e7a-226613cb4b6e",
+      "status": null
+    },
+    {
+      "seq": 22,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "active"
+    },
+    {
+      "seq": 23,
+      "method": "turn/started",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9c-96bb-7662-8e7a-226613cb4b6e",
+      "status": "inProgress"
+    },
+    {
+      "seq": 24,
+      "method": "thread/status/changed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": null,
+      "status": "idle"
+    },
+    {
+      "seq": 25,
+      "method": "turn/completed",
+      "threadId": "01a1df9a-1264-7bf2-aa27-4fc4df7e5434",
+      "turnId": "01a1df9c-96bb-7662-8e7a-226613cb4b6e",
+      "status": "completed"
+    }
+  ],
+  "UI": {
+    "active": "not_observed",
+    "idle": "protocol_only",
+    "hidden": "not_run",
+    "panelClosed": "not_run",
+    "vscodeExit": "not_run"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "controlDContinuedAfterUiExit": true,
+  "controlDStopped": true,
+  "remainingTrialProcesses": [],
+  "profileSettings": {},
+  "recordedOwnerPidsAbsent": {
+    "code": true,
+    "controlD": true,
+    "appServer": true
+  }
+}

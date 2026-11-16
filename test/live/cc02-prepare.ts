@@ -1,0 +1,65 @@
+// Prepare a dedicated real parent/worker fixture, without sending a model turn.
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { createHash, randomUUID } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { Rpc } from '../../src/protocol.js';
+import { gitScope } from '../fixtures/git-scope.js';
+import { serialFixture, serialAcceptancePlan } from '../fixtures/serial-git.js';
+import { parallelPlan } from '../fixtures/parallel-git.js';
+import { readPlan } from '../../src/plan.js';
+
+const arg = (name: string) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined;
+const stage = arg('--stage') ?? 'CC-02'; assert(['CC-02', 'CC-03', 'CC-04', 'CC-06', 'CC-07'].includes(stage));
+const planStage = stage === 'CC-06' || stage === 'CC-07';
+const scenario = arg('--scenario') ?? 'parallel';
+assert(scenario === 'parallel' || (stage === 'CC-07' && scenario === 'serial'), 'unsupported acceptance scenario');
+const windowsSandbox = arg('--windows-sandbox');
+assert(windowsSandbox === undefined || ['elevated', 'mxc'].includes(windowsSandbox), 'unsupported Windows sandbox');
+const rawRoot = arg('--root')!;
+const approvedMaxTurns = Number(arg('--max-turns') ?? 8);
+assert(Number.isSafeInteger(approvedMaxTurns) && approvedMaxTurns >= (planStage ? 12 : 5) && approvedMaxTurns <= (planStage ? 20 : 8));
+const requiredPath = (name: string) => { const value = arg(name); assert(value && path.isAbsolute(value)); return realpathSync(value); };
+const realExe = requiredPath('--real-exe'), authHome = requiredPath('--auth-home'), codeExe = requiredPath('--code-exe'), extensionDirectory = requiredPath('--extension-dir');
+assert(rawRoot && path.isAbsolute(rawRoot)); const root = path.resolve(rawRoot);
+assert(process.argv.includes('--live') && [root, realExe, authHome, codeExe, extensionDirectory].every(p => p && path.isAbsolute(p)) && !existsSync(root));
+assert(root.startsWith(path.resolve('.local/chat-control', stage) + path.sep));
+const sha = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
+const save = (file: string, value: unknown) => writeFileSync(file, JSON.stringify(value, null, 2) + '\n', { flag: 'wx' });
+mkdirSync(root, { recursive: true });
+const parentBase = path.join(root, 'P'), cwd = path.join(parentBase, 'work'); mkdirSync(cwd, { recursive: true });
+const agent = planStage ? { model: 'gpt-6.1-sol', effort: 'medium' } : { model: 'gpt-6-luna', effort: 'low' };
+const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: authHome };
+for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|BEARER|CODEX_THREAD_ID|CODEX_TURN_ID/i.test(key)) delete env[key];
+const hostExe = path.resolve('.local/chat-control-build/CodexWorkerHost.exe'), controlExe = path.resolve('.local/chat-control-build/MeristemControl.exe'), cli = path.resolve('dist/src/cli.js'), mcp = path.resolve('dist/src/mcp.js');
+save(path.join(parentBase, 'worker.json'), { realExecutable: realExe, realSha256: sha(realExe), cwd, testProfile: 'CC-00R-CC02-parent-seed', requestedAgent: agent });
+const seed = spawn(hostExe, ['--mode', 'codex-stdio', '--pipe', `meristem-cc00r-${randomUUID()}`, '--exe', realExe, '--cwd', cwd, '--fixture-root', parentBase, '--broker-stdin', 'true'], { cwd, env, windowsHide: true, stdio: 'pipe' });
+const rpc = new Rpc(seed, () => {}); let parentThreadId: string;
+try {
+  await rpc.call('initialize', { clientInfo: { name: 'cc02-parent-seed', version: '0' }, capabilities: { experimentalApi: true } }); rpc.notify('initialized');
+  const catalog = await rpc.call('model/list'); assert(catalog.data.some((model: any) => model.model === agent.model));
+  const started = await rpc.call('thread/start', { cwd, model: agent.model, ephemeral: false });
+  assert(started.thread?.id && !started.thread.parentThreadId); parentThreadId = started.thread.id;
+  await rpc.call('thread/name/set', { threadId: parentThreadId, name: stage + ' 専用の親 P（試験）' });
+} finally { rpc.close(); for (let i = 0; i < 100 && seed.exitCode === null && seed.signalCode === null; i++) await delay(50); assert(seed.exitCode !== null || seed.signalCode !== null, 'seed host exit must be confirmed'); }
+const parallel = planStage ? (scenario === 'serial' ? serialAcceptancePlan : parallelPlan)(serialFixture(path.join(root, 'git')), agent) : undefined;
+const git = parallel ? { repositoryPath: parallel.repository, assignments: [], branchScope: [parallel.plan.run.integration_branch] } : gitScope(root); git.assignments.forEach(a => { a.model = agent.model; a.effort = agent.effort; });
+const planPath = path.join(root, 'fixture-plan.md'); writeFileSync(planPath, stage === 'CC-04' ? '# CC-04 fixture\nUse A only. Test structured and reported questions, local MCP human approval, decline, cancel, and stop before answering in separate sessions. Human decisions only through formal elicitation or the dedicated modal. No external actions. Write cc04-result.txt only after accepted report.\n' : stage === 'CC-03' ? '# CC-03 fixture\nParent dispatches A and finishes. Wake only after saved report and normal cleanup; then dispatch new B and finish. Verify B on next wake. Never start B if A failed or has no report. No commands, code, subagents or Git changes.\n' : '# CC-02 fixture\nA and B report distinct tokens. Explicitly resume completed A history once. No code changes, commands, subagents or Git modifications.\n');
+const stateDirectory = path.join(tmpdir(), `cc02-managed-${randomUUID()}`), pipeName = `meristem-cc01-control-${randomUUID()}`, parentPipe = `meristem-cc00-${randomUUID()}`;
+if (parallel) { writeFileSync(planPath, readFileSync(parallel.planPath)); readPlan(planPath); }
+const controlConfig = path.join(root, 'control.json'), relay = path.join(parentBase, 'CodexRelay.exe'); copyFileSync(path.resolve('.local/chat-control-build/CodexRelay.exe'), relay);
+save(controlConfig, { stateDirectory, repository: git.repositoryPath, runId: stage === 'CC-07' ? 'cc07' : stage === 'CC-06' ? 'cc06' : stage === 'CC-04' ? 'cc04' : stage === 'CC-03' ? 'cc03' : 'cc02', pipeName, nodeExecutable: process.execPath, nodeSha256: sha(process.execPath), entryPoint: cli, entrySha256: sha(cli), runtime: { hostExe, hostSha256: sha(hostExe), realExe, realSha256: sha(realExe), authHome, fixture: false, ...(windowsSandbox ? { windowsSandbox } : {}) }, assignments: [], mcp: { ...(stage === 'CC-03' ? { wake: { ...agent, maxTurns: approvedMaxTurns - 4 } } : {}), parentRelay: { pipeName: parentPipe, threadId: parentThreadId! }, entryPoint: mcp, entrySha256: sha(mcp), scope: { fixture: true, ...(parallel ? { plan: true } : {}), planPath, repositoryId: 'repo', maxInstructions: planStage ? 6 : stage === 'CC-03' ? 2 : 3, ...git } } });
+save(relay + '.json', { realExecutable: realExe, realSha256: sha(realExe), pipeName: parentPipe, allowedCwds: [cwd], testProfile: 'CC-00R-CC02-parent', controlHost: { executable: controlExe, sha256: sha(controlExe), configPath: controlConfig, configSha256: sha(controlConfig), parentThreadId: parentThreadId! } });
+const profile = path.join(parentBase, 'profile'), extensions = path.join(parentBase, 'extensions'); mkdirSync(path.join(profile, 'User'), { recursive: true }); mkdirSync(extensions);
+symlinkSync(extensionDirectory, path.join(extensions, path.basename(extensionDirectory)), 'junction');
+const settings = { 'workbench.startupEditor': 'none', 'chatgpt.openOnStartup': true, 'chatgpt.cliExecutable': relay, 'chatgpt.runCodexInWindowsSubsystemForLinux': false, 'window.title': stage + ' acceptance - ${rootName}' };
+save(path.join(profile, 'User', 'settings.json'), settings);
+const authConfig = path.join(authHome, 'config.toml'), original = readFileSync(authConfig, 'utf8'); assert(!/^\s*\[mcp_servers\.meristem(?:\.|\])/m.test(original));
+if (stage !== 'CC-07') writeFileSync(path.join(root, 'auth-config.original'), original, { flag: 'wx' });
+const mcpBlock = `\n[mcp_servers.meristem]\ncommand = ${JSON.stringify(process.execPath)}\nargs = [${JSON.stringify(mcp)}, "--pipe", ${JSON.stringify(pipeName)}]\n`;
+if (stage !== 'CC-07') writeFileSync(path.join(root, 'auth-config.test'), original + mcpBlock, { flag: 'wx' });
+save(path.join(root, 'session.json'), { stage, ...(windowsSandbox ? { windowsSandbox } : {}), root, cwd, agent, realExe, realSha256: sha(realExe), nodeExecutable: process.execPath, nodeSha256: sha(process.execPath), authHome, authConfig, codeExe, profile, extensions, settings, parentThreadId: parentThreadId!, parentPipe, pipeName, stateDirectory, planPath, planHash: sha(planPath), repositoryPath: git.repositoryPath, assignments: git.assignments, controlConfig, turnsSent: 0, approvedMaxTurns, phase: 'prepared_no_model_turns', mcpBlock });
+console.log(JSON.stringify({ session: path.join(root, 'session.json'), parentThreadId: parentThreadId!, planHash: sha(planPath), branchScope: git.branchScope, turnsSent: 0 }));

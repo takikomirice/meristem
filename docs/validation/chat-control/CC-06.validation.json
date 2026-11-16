@@ -1,0 +1,81 @@
+{
+  "planRevision": 2,
+  "testId": "CC-06-verification",
+  "capturedAt": "2026-11-16T07:31:10.783Z",
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "fixture",
+  "result": "passed",
+  "command": "npm run verify",
+  "exitCode": 0,
+  "tests": {
+    "nativeProtocol": 38,
+    "control": 170,
+    "terminal": 14,
+    "total": 222,
+    "failed": 0
+  },
+  "actorAliases": [],
+  "workerAttemptIds": [],
+  "terminalBindings": [],
+  "operationIds": [],
+  "eventSeqs": [],
+  "requestedAgent": null,
+  "observedSettings": {
+    "runtime": "fixtures_only",
+    "modelRequests": 0,
+    "githubTestRequests": 0
+  },
+  "processIdentities": [],
+  "stopEvidence": {
+    "coveredBy": [
+      "broker",
+      "workers",
+      "native-control",
+      "terminal",
+      "parallel"
+    ]
+  },
+  "artifactHashes": {
+    "extension/src/approval.ts": "20a61e0775866ffb646040568681c09ad5bb8106ec54b198b8447cbadc607bb3",
+    "extension/test/terminal.test.ts": "47a3623c0c0678128805295d773aa17558dd48832fb006f2c3ecae7fc50f936b",
+    "native/ControlProgram.cs": "2d54857ed6a836233a0c9972991fd29f109ee2b4bc1eb0bf410c43c002930e4e",
+    "src/broker.ts": "75efb850f3cfd11389c7b6dbcafef57ff2424d6b048b1c6a72b381de463f0a9e",
+    "src/cli.ts": "0ccfdf5489f0f6e673e93f21c47a27e804be4bf9910e771540c2ad52482c711f",
+    "src/contracts.ts": "b6217655418ddd0c4d205ad56a5c91195dff0bde769fd48143b88db038bbf09f",
+    "src/failures.ts": "94d599b5e57d5dd270bfc1970b9131b151bb4b965ceb620620612a6ef5fb9c71",
+    "src/git-evidence.ts": "18c7b2141077bb558f3505c62dce6ef00a47531d9cd243e60561ea7d61f74f9e",
+    "src/mcp.ts": "2f4743e6be53fac24dc6b4bc4713e6b1b730c9860a8320d11f0d10355bf64db7",
+    "src/plan.ts": "059e53759b81384c89763290a3e6e4944a4678867d0992788348f811db02c51f",
+    "src/requests.ts": "3493dd017c9efc7a2ee7984eacd0addf36432b994cefd7ae231694bfccf57ab4",
+    "src/store.ts": "53b0c6a645fd8654128aaa26a031a624d2e5c0b80a0567459364386f7a0c95c2",
+    "src/workers.ts": "98509484aa69cd2e73650ccffe2ad7eb5fe64395c0a6fae8e416903a341221de",
+    "test/control.test.ts": "7c122a077047b0ceccd3cdb12ce9e751c1147d519b446c5a30ac5bc8bf3ab8d1",
+    "test/fixtures/MockCodex.cs": "5c77db67a43cf1d4382d83e9fde63d4507c1c17310577baa4185d60201608a5b",
+    "test/fixtures/parallel-git.ts": "cba97bea20860ed5073b91e1227b84f930947f3493fe8ce0906cdf5b99e640d7",
+    "test/fixtures/plan-controller.ts": "b20f6af653a8ecc318527e6051ecac6296dc8dbe67677a2c80ecef63daf6a882",
+    "test/fixtures/serial-git.ts": "0b62a18336555677a394aad26a1fcecd2b2214ea6f243d9f120fe730e19051ae",
+    "test/git-evidence.test.ts": "bb7f1282d42c1ec8e88b6ac0dd343d6e9c5375fdd62ffdb8edd31b4e46d28924",
+    "test/live/cc02-prepare.ts": "d6c8bbca090ecaf9ef54dd063c742db34caef4bd3813153e28ceb5ca524ae4c3",
+    "test/live/cc02-session.ts": "45a5089f6b8512a7a167c4e6eeb22cd5dae7bee5343813545247d0661b9a0a9b",
+    "test/live/parallel-merge.ts": "273029e6500a535f125ac32f238e45df68375ee5b304bf5f1bfa150b051f75df",
+    "test/mcp-native.test.ts": "c985f955553db55fc30100849c38d4c6de3326cb31aaf3fb26261e24152f5aff",
+    "test/mcp.test.ts": "9dc1d4aba68dcd00e1e2afcabd104c0291a98e670013fd646f924967b2129fa3",
+    "test/parallel.test.ts": "3aa0d7df334bee12b31aa90dfbfeac2e9cef5ce593b0c321b63d3f5dbe3b2918",
+    "test/plan-control.test.ts": "722cb2673d30bd1e1a65d41027516974fd67b561087caa52499231212fe08015",
+    "test/plan.test.ts": "4e25f6c021a2ef7f52975d3ddec36db9810cb37cc71859977b5cbc8572cfc661",
+    "test/requests.test.ts": "9973ff960881b634bb72c60e9c0a2fa2437d13e25d088e3f365825bf26a83348",
+    "test/store.test.ts": "0531f0346723b90cc79676abc46d4a80e0a3efc9bf545150b2605c1679c00200",
+    "test/workers.test.ts": "40a7f1b763d99b1de4883ce465e9afeb9d3f74b30b4aff0a08ef155e0118ccef"
+  },
+  "logSha256": "d34076690323ac89c0daa43ce99f2e5f903bb0d5a210c597187c87dae355d7aa",
+  "limitations": [
+    "This records automated fixtures, not real Codex or UI acceptance.",
+    "Real-model local bare remote acceptance is recorded separately in CC-06.live.evidence.json; GitHub integration push was not run."
+  ],
+  "versions": {
+    "node": "v24.22.1",
+    "git": "git version 2.52.0.windows.1",
+    "platform": "win32",
+    "arch": "x64"
+  }
+}

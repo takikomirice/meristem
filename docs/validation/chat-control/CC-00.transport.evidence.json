@@ -1,0 +1,29 @@
+{
+  "publicationRedactions": ["local-account-path"],
+  "testId": "CC-00-transport-d40878d4-f309-406b-9bb4-9a5585e19ee3",
+  "capturedAt": "2026-11-14T16:32:41.568Z",
+  "node": "v24.22.1",
+  "realExecutable": "C:\\Users\\USER\\.vscode\\extensions\\openai.chatgpt-26.1111.21308-win32-x64\\bin\\windows-x86_64\\codex.exe",
+  "realVersion": "codex-cli 0.169.0-alpha.11.1",
+  "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+  "relaySha256": "3f4727e30888bec163a8dbc2d32583b175dbf9ab6a963460a67379c4256b08c2",
+  "kind": "real Codex; simulated UI client; no model generation",
+  "uiVerified": false,
+  "result": "passed",
+  "account": "unauthenticated",
+  "distinctRootIds": true,
+  "differentCwds": true,
+  "actualAcl": "D:P(D;;0x1f019f;;;NU)(A;;0x1f019f;;;SY)(A;;0x12019b;;;S-1-5-21-613363626-1649459864-722475183-1001)",
+  "initializeCapabilities": {
+    "experimentalApi": false
+  },
+  "serverVersion": "codex_vscode/0.169.0-alpha.11.1 (Windows 10.0.26300; x86_64) dumb (cc00_transport_probe; 0.0.0)",
+  "modelTurnsObserved": 0,
+  "limitations": [
+    "No VS Code UI",
+    "No inference, settings effectiveness, interruption, or caller metadata verified",
+    "No other-user login token available for access-denial trial"
+  ],
+  "exitCode": 0,
+  "exitObserved": true
+}

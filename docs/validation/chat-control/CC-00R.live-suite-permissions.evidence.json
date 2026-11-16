@@ -1,0 +1,46 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-live-suite-9e4ce2ae-0cd0-45bc-89f1-2dbfd5e32e0a",
+  "capturedAt": "2026-11-15T04:44:20.470Z",
+  "versions": {
+    "node": "v24.22.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "A",
+    "B",
+    "C",
+    "P",
+    "D"
+  ],
+  "workerAttemptIds": [
+    "A1",
+    "B1",
+    "C1"
+  ],
+  "terminalBindings": [
+    "A1",
+    "B1"
+  ],
+  "operationIds": [],
+  "eventSeqs": [],
+  "requestedAgent": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "maxAdditionalTurns": 6
+  },
+  "observedSettings": {},
+  "processIdentities": {},
+  "stopEvidence": {},
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "relay": "5f515f75dcb94f7cd78ca0291c7c1fd038bcea5d80e7d992e63dcea6da552934",
+    "host": "f18995041b5059fb4eff5d0c1f8a06193ee106a39f78a363720491c48654b444"
+  },
+  "result": "failed",
+  "limitations": [],
+  "checks": [],
+  "failure": "test auth home config must be empty; preserve existing settings",
+  "configRestored": false
+}

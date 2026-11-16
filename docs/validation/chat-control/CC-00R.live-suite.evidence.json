@@ -1,0 +1,114 @@
+{
+  "publicationRedactions": ["local-workspace-path"],
+  "planRevision": 2,
+  "testId": "CC-00R-live-suite-2497a1c1-aecf-4058-9c76-ff49f838da0f",
+  "capturedAt": "2026-11-15T04:33:23.599Z",
+  "versions": {
+    "node": "v24.22.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "A",
+    "B",
+    "C",
+    "P",
+    "D"
+  ],
+  "workerAttemptIds": [
+    "A1",
+    "B1",
+    "C1"
+  ],
+  "terminalBindings": [
+    "A1",
+    "B1"
+  ],
+  "operationIds": [
+    "A_first_metadata"
+  ],
+  "eventSeqs": [
+    6
+  ],
+  "requestedAgent": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "maxAdditionalTurns": 6
+  },
+  "observedSettings": {
+    "A": {
+      "returnedModel": "gpt-6-luna",
+      "returnedEffort": null,
+      "sandbox": {
+        "type": "readOnly",
+        "networkAccess": false
+      },
+      "approvalPolicy": "on-request",
+      "effectiveSettings": "not independently verified"
+    }
+  },
+  "processIdentities": {},
+  "stopEvidence": {},
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "relay": "c28b614a068b680cb21f422536fa4cf07b42cd6a03f2abe6af5654001cce11f4",
+    "host": "dc9efecdbeabd68f389835670721490a9a0bf84fe3429757de81ad86409c034a"
+  },
+  "result": "failed",
+  "limitations": [],
+  "checks": [
+    {
+      "check": "invalid_model_rejected_before_send",
+      "passed": true
+    },
+    {
+      "actor": "A",
+      "check": "busy_start_rejected",
+      "passed": true
+    },
+    {
+      "check": "real_mcp_metadata_correlates_A",
+      "observedCalls": 1,
+      "matched": true,
+      "keys": [
+        "callId",
+        "itemId",
+        "sessionId",
+        "threadId",
+        "windowId",
+        "x-codex-turn-metadata",
+        "x-codex-turn-metadata.auto_review_enabled",
+        "x-codex-turn-metadata.codex_version",
+        "x-codex-turn-metadata.model",
+        "x-codex-turn-metadata.node_repl_auto_review_required",
+        "x-codex-turn-metadata.node_repl_disabled",
+        "x-codex-turn-metadata.reasoning_effort",
+        "x-codex-turn-metadata.sandbox",
+        "x-codex-turn-metadata.sandbox_mode",
+        "x-codex-turn-metadata.session_id",
+        "x-codex-turn-metadata.thread_id",
+        "x-codex-turn-metadata.turn_id",
+        "x-codex-turn-metadata.turn_started_at_unix_ms",
+        "x-codex-turn-metadata.workspaces",
+        "x-codex-turn-metadata.workspaces.C:\\work\\meristem",
+        "x-codex-turn-metadata.workspaces.C:\\work\\meristem.associated_remote_urls",
+        "x-codex-turn-metadata.workspaces.C:\\work\\meristem.associated_remote_urls.origin",
+        "x-codex-turn-metadata.workspaces.C:\\work\\meristem.has_changes",
+        "x-codex-turn-metadata.workspaces.C:\\work\\meristem.latest_git_commit_hash"
+      ]
+    },
+    {
+      "actor": "A",
+      "check": "busy_start_rejected",
+      "passed": true
+    }
+  ],
+  "failure": "bounded fixture wait expired",
+  "configRestored": true,
+  "realMcpCorrelation": {
+    "threadMatches": true,
+    "publicIds": "aliases only",
+    "callerArgumentsAccepted": false,
+    "turnMatches": true
+  }
+}

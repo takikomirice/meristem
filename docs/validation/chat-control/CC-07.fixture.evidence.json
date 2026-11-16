@@ -1,0 +1,243 @@
+{
+  "planRevision": 2,
+  "testId": "CC-07-acceptance",
+  "capturedAt": "2026-11-16T07:59:33.855Z",
+  "versions": {
+    "node": "v24.22.1",
+    "git": "git version 2.52.0.windows.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "fixture",
+  "result": "passed",
+  "actorAliases": [
+    "P",
+    "A",
+    "A-correction",
+    "B"
+  ],
+  "workerAttemptIds": [
+    "A-1",
+    "A-2",
+    "B-1"
+  ],
+  "terminalBindings": [],
+  "operationIds": [
+    "recorded-in-private-fixture-db"
+  ],
+  "eventSeqs": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12
+  ],
+  "requestedAgent": {
+    "model": "mock",
+    "effort": "low"
+  },
+  "observedSettings": {
+    "runtime": "deterministic",
+    "gitRemote": "local_bare"
+  },
+  "processIdentities": [],
+  "stopEvidence": {
+    "kind": "fixture",
+    "attemptsCompleted": true
+  },
+  "artifactHashes": {
+    "a.txt": "3def73f15b56a47bba6777da129db988df316fa2e8b10fb5a005442349585c43",
+    "b.txt": "249215fed826e1cff9368c2c7490760a16f7bd49f875d39a9f23eaf1505d076d"
+  },
+  "candidateShas": [
+    "6a297489e8960e36f50c55969d49a1131882836f",
+    "9ffdf065f0dbc3c1a8beb31ec33c20bcb9c95a91",
+    "b6b3f4749b05ed8973478b59b34e8f655853312b"
+  ],
+  "integrationShas": [
+    "9ffdf065f0dbc3c1a8beb31ec33c20bcb9c95a91",
+    "b6b3f4749b05ed8973478b59b34e8f655853312b"
+  ],
+  "assertions": {
+    "dependencyFence": true,
+    "wrongWorkerTaskRejected": true,
+    "selfAssertionRejected": true,
+    "missingIntegrationChecksRejected": true,
+    "stoppedLateReportDoesNotResume": true,
+    "restartDoesNotResurrectWorker": true
+  },
+  "limitations": [
+    "Deterministic runtime and local bare remote only.",
+    "Human approval, skill/subagent compatibility, real VS Code and GitHub need separate observations."
+  ],
+  "scenarios": {
+    "serial": {
+      "planRevision": 2,
+      "testId": "CC-05-serial-git",
+      "capturedAt": "2026-11-16T07:59:33.855Z",
+      "versions": {
+        "node": "v24.22.1",
+        "git": "git version 2.52.0.windows.1"
+      },
+      "route": "extension_parent_cli_workers",
+      "evidence_kind": "fixture",
+      "result": "passed",
+      "actorAliases": [
+        "P",
+        "A",
+        "A-correction",
+        "B"
+      ],
+      "workerAttemptIds": [
+        "A-1",
+        "A-2",
+        "B-1"
+      ],
+      "terminalBindings": [],
+      "operationIds": [
+        "recorded-in-private-fixture-db"
+      ],
+      "eventSeqs": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "requestedAgent": {
+        "model": "mock",
+        "effort": "low"
+      },
+      "observedSettings": {
+        "runtime": "deterministic",
+        "gitRemote": "local_bare"
+      },
+      "processIdentities": [],
+      "stopEvidence": {
+        "kind": "fixture",
+        "attemptsCompleted": true
+      },
+      "artifactHashes": {
+        "a.txt": "3def73f15b56a47bba6777da129db988df316fa2e8b10fb5a005442349585c43",
+        "b.txt": "249215fed826e1cff9368c2c7490760a16f7bd49f875d39a9f23eaf1505d076d"
+      },
+      "candidateShas": [
+        "6a297489e8960e36f50c55969d49a1131882836f",
+        "9ffdf065f0dbc3c1a8beb31ec33c20bcb9c95a91",
+        "b6b3f4749b05ed8973478b59b34e8f655853312b"
+      ],
+      "integrationShas": [
+        "9ffdf065f0dbc3c1a8beb31ec33c20bcb9c95a91",
+        "b6b3f4749b05ed8973478b59b34e8f655853312b"
+      ],
+      "assertions": {
+        "sameHistoryNewAttempt": true,
+        "newHandoffHistory": true,
+        "dependencyBaseIncludesIntegration": true,
+        "dirtySourcePreserved": true,
+        "progressPreservesProse": true
+      },
+      "limitations": [
+        "Runtime lifecycle/identity is a deterministic fixture; not real Codex or VS Code acceptance.",
+        "Local bare remote only; no GitHub acceptance.",
+        "CC-06 parallel dispatch and CC-07 installation excluded."
+      ]
+    },
+    "parallel": {
+      "planRevision": 2,
+      "testId": "CC-06-parallel-merge",
+      "capturedAt": "2026-11-16T08:02:06.358Z",
+      "versions": {
+        "node": "v24.22.1",
+        "git": "git version 2.52.0.windows.1"
+      },
+      "route": "extension_parent_cli_workers",
+      "evidence_kind": "fixture",
+      "result": "passed",
+      "actorAliases": [
+        "P",
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "workerAttemptIds": [
+        "A-1",
+        "B-1",
+        "C-1",
+        "D-1"
+      ],
+      "terminalBindings": [],
+      "operationIds": [
+        "private-fixture-db"
+      ],
+      "eventSeqs": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "requestedAgent": {
+        "model": "mock",
+        "effort": "low"
+      },
+      "observedSettings": {
+        "runtime": "deterministic",
+        "gitRemote": "local_bare"
+      },
+      "processIdentities": [],
+      "stopEvidence": {
+        "attemptsCompleted": true
+      },
+      "artifactHashes": {
+        "view.mjs": "d197194ac0bf54e1c55eaa13fa35f1fcc6a91d7020b45b04a3f5621e3bfbbe2b"
+      },
+      "candidateShas": [
+        "579452b7ca6f17b493966f8a774d09b54e5075ed",
+        "72b8644332a1dabacf1a8adc5d207e054d2ebd64",
+        "9ee3c86df0082e13040b06f2e2986429f2e5df94",
+        "745d2fa5d85ccd4a79d50a1b084e839f94a2f8ad"
+      ],
+      "integrationShas": [
+        "04f9810a6bcf007496aefb22b600e71a6a01818e",
+        "afb2fd769196132b985f8c9df28ac261a55aacb5"
+      ],
+      "assertions": {
+        "cleanMerge": true,
+        "semanticFailureBeforeResolution": true,
+        "checksBoundToResult": true,
+        "dirtySourcePreserved": true
+      },
+      "limitations": [
+        "Runtime is deterministic; not real Codex/VS Code acceptance.",
+        "No GitHub push.",
+        "Tab closure is covered separately by native fixture and live UI observations."
+      ]
+    }
+  }
+}

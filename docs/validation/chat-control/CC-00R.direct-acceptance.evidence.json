@@ -1,0 +1,167 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-direct-acceptance-2026-11-15",
+  "capturedAt": "2026-11-15T06:42:03.000Z",
+  "result": "passed",
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "combined_real_trials",
+  "versions": {
+    "codex": "codex-cli 0.169.0-alpha.11.1",
+    "node": "v24.22.1",
+    "vscode": "1.146.0"
+  },
+  "actorAliases": [
+    "P",
+    "A",
+    "B",
+    "C",
+    "D",
+    "E"
+  ],
+  "workerAttemptIds": [
+    "A1",
+    "B1",
+    "C1",
+    "E1"
+  ],
+  "terminalBindings": [
+    "A1",
+    "C1",
+    "E1"
+  ],
+  "requestedAgent": {
+    "model": "gpt-6-luna",
+    "effort": "low"
+  },
+  "modelBudget": {
+    "authorizedAdditional": 12,
+    "used": 12,
+    "remaining": 0,
+    "completionObserved": 11,
+    "completionUnknown": 1,
+    "noAutomaticReplay": true
+  },
+  "observedSettings": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "sandbox": "workspaceWrite",
+    "networkAccess": false,
+    "approvalPolicy": "on-request",
+    "independentEffectiveModelVerified": false
+  },
+  "processIdentities": {
+    "parentMcpInOwnedJob": true,
+    "parentThreadAndTurnMatched": true,
+    "childMcpInOwnedJob": true,
+    "childThreadAndTurnMatched": true,
+    "rawIdsPublished": false
+  },
+  "checks": [
+    {
+      "check": "parent_MCP_job_thread_turn_correlation",
+      "passed": true
+    },
+    {
+      "check": "child_same_history_recall",
+      "passed": true
+    },
+    {
+      "check": "A_stop_spares_P_B_D",
+      "passed": true
+    },
+    {
+      "check": "hidden_panel_keeps_A_B_markers_running",
+      "passed": true
+    },
+    {
+      "check": "terminal_input_paste_did_not_dispatch",
+      "passed": true
+    },
+    {
+      "check": "terminal_cwd_and_requested_settings_visible",
+      "passed": true
+    }
+  ],
+  "stopEvidence": {
+    "observationMs": 2000,
+    "brokerEOF": {
+      "reason": "broker EOF",
+      "markersStable": true,
+      "processesAbsent": true
+    },
+    "A": {
+      "reason": "real integrated terminal close",
+      "markersExisted": true,
+      "markersStable": true,
+      "processesAbsent": true
+    },
+    "B": {
+      "reason": "host force termination",
+      "markersExisted": true,
+      "markersStable": true,
+      "processesAbsent": true
+    },
+    "C": {
+      "reason": "real terminal stop command",
+      "markersExisted": true,
+      "markersStable": true,
+      "processesAbsent": true
+    },
+    "E": {
+      "reason": "normal VS Code window exit",
+      "markersExisted": true,
+      "markersStable": true,
+      "processesAbsent": true
+    }
+  },
+  "cleanup": {
+    "configRestored": true,
+    "profileSettingsRestored": true,
+    "ownedHostsAbsent": true,
+    "profileProcessCountBeforeClose": 25,
+    "ownedProfileProcessesAbsent": true,
+    "remainingCount": 0
+  },
+  "artifactHashes": {
+    "realModelStopSuite": {
+      "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+      "host": "be856b498605a31974f0ca79505a87ba78b62fbc5dd01edea8074343b5620758",
+      "relay": "37ca2e1e4105e71b2cfdc49c96104ef22a4e546858023aa86adb9147cfa4b398"
+    },
+    "brokerEOFTrial": {
+      "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+      "host": "22651cf194d0cf7508660a17f5d4f30574540b377d4b350e8a1b698188ee9ed5"
+    },
+    "finalNoInferencePreflight": {
+      "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+      "host": "ad2c913cf98d8dd168406090ee669ecd416975e5ea832f7d34f819d17da6a6b8"
+    }
+  },
+  "finalNoInferencePreflight": {
+    "result": "passed",
+    "turnsSent": 0,
+    "authenticated": true,
+    "jobAssigned": true,
+    "hostAbsent": true
+  },
+  "parentWakeEvidence": "CC-00R.parent-wake.evidence.json",
+  "privateSourceHashes": {
+    "direct-suite-05.json": "e32106a7a44287bca9eeebab9d60d823bf3efe9903afd37d5bfaee6887073603",
+    "direct-shell-01.json": "215803c09500d090c560bc150092a893a01325b9fd7efeea7d5a58cc8c9290b3",
+    "direct-suite-04.json": "3234f7a8bf0a26dfbf823a4492e4fce20ddd16a35cef96fccd75499273fb0558",
+    "direct-suite-03/parent-final-status.json": "3632f89ca02284bed03a82c00755f456037d56686ce00fc1933047305128fb01",
+    "direct-suite-03/caller-private.jsonl": "c03d8eb0e2b2123374c7992fb45d66d740431863df88add977fdbf4367b505cd",
+    "direct-suite-05/hidden-panel.json": "92896362bfcae4d9509c1eeede894ecc03bb2a4740a68e404109366273962c85",
+    "direct-suite-05/ui-observations.json": "b0440985bc45534141d7d3a4d0151d458e1b2d4e4dfe04c6654c2f7422298578",
+    "direct-suite-05/profile-cleanup.json": "f4066869ecaf9d3c0f6d7882357b9649c84e26a152884b4b58587e4a7cccb51e",
+    "final-reviewed-preflight.json": "360a83bce68b6f312abee3466c4d158efc1ec097569959381726eb52b72b3e4e"
+  },
+  "limitations": [
+    "This matrix combines separate disposable trials; suite05 reuses verified parent metadata and does not repeat the earlier parent wake.",
+    "Suite02 and suite03 each observed two UI starts; all count against the allowance. One suite02 completion remains unknown; it was not replayed.",
+    "Suite04 failed a conflicting shell/recall prompt; only its confirmed MCP identity check is used. Suite05 separately passed exact history recall.",
+    "Post-live native changes split resume from Job assignment, fix event pagination, isolate display disconnects and bound stop acknowledgement cleanup; final binary has fixture coverage and a real zero-turn preflight, not a repeated model-stop suite.",
+    "Requested and returned model settings do not independently verify backend effective settings.",
+    "Cross-user-token ACL rejection and CC-01+ persistent orchestration are outside this acceptance."
+  ]
+}

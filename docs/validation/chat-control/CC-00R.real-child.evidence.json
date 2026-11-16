@@ -1,0 +1,53 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-real-child-2aa4d545-b7f1-466e-a016-b0d36c2d5e5a",
+  "capturedAt": "2026-11-15T03:21:50.487Z",
+  "versions": {
+    "node": "v24.22.1",
+    "codex": "codex-cli 0.169.0-alpha.11.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_codex",
+  "actorAliases": [
+    "worker_A"
+  ],
+  "workerAttemptIds": [
+    "attempt_A"
+  ],
+  "terminalBindings": [
+    "ownerPipe_A"
+  ],
+  "operationIds": [
+    "initialize_A",
+    "thread_start_A",
+    "stop_A"
+  ],
+  "eventSeqs": [],
+  "requestedAgent": "no inference requested",
+  "observedSettings": {
+    "model": "not requested",
+    "effort": "not requested",
+    "authHome": "isolated empty fixture home"
+  },
+  "processIdentities": {
+    "owner": "WorkerHost fixture runner",
+    "worker": "CodexRelay.exe with verified Codex executable hash"
+  },
+  "stopEvidence": {
+    "threadCreated": true,
+    "workerStop": true,
+    "workerHostExitCode": 0
+  },
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "relay": "a0c34d1707a8e227d39082f5d44555ddfc13528e3843179fa4c4f1210666b1bd",
+    "host": "5bc413b4bf0a2f5f120c7532536da40758359a8100e8a14b6fca76eb8aed278a"
+  },
+  "result": "passed",
+  "limitations": [
+    "No model turn was sent",
+    "No VS Code window or terminal adapter was exercised",
+    "Isolated CODEX_HOME intentionally had no account credentials"
+  ],
+  "detail": "{\"account\":\"unauthenticated\",\"modelCount\":9,\"rootThread\":true,\"cwdMatched\":true,\"childJobAssigned\":true}"
+}

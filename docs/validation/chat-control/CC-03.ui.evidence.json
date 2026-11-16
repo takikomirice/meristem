@@ -1,0 +1,448 @@
+{
+  "stage": "CC-03",
+  "recordedAt": "2026-11-15T15:47:02.483Z",
+  "scope": "Dedicated ChatGPT-authenticated Luna/low fixtures; separate trials, not one combined run.",
+  "result": "accepted_with_documented_limits",
+  "budget": {
+    "previousConsumed": 20,
+    "additionalReservedOrSent": 28,
+    "cumulativeConsumed": 48,
+    "authorization": "User allowed Luna trials until completion; per-trial bound remains 8; unknown/rejected reservations remain consumed.",
+    "trialConsumptions": {
+      "10": 1,
+      "11": 3,
+      "12": 8,
+      "06": 2,
+      "07": 3,
+      "08": 8,
+      "09": 3
+    }
+  },
+  "conditions": {
+    "active": {
+      "trial": "acceptance-08",
+      "candidateObservedWhileSeedParentActiveAt": "2026-11-15T15:03:46.554Z",
+      "seedParentTurnId": "01a1dfbb-bc2e-7f00-ba18-6fbd023a4683",
+      "seedCompletionSeq": 14,
+      "nextWakeAckSeq": 15
+    },
+    "idle": {
+      "trials": [
+        "acceptance-08",
+        "acceptance-12"
+      ],
+      "result": "new parent turns after saved report and normal cleanup; fresh B and final finish-run"
+    },
+    "hidden": {
+      "trial": "acceptance-12",
+      "definition": "Parent editor tab remains open but another file is active in the same editor group",
+      "hiddenBeforeSeedTurnAt": "2026-11-15T15:41:01.313Z",
+      "remainedHiddenThroughFinalParentCompletionAt": "2026-11-15T15:44:04.350Z",
+      "result": "passed"
+    },
+    "parentPanelClosed": {
+      "trial": "acceptance-08",
+      "closedAt": "2026-11-15T15:06:06.838Z",
+      "remainedClosedThroughFinalParentCompletionAt": "2026-11-15T15:06:32.236Z",
+      "windowStayedOpen": true,
+      "result": "passed"
+    },
+    "vscodeExit": {
+      "trial": "acceptance-11",
+      "action": "Human Alt+F4 on dedicated entire window",
+      "workerBeforeExit": "Real A App Server alive and idle, before model execution; send reservation was rejected for stale revision",
+      "recordedOwnedProcessCount": 6,
+      "absentAt": "2026-11-15T15:38:21.6146536Z",
+      "stillAbsentAt": "2026-11-15T15:42:52.6131888Z",
+      "dedicatedProfileProcesses": 0,
+      "parentAndBrokerDisconnected": true,
+      "recordedRun": {
+        "id": "cc03",
+        "state": "active",
+        "revision": 1,
+        "stop_generation": 0
+      },
+      "offlineState": "needs_reconcile",
+      "offlineStop": "unknown",
+      "result": "owned processes absent; persistence requires reconciliation"
+    },
+    "failedA": {
+      "trial": "acceptance-04",
+      "evidence": "CC-03.failed-A.evidence.json",
+      "result": "reportless A completion woke parent; B not created; explicitly stopped"
+    }
+  },
+  "successfulTrials": [
+    {
+      "trial": "acceptance-08",
+      "parentThreadId": "01a1dfba-090f-7f40-a026-ba1d261bad32",
+      "consumed": 8,
+      "perTrialLimit": 8,
+      "run": {
+        "id": "cc03",
+        "state": "stopped",
+        "revision": 8,
+        "stop_generation": 1
+      },
+      "workers": [
+        {
+          "attemptId": "37c9ae62-5c76-421f-93a9-6429e923919a",
+          "state": "completed",
+          "worker": {
+            "ownerId": "4f354b90-a60b-442f-b4c3-db370a064ecd",
+            "ownerEpoch": "a0561830-c84b-422c-84d2-8d5dfa41bef9",
+            "threadId": "01a1dfbc-0384-7b33-8110-eab89a1047bd",
+            "workerId": "A",
+            "attemptId": "37c9ae62-5c76-421f-93a9-6429e923919a"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "4f354b90-a60b-442f-b4c3-db370a064ecd",
+              "ownerEpoch": "a0561830-c84b-422c-84d2-8d5dfa41bef9",
+              "threadId": "01a1dfbc-0384-7b33-8110-eab89a1047bd",
+              "workerId": "A",
+              "attemptId": "37c9ae62-5c76-421f-93a9-6429e923919a"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        },
+        {
+          "attemptId": "6a9b897b-8f4c-4c63-9981-1dc944fe83f3",
+          "state": "completed",
+          "worker": {
+            "ownerId": "a8f18e6d-28c5-4023-91d9-c02519a38b33",
+            "ownerEpoch": "a29728b1-6097-41c1-ba4f-e6225244bfd6",
+            "threadId": "01a1dfbd-3986-7771-bcb2-3d0e0395d587",
+            "workerId": "B",
+            "attemptId": "6a9b897b-8f4c-4c63-9981-1dc944fe83f3"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "a8f18e6d-28c5-4023-91d9-c02519a38b33",
+              "ownerEpoch": "a29728b1-6097-41c1-ba4f-e6225244bfd6",
+              "threadId": "01a1dfbd-3986-7771-bcb2-3d0e0395d587",
+              "workerId": "B",
+              "attemptId": "6a9b897b-8f4c-4c63-9981-1dc944fe83f3"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        }
+      ],
+      "reports": [
+        {
+          "attemptId": "37c9ae62-5c76-421f-93a9-6429e923919a",
+          "turnId": "01a1dfbc-3a8c-7571-ac61-5176bc775040",
+          "summary": "A_CC03_OK"
+        },
+        {
+          "attemptId": "6a9b897b-8f4c-4c63-9981-1dc944fe83f3",
+          "turnId": "01a1dfbd-709c-7280-8666-00e72621614f",
+          "summary": "B_CC03_OK"
+        }
+      ],
+      "wakes": [
+        {
+          "id": "c79dc13f-4226-45a0-9b11-516f37fc7447",
+          "state": "acked",
+          "source_seq": 3,
+          "stop_generation": 0,
+          "turn_id": "01a1dfbc-b8a2-72a3-8f1c-b91be6309ed2"
+        },
+        {
+          "id": "a98980d9-bd2d-4ac5-9908-141a82fa6fab",
+          "state": "acked",
+          "source_seq": 7,
+          "stop_generation": 0,
+          "turn_id": "01a1dfbd-0b93-7392-ad3f-c66fd53a9f5d"
+        },
+        {
+          "id": "b1a0cfc2-b224-4348-a8aa-33805a0c008f",
+          "state": "acked",
+          "source_seq": 10,
+          "stop_generation": 0,
+          "turn_id": "01a1dfbd-9ca1-7f93-b95f-862f5688c905"
+        },
+        {
+          "id": "5c0bef77-9657-47d9-a65f-e268f0999785",
+          "state": "acked",
+          "source_seq": 14,
+          "stop_generation": 0,
+          "turn_id": "01a1dfbe-be89-7623-8ab8-386eedd4d9b2"
+        }
+      ],
+      "cursor": {
+        "run_id": "cc03",
+        "scanned_seq": 15,
+        "pending_seq": 14,
+        "delivered_seq": 14,
+        "read_seq": 14
+      },
+      "operations": [
+        {
+          "id": "create-A",
+          "state": "settled"
+        },
+        {
+          "id": "send-A",
+          "state": "acked"
+        },
+        {
+          "id": "report-A",
+          "state": "settled"
+        },
+        {
+          "id": "create-B",
+          "state": "settled"
+        },
+        {
+          "id": "send-B",
+          "state": "acked"
+        },
+        {
+          "id": "report-B",
+          "state": "settled"
+        },
+        {
+          "id": "finish-run",
+          "state": "settled"
+        }
+      ],
+      "finalParentTurnId": "01a1dfbe-be89-7623-8ab8-386eedd4d9b2",
+      "finalParentCompletedAt": "2026-11-15T15:06:32.236Z",
+      "configurationRestored": true,
+      "liveArtifactSha256": {
+        "parentRelay": "7632417957f99af48e4b314364b1245b5619caab753a6bd24dc3b144066e7124",
+        "control": "e305b08b08e438428824edb97627a8590ea47f13160fc55a4747e47652ee2c7a",
+        "workerHost": "ef30b45748eef236fddf420fea82c02cf8bb4703d544f58a623d1a7d7546ebdf",
+        "realCodex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+        "brokerEntry": "3e7d664c7984cbb81900e427b106546fc221c0a62bf0fac1e6479d491e784c02",
+        "mcpEntry": "e4baaf149793ad4d2a5bb90832f6dff4703b0868337dbcb081480b46013d8598"
+      },
+      "rawEvidenceSha256": {
+        "observations": "4b209a5f6777dc7671e9919e1871ddef64a38d681b12999625012cc593bf189b",
+        "parentView": "7f917cf92e8c4faa5a478f4121a79c6925b0e98bc7d06cf27899e101f0f7e4d3",
+        "extracted": "843d979f0f061edcc64e7a684d6188f202fe3f6820f03478c8fcee0f7bb24f99"
+      }
+    },
+    {
+      "trial": "acceptance-12",
+      "parentThreadId": "01a1dfdc-3ebd-7f72-8aa7-084c2b51d864",
+      "consumed": 8,
+      "perTrialLimit": 8,
+      "run": {
+        "id": "cc03",
+        "state": "stopped",
+        "revision": 8,
+        "stop_generation": 1
+      },
+      "workers": [
+        {
+          "attemptId": "a2da06b7-f2c3-4d71-890b-a520a90414cf",
+          "state": "completed",
+          "worker": {
+            "ownerId": "27705910-5047-41f3-a88b-324990160031",
+            "ownerEpoch": "d1282b56-1ff5-47a8-8990-efbff6cea3e2",
+            "threadId": "01a1dfde-e531-75e2-9c83-ebcaed226806",
+            "workerId": "A",
+            "attemptId": "a2da06b7-f2c3-4d71-890b-a520a90414cf"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "27705910-5047-41f3-a88b-324990160031",
+              "ownerEpoch": "d1282b56-1ff5-47a8-8990-efbff6cea3e2",
+              "threadId": "01a1dfde-e531-75e2-9c83-ebcaed226806",
+              "workerId": "A",
+              "attemptId": "a2da06b7-f2c3-4d71-890b-a520a90414cf"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        },
+        {
+          "attemptId": "3bbf428d-e31c-40f4-9f99-6a27dfc98c1c",
+          "state": "completed",
+          "worker": {
+            "ownerId": "26b0cf54-12ad-4c5a-a2e6-793b88e97339",
+            "ownerEpoch": "cf85c52f-e93d-4777-a33d-1b5b9b770fb2",
+            "threadId": "01a1dfe0-4dcb-77a2-90f7-4c877ee957b2",
+            "workerId": "B",
+            "attemptId": "3bbf428d-e31c-40f4-9f99-6a27dfc98c1c"
+          },
+          "stop": {
+            "worker": {
+              "ownerId": "26b0cf54-12ad-4c5a-a2e6-793b88e97339",
+              "ownerEpoch": "cf85c52f-e93d-4777-a33d-1b5b9b770fb2",
+              "threadId": "01a1dfe0-4dcb-77a2-90f7-4c877ee957b2",
+              "workerId": "B",
+              "attemptId": "3bbf428d-e31c-40f4-9f99-6a27dfc98c1c"
+            },
+            "state": "stopped",
+            "evidenceRefs": [
+              "native_job_empty",
+              "native_creation_identity"
+            ]
+          }
+        }
+      ],
+      "reports": [
+        {
+          "attemptId": "a2da06b7-f2c3-4d71-890b-a520a90414cf",
+          "turnId": "01a1dfdf-29a9-7970-9690-3b778124d219",
+          "summary": "A_CC03_OK"
+        },
+        {
+          "attemptId": "3bbf428d-e31c-40f4-9f99-6a27dfc98c1c",
+          "turnId": "01a1dfe0-8d2e-7123-aa03-7534d9f7ecb9",
+          "summary": "B_CC03_OK"
+        }
+      ],
+      "wakes": [
+        {
+          "id": "6cd6ec03-c327-484e-a449-d7a9bbefd91b",
+          "state": "acked",
+          "source_seq": 3,
+          "stop_generation": 0,
+          "turn_id": "01a1dfdf-4d8b-7921-9d1d-010672abb7bb"
+        },
+        {
+          "id": "cd6ca84f-8b82-4f0e-948e-9c84218dd08f",
+          "state": "acked",
+          "source_seq": 7,
+          "stop_generation": 0,
+          "turn_id": "01a1dfe0-272c-7861-933e-c157940efada"
+        },
+        {
+          "id": "0e1a199e-2823-43d8-888c-d82ee30ea42e",
+          "state": "acked",
+          "source_seq": 10,
+          "stop_generation": 0,
+          "turn_id": "01a1dfe0-b11f-7fd3-a6b7-be4093283ed8"
+        },
+        {
+          "id": "2db6195a-ce32-4ce9-87e0-8f9deba9feb8",
+          "state": "acked",
+          "source_seq": 14,
+          "stop_generation": 0,
+          "turn_id": "01a1dfe1-19aa-7581-91d7-bec4078880a3"
+        }
+      ],
+      "cursor": {
+        "run_id": "cc03",
+        "scanned_seq": 15,
+        "pending_seq": 14,
+        "delivered_seq": 14,
+        "read_seq": 14
+      },
+      "operations": [
+        {
+          "id": "create-A",
+          "state": "settled"
+        },
+        {
+          "id": "send-A",
+          "state": "acked"
+        },
+        {
+          "id": "report-A",
+          "state": "settled"
+        },
+        {
+          "id": "create-B",
+          "state": "settled"
+        },
+        {
+          "id": "send-B",
+          "state": "acked"
+        },
+        {
+          "id": "report-B",
+          "state": "settled"
+        },
+        {
+          "id": "finish-run",
+          "state": "settled"
+        }
+      ],
+      "finalParentTurnId": "01a1dfe1-19aa-7581-91d7-bec4078880a3",
+      "finalParentCompletedAt": "2026-11-15T15:44:04.350Z",
+      "configurationRestored": true,
+      "liveArtifactSha256": {
+        "parentRelay": "b83903815099d426f3789bb4642cafe9dc0f357203ab24290199e400b472b6e8",
+        "control": "485151bd602492dbe9dedbcb6957b24632b6bbe68db299bdad426167cecc7897",
+        "workerHost": "3c4a94fc12321e56addb276639c538c95ff22fe62d57aa21f2c2fc7e4224b158",
+        "realCodex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+        "brokerEntry": "3e7d664c7984cbb81900e427b106546fc221c0a62bf0fac1e6479d491e784c02",
+        "mcpEntry": "e4baaf149793ad4d2a5bb90832f6dff4703b0868337dbcb081480b46013d8598"
+      },
+      "rawEvidenceSha256": {
+        "observations": "43d9f7ac310aed92c056e42c47c21d83caf5cdaca62efabc936591db8984bda1",
+        "parentView": "417945353cb9e4fd60e35466db86bd3d218befa4abb25932a9855cd9593b3da3",
+        "extracted": "cd3d13e4ca5f3aa4d39db601c1ddece0c452b7fa56da579aa6a4bd71ca95c90f"
+      }
+    }
+  ],
+  "failureHistory": [
+    {
+      "trial": "06",
+      "reason": "creation failed before A model start; original cause unknown"
+    },
+    {
+      "trial": "07",
+      "reason": "automatic stop after A dispatch; user reported no stop action; original cause unknown"
+    },
+    {
+      "trial": "09",
+      "reason": "A completed while parent hidden but wake stayed deferred, including after parent redisplay; cause not captured; not reproduced in 12"
+    },
+    {
+      "trial": "10",
+      "reason": "early control process exit, no binding or workers; original cause unknown"
+    },
+    {
+      "trial": "11",
+      "reason": "parent reused pre-create revision for send; explicit rejection retained and reservation consumed; no retry"
+    }
+  ],
+  "validation": {
+    "command": "npm run verify",
+    "exitCode": 0,
+    "nativeTests": 38,
+    "controlTests": 93,
+    "terminalTests": 14,
+    "total": 145,
+    "failed": 0,
+    "skipped": 0,
+    "logSha256": "30b60f0ffb6ccf69bb559a3005a04a9f9b920612700ab187c8405be0d0d9c492"
+  },
+  "postLiveChange": "Only guard optional creation-diagnostic persistence so a write failure cannot prevent existing stop/cleanup. Regression failed before fix and passes in final suite. This failure path was not rerun with real models.",
+  "sourceSha256": {
+    "src/mcp.ts": "94acf8a611c96eb45948fa2effdae2bac1bf977b2e475dab98c6e354bf06262b",
+    "native/Program.cs": "1f5f62ade66debab0b6e50d1ab179519e3db705df3ffecc7b32230303ef078ba",
+    "native/StdioRelay.cs": "0c10c540904117258845ddd1c7e416684e7bb930ef83f29e80355b4e0e85e095",
+    "test/control.test.ts": "87cdb334d8c17bec47a1d7b1eb9d714f67a451b504e7c463f87b47a22479270b",
+    "test/mcp.test.ts": "91558f244a3d556910c9c80f546cea9666b2269cb6eac2f15333ccbb19923fff",
+    "test/relay-spike.test.mjs": "ab29f2b1a002fdc294e0098acec667f4720f9b2526554fe00de7bbb09771f673",
+    "test/parent-view.test.mjs": "b035123415b1046983f5fbd12338c9fedd3a79042d72605345e4763fa7bde578",
+    "test/fixtures/parent-view-extension/index.cjs": "8e51dd4d59b73fead659ed10f92c628f96e87b3261b7bf0f50374f20a6372ff2",
+    "test/live/cc02-session.ts": "7ac467c290796c7e6406947cfe739cfafa3ed493e51f7c647c20f537eb4d28aa",
+    "test/live/observe-parent.mjs": "46b28b51171929c237c2ba1029b28fc52c509fcc6178f8d6dacb6129a2a56979"
+  },
+  "limitations": [
+    "Formal tool approvals, RunPermit confirmation and display/exit actions were human-operated. No additional orchestration prompt from A completion through B verification.",
+    "OS minimization/occlusion is not tested.",
+    "VS Code exit here used an idle real worker, not an actively generating model or running shell. Last DB state is not proof of normal cleanup.",
+    "Failures in 06/07/09/10 remain unexplained; this is fixture acceptance, not an availability guarantee or ordinary installation.",
+    "Read-only SQLite transaction lock conflict reproduced separately; not definitive attribution for 06/07."
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "planRevision": 2,
+  "testId": "CC-00R-parent-UI-wake-after-official-setup-2026-11-15",
+  "capturedAt": "2026-11-15T06:01:04.4599052Z",
+  "versions": {
+    "vscode": "1.146.0",
+    "node": "v24.22.1",
+    "codex": "0.169.0-alpha.11.1"
+  },
+  "route": "extension_parent_cli_workers",
+  "evidence_kind": "real_vscode",
+  "actorAliases": [
+    "P_visible",
+    "P_additional_UI_root"
+  ],
+  "workerAttemptIds": [
+    "P_UI_first",
+    "P_UI_additional_observed",
+    "P_relay_resume"
+  ],
+  "terminalBindings": [],
+  "operationIds": [
+    "official_windows_setup",
+    "parent_UI_send",
+    "parent_first_complete",
+    "stored_child_result_read",
+    "parent_relay_wake",
+    "parent_UI_wake_reply",
+    "profile_close_restore"
+  ],
+  "eventSeqs": [
+    13,
+    15
+  ],
+  "requestedAgent": {
+    "additionalLimit": 6,
+    "model": "gpt-6-luna",
+    "firstUIPowerLabel": "Light",
+    "wakeEffort": "low"
+  },
+  "observedSettings": {
+    "officialSetupCompleted": true,
+    "effectiveModelEffortIndependentlyVerified": false,
+    "parentCompletedTurns": 3,
+    "setupUserReportedApproved": true,
+    "setupBannerAbsent": true,
+    "parentTotalStartedTurns": 3,
+    "remainingAuthorizedTurns": 0,
+    "parentUIStartedTurns": 2,
+    "additionalTurnsCompleted": 4,
+    "additionalTurnsSent": 6,
+    "additionalTurnsWithUnknownCompletion": 2
+  },
+  "processIdentities": {
+    "parentJobAssigned": true,
+    "rootSelection": "unique loaded root with matching test prompt, exact reply and completed UI turn",
+    "P": "verified parent relay and real Codex App Server in dedicated VS Code profile"
+  },
+  "stopEvidence": {
+    "trialCliExecutableSettingRemoved": true,
+    "activeParentTurnsBeforeClose": 0,
+    "bothTestWindowsClosed": true,
+    "trialHostProcessesAbsent": true,
+    "ownedParentProcessesAbsent": true,
+    "profileSettingsRestored": true,
+    "officialSetupConfigPreserved": true
+  },
+  "artifactHashes": {
+    "codex": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+    "parentRelay": "c28b614a068b680cb21f422536fa4cf07b42cd6a03f2abe6af5654001cce11f4"
+  },
+  "result": "passed",
+  "checks": {
+    "wakeReplyExactAndVisible": true,
+    "publicThreadIds": "aliases only",
+    "wakeAfterParentCompleted": true,
+    "firstVisibleReplyExact": true,
+    "storedChildMetadataResultUsed": true,
+    "wakeSentOnce": true,
+    "sameRootNewTurn": true
+  },
+  "limitations": [
+    "Official UI initiated two root-thread turns; both counted and completed; the extra request cause remains undetermined",
+    "Parent wake success does not establish unattended CC-03 orchestration",
+    "Real model shell/grandchild stop and peer survival remain unverified",
+    "Child same-history follow-up completion remains unverified",
+    "Only known parent and test profile process identities were checked",
+    "Full CC-00R remains incomplete; CC-01 must not start"
+  ]
+}

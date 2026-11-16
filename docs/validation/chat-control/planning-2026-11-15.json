@@ -1,0 +1,68 @@
+{
+  "createdAt": "2026-11-14T15:40:13.437Z",
+  "userFacingDate": "2026-11-15",
+  "timezone": "Asia/Tokyo",
+  "scope": "planning-only",
+  "documents": [
+    {
+      "path": "docs/superpowers/specs/2026-11-15-codex-chat-control-design.md",
+      "sha256": "ad4b5afeb6fdc3f61b6470942ed86dc7ebfe0bdf13b2a217ebeff1c9fc06b933"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-15-codex-chat-control-implementation.md",
+      "sha256": "6213b835078a2500125e2269299fd004061063d2dfea64f2307e3e8b48bbfe71"
+    }
+  ],
+  "sourceInvestigation": {
+    "path": "docs/superpowers/plans/2026-11-14-codex-chat-control-investigation.md",
+    "sha256": "678f9cf9762cd387487fd141f3b455535046789e4b9eaa05da7fd29d1ad09169",
+    "contentUnchanged": true
+  },
+  "reportChange": {
+    "path": "docs/validation/chat-control/report.md",
+    "reason": "Updated one relative link after the existing investigation plan moved under docs/superpowers/plans",
+    "beforeSha256": "8421181269aab17b957cc5efb474bfc95986a7cdac921eb46365687f76b4c36e",
+    "afterSha256": "30001754daba543841f3d019dfc248f6b2c83697968239fdef9f7b0322037bff"
+  },
+  "independentDesignReview": {
+    "completed": true,
+    "resolved": [
+      "Initial human-confirmed parent/run binding and prevention of worker privilege escalation",
+      "Parent/worker ordinary UI stop behavior and prevention of automatic restart",
+      "Dependency readiness requires verified integration SHA; next task base contains all dependencies"
+    ]
+  },
+  "selfReview": {
+    "requirementsCoverage": true,
+    "interfacesAndStageOrdering": true,
+    "noUnimplementedFeatureAssumed": true,
+    "gateBeforeFullImplementation": true
+  },
+  "checks": {
+    "localLinksResolved": 26,
+    "stageCount": 8,
+    "mcpToolCount": 9,
+    "sourcePlanHashMatched": true,
+    "markdownFencesBalanced": true,
+    "encodingValid": true,
+    "noProductArtifacts": true,
+    "mermaid": "source notation checked; not rendered"
+  },
+  "notPerformed": [
+    "Product implementation",
+    "Dependency installation",
+    "User settings changes",
+    "Live Codex or VS Code operation",
+    "Model calls",
+    "Git or GitHub writes",
+    "Mermaid rendered visual inspection"
+  ],
+  "git": {
+    "managed": false,
+    "branch": null,
+    "commit": null,
+    "pushed": false
+  },
+  "readmeUpdated": false,
+  "passed": true
+}

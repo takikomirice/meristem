@@ -1,0 +1,10 @@
+CREATE TABLE runs (id TEXT PRIMARY KEY, state TEXT NOT NULL, revision INTEGER NOT NULL DEFAULT 0, stop_generation INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE tasks (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), state TEXT NOT NULL);
+CREATE TABLE actors (attempt_id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, owner_epoch TEXT NOT NULL, thread_id TEXT NOT NULL);
+CREATE TABLE assignments (id TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id), run_id TEXT NOT NULL REFERENCES runs(id));
+CREATE TABLE attempts (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), assignment_id TEXT NOT NULL REFERENCES assignments(id), registration TEXT NOT NULL, cwd TEXT NOT NULL, state TEXT NOT NULL, stop_result TEXT);
+CREATE TABLE operations (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), payload_hash TEXT NOT NULL, expected_revision INTEGER NOT NULL, state TEXT NOT NULL, result TEXT);
+CREATE TABLE events (seq INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES runs(id), kind TEXT NOT NULL, attempt_id TEXT);
+CREATE TABLE requests (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), attempt_id TEXT NOT NULL REFERENCES attempts(id), state TEXT NOT NULL, kind TEXT NOT NULL);
+CREATE TABLE wake_deliveries (id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES runs(id), state TEXT NOT NULL);
+PRAGMA user_version = 1;
