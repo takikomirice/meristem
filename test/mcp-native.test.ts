@@ -8,15 +8,30 @@ import { createHash, randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pipeRequest, relayRequest } from '../src/protocol.js';
 import { gitScope } from './fixtures/git-scope.js';
+import { serialFixture } from './fixtures/serial-git.js';
 
-test('native_owned_parent_MCP_permit_worker_report_and_unknown_peer_boundary', { timeout: 75000 }, async t => {
+for (const adaptive of [false, true]) test(adaptive ? 'native_authorize_displays_and_confirms_the_bound_model_policy'
+  : 'native_owned_parent_MCP_permit_worker_report_and_unknown_peer_boundary', { timeout: 75000 }, async t => {
   const root = mkdtempSync(path.join(tmpdir(), 'cc02-native-')), state = path.join(root, 'state');
   const sha = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
   const realExe = path.resolve('.local/chat-control-build/MockCodex.exe'), hostExe = path.resolve('.local/chat-control-build/CodexWorkerHost.exe'), control = path.resolve('.local/chat-control-build/MeristemControl.exe');
   const relay = path.join(root, 'CodexRelay.exe'); copyFileSync(path.resolve('.local/chat-control-build/CodexRelay.exe'), relay);
   const pipeName = `meristem-cc01-control-${randomUUID()}`, parentPipe = `meristem-cc00-${randomUUID()}`, configPath = path.join(root, 'config.json'), entryPoint = path.resolve('dist/src/cli.js'), mcpEntry = path.resolve('dist/src/mcp.js'), planPath = path.join(root, 'plan.md');
-  writeFileSync(planPath, 'CC-02 native fixture');
-  const scopeGit = gitScope(root), assignments = scopeGit.assignments;
+  const choices = [{ model: 'mock', effort: 'low' }, { model: 'mock', effort: 'high' }];
+  let scopeGit;
+  if (adaptive) {
+    const f = serialFixture(root);
+    f.plan.schema_version = 2;
+    Object.assign(f.plan.run, { worker_model_policy: { mode: 'rules', candidates: choices } });
+    for (const task of f.plan.tasks) Object.assign(task.agent, { permissionProfileId: 'workspace' });
+    Object.assign(f.plan.tasks[0], { model_routing: { kind: 'implementation', complexity: 'bounded' } });
+    f.savePlan();
+    scopeGit = { plan: true, assignments: [], repositoryPath: f.repository, branchScope: [f.plan.run.integration_branch] };
+  } else {
+    writeFileSync(planPath, 'CC-02 native fixture');
+    scopeGit = gitScope(root);
+  }
+  const assignments = scopeGit.assignments;
   const config = { stateDirectory: state, repository: process.cwd(), runId: 'run', pipeName, nodeExecutable: process.execPath, nodeSha256: sha(process.execPath), entryPoint, entrySha256: sha(entryPoint), runtime: { hostExe, hostSha256: sha(hostExe), realExe, realSha256: sha(realExe), authHome: root, fixture: true }, assignments: [], mcp: { wake: { model: 'mock', effort: 'low', maxTurns: 12 }, parentRelay: { pipeName: parentPipe, threadId: 'P' }, entryPoint: mcpEntry, entrySha256: sha(mcpEntry), scope: { fixture: true, planPath, repositoryId: 'repo', ...scopeGit } } };
   writeFileSync(configPath, JSON.stringify(config));
   writeFileSync(relay + '.json', JSON.stringify({ realExecutable: realExe, realSha256: sha(realExe), pipeName: parentPipe, allowedCwds: [root], testProfile: 'CC-00R-CC02-fixture', controlHost: { executable: control, sha256: sha(control), configPath, configSha256: sha(configPath), parentThreadId: 'P' } }));
@@ -55,9 +70,23 @@ test('native_owned_parent_MCP_permit_worker_report_and_unknown_peer_boundary', {
   writeFileSync(selfAuthorize, JSON.stringify({ pipeName, direct: { ...discovery, method: 'authorize', bindingId: pending.structuredContent.bindingId }, output: selfOutput }));
   await ui('fixture/mcp', { executable: process.execPath, helper: path.resolve('dist/test/fixtures/native-mcp-client.js'), file: selfAuthorize });
   assert.equal(JSON.parse(readFileSync(selfOutput, 'utf8')).ok, false);
+  if (adaptive) {
+    const preview = pending.structuredContent.modelRouting;
+    assert.deepEqual(preview.candidates, choices);
+    assert.deepEqual(preview.tasks, [{ taskId: 'A', agent: choices[0] }]);
+    assert.equal(preview.maxAutomaticChangesPerTask, 1);
+    const unbound = await request('authorize', { bindingId: pending.structuredContent.bindingId });
+    assert.equal(unbound.ok, false, 'the native command must confirm the displayed scope hash with the binding');
+  }
   const authorized = spawnSync(process.execPath, ['dist/src/cli.js', 'authorize', '--run', 'run', '--state', state, '--binding', pending.structuredContent.bindingId], { cwd: process.cwd(), input: pending.structuredContent.bindingId + '\n', windowsHide: true, encoding: 'utf8' });
   assert.equal(authorized.status, 0, authorized.stderr);
   assert.equal((await call('start_run', { planPath, operationId: 'start' })).structuredContent.state, 'active');
+  if (adaptive) {
+    assert.match(authorized.stderr, /"maxAutomaticChangesPerTask": 1/);
+    assert(authorized.stderr.includes(pending.structuredContent.modelRouting.scopeHash));
+    assert.equal(((await request('status')).binding as any).state, 'consumed');
+    return;
+  }
   const revision = async () => ((await request('status')).run as any).revision;
   const created = await call('create_worker', { operationId: 'create', runId: 'run', expectedRevision: await revision(), taskId: 'A' });
   assert(!created.isError, JSON.stringify(created)); const worker = created.structuredContent;

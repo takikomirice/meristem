@@ -11,6 +11,11 @@ import { gitScope } from '../fixtures/git-scope.js';
 import { serialFixture, serialAcceptancePlan } from '../fixtures/serial-git.js';
 import { parallelPlan } from '../fixtures/parallel-git.js';
 import { readPlan } from '../../src/plan.js';
+import { developmentSession } from './development-session.js';
+
+if (process.argv.includes('--environment')) {
+  console.log(JSON.stringify(await developmentSession(['prepare', ...process.argv.slice(2)])));
+} else {
 
 const arg = (name: string) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : undefined;
 const stage = arg('--stage') ?? 'CC-02'; assert(['CC-02', 'CC-03', 'CC-04', 'CC-06', 'CC-07'].includes(stage));
@@ -63,3 +68,4 @@ const mcpBlock = `\n[mcp_servers.meristem]\ncommand = ${JSON.stringify(process.e
 if (stage !== 'CC-07') writeFileSync(path.join(root, 'auth-config.test'), original + mcpBlock, { flag: 'wx' });
 save(path.join(root, 'session.json'), { stage, ...(windowsSandbox ? { windowsSandbox } : {}), root, cwd, agent, realExe, realSha256: sha(realExe), nodeExecutable: process.execPath, nodeSha256: sha(process.execPath), authHome, authConfig, codeExe, profile, extensions, settings, parentThreadId: parentThreadId!, parentPipe, pipeName, stateDirectory, planPath, planHash: sha(planPath), repositoryPath: git.repositoryPath, assignments: git.assignments, controlConfig, turnsSent: 0, approvedMaxTurns, phase: 'prepared_no_model_turns', mcpBlock });
 console.log(JSON.stringify({ session: path.join(root, 'session.json'), parentThreadId: parentThreadId!, planHash: sha(planPath), branchScope: git.branchScope, turnsSent: 0 }));
+}

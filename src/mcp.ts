@@ -10,36 +10,55 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { Actor, resolveCallContext, sameActor, type ActorRef, type CallerIdentity } from './actors.js';
-import { Id, ModelId, Operation, Worker, sameWorker, type Registration, type WorkerRef } from './contracts.js';
+import { Id, ModelAssessment, ModelId, Operation, Worker, sameWorker, type Registration, type WorkerRef } from './contracts.js';
 import { Broker, PlanControl, type Runtime } from './broker.js';
 import { TaskReport, Sha, Checks } from './git-evidence.js';
 import { Store } from './store.js';
 import { pipeRequest, RpcTransportFailure } from './protocol.js';
 import { RequestFailure, RevisionConflict } from './failures.js';
 import type { HumanRequest, HumanAction } from './requests.js';
+import { elicitDecision } from './requests.js';
+import { PlanChange } from './plan.js';
+import { DecisionService, DecisionAnswer } from './decisions.js';
+import { Decision, HumanDecisionRef } from './contracts.js';
+import { resolveTaskPermissions, type RunPermissionPermit } from './permissions.js';
+import type { AppliedTaskSettings } from './contracts.js';
+import { HistorySelection, readSavedWorkerHistory, type HistoryReader, type HistorySource } from './workers.js';
 
-export type FixtureAssignment = { workerId: string; cwd: string; repositoryId: string; branch: string; model: string; effort: string; gitApprovalRoots?: string[] };
-export type FixtureScope = { fixture: true; plan?: true; planPath: string; repositoryId: string; repositoryPath: string; branchScope: string[]; windowBindingId: string; maxInstructions?: number; assignments: FixtureAssignment[] };
-export interface ManagedRuntime extends Runtime {
+export type FixtureAssignment = { workerId: string; cwd: string; repositoryId: string; branch: string; model: string; effort: string; permissionProfileId?: string; permissionPermit?: RunPermissionPermit; gitApprovalRoots?: string[] };
+export type FixtureScope = { fixture: true; plan?: true; planPath: string; repositoryId: string; repositoryPath: string; branchScope: string[]; windowBindingId: string; maxInstructions?: number; permissionPermit?: RunPermissionPermit; modelRoutingSummary?: import('./routing-summary.js').RoutingSummaryReference; assignments: FixtureAssignment[] };
+export interface ManagedRuntime extends Runtime, Partial<HistoryReader> {
   waitForInput?(worker: WorkerRef, text: string, turnId: string): void;
   presentRequest?(worker: WorkerRef, key: string): HumanRequest;
   answerRequest?(worker: WorkerRef, ref: HumanRequest, action: HumanAction, isCurrent: () => boolean): Promise<void>;
   pendingRequests?(): HumanRequest[];
   answerQuestion?(worker: WorkerRef, key: string, answers: Record<string, { answers: string[] }>, isCurrent: () => boolean): Promise<void>;
-  start(assignment: { cwd: string; workerId: string; model: string; effort: string; identity: Omit<WorkerRef, 'threadId'>; previous?: WorkerRef; gitApprovalRoots?: string[] }): Promise<WorkerRef>;
-  registration(worker: WorkerRef): Pick<Registration, 'hostPid' | 'hostCreated' | 'childPid' | 'childCreated' | 'jobId'>;
+  start(assignment: import('./workers.js').Assignment & { identity: Omit<WorkerRef, 'threadId'> }): Promise<WorkerRef>;
+  settings?(worker: WorkerRef): AppliedTaskSettings;
+  registration(worker: WorkerRef): Pick<Registration, 'hostPid' | 'hostCreated' | 'childPid' | 'childCreated' | 'jobId' | 'modelProvider'>;
 }
+export const HistoryResume = Operation.extend({ target: Worker }).strict();
 const schemas = {
+  propose_decision: Operation.extend({ proposal: z.object({ taskIds: Decision.shape.taskIds, blockingTaskIds: Decision.shape.blockingTaskIds, kind: Decision.shape.kind, recipient: Decision.shape.recipient, planHash: Decision.shape.planHash, question: Decision.shape.question, options: Decision.shape.options, allowFreeText: Decision.shape.allowFreeText, requestedMaximum: Decision.shape.requestedMaximum }).strict() }).strict(),
+  answer_consultation: Operation.extend({ decisionId: Id, answer: DecisionAnswer.optional(), close: z.enum(['cancelled', 'superseded']).optional() }).strict().refine(value => !(value.answer && value.close), 'answer and close are exclusive'),
+  get_decisions: z.object({ runId: Id, afterId: Id.optional(), limit: z.number().int().min(1).max(4).default(4), pendingOnly: z.boolean().optional() }).strict(),
+  hold_task: Operation.extend({ taskId: Id, decisionId: Id, replacesDecisionId: Id.optional() }).strict(),
+  resume_task: Operation.extend({ taskId: Id, resolvedDecisionId: Id }).strict(),
+  get_worker_history: HistorySelection.extend({ runId: Id }).strict(),
+  resume_worker_history: HistoryResume,
   answer_request: Operation.extend({ requestKey: z.string().min(1).max(512), answer: z.record(z.string(), z.object({ answers: z.array(z.string().max(8192)).min(1).max(10) }).strict()).optional() }).strict(),
   start_run: z.object({ planPath: z.string().min(1).max(4096), operationId: Id }).strict(),
   create_worker: Operation.extend({ taskId: Id }).strict(),
   send_instruction: Operation.extend({ taskId: Id, target: Worker, agent: z.object({ model: ModelId, effort: Id }).strict(), text: z.string().min(1).max(65536) }).strict(),
-  get_status: z.object({ runId: Id, taskId: Id.optional(), afterEventSeq: z.number().int().nonnegative().optional(), attemptOffset: z.number().int().nonnegative().optional(), reportOffset: z.number().int().nonnegative().optional() }).strict(),
+  get_status: z.object({ runId: Id, taskId: Id.optional(), afterEventSeq: z.number().int().nonnegative().optional(), attemptOffset: z.number().int().nonnegative().optional(), reportOffset: z.number().int().nonnegative().optional(), requestOffset: z.number().int().nonnegative().optional() }).strict(),
   report: Operation.extend({ taskId: Id, report: z.union([TaskReport, z.object({ summary: z.string().min(1).max(8192), question: z.string().trim().min(1).max(8192).optional(), evidenceRefs: z.array(z.string().max(512)).max(32).optional() }).strict()]) }).strict(),
-  record_decision: Operation.extend({ taskId: Id, decision: z.enum(['continue_history', 'new_worker', 'retry_same', 'continue_same', 'handoff_new', 'accept_candidate', 'prepare_integration', 'cancel_integration', 'accept_integration', 'pause', 'finish']), evidenceRefs: z.array(Id).max(32), sourceTaskId: Id.optional(), candidateSha: Sha.optional(), integrationSha: Sha.optional(), inputCandidateShas: z.array(Sha).min(1).max(2).optional(), checks: Checks.optional() }).strict(),
+  record_decision: Operation.extend({ taskId: Id, decision: z.enum(['continue_history', 'new_worker', 'retry_same', 'continue_same', 'handoff_new', 'accept_candidate', 'prepare_integration', 'record_integration_checks', 'cancel_integration', 'accept_integration', 'accept_review', 'pause', 'finish']), evidenceRefs: z.array(Id).max(32), sourceTaskId: Id.optional(), candidateSha: Sha.optional(), integrationSha: Sha.optional(), inputCandidateShas: z.array(Sha).min(1).max(128).optional(), checks: Checks.optional(), modelAssessment: ModelAssessment.optional() }).strict(),
   reconcile_plan: Operation.extend({ expectedFileHash: z.string().regex(/^[a-f0-9]{64}$/), expectedPlanHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
+  propose_plan_change: Operation.extend(PlanChange.shape).strict(),
+  apply_plan_change: Operation.extend({ decisionId: Id, expectedPlanHash: Decision.shape.planHash, proposedPlanHash: Decision.shape.planHash }).strict(),
   write_progress: Operation.extend({ expectedFileHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict(),
   stop_worker: Operation.extend({ target: Worker }).strict(),
+  retire_worker: Operation.extend({ target: Worker }).strict(),
   stop_run: Operation,
   resume_run: Operation
 };
@@ -47,9 +66,27 @@ export type ToolName = keyof typeof schemas;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export class McpController {
   private plan?: PlanControl;
-  constructor(private store: Store, private broker: Broker, private runtime: ManagedRuntime, private runId: string, private parent: ActorRef, private scope: FixtureScope) { if (scope.plan) this.plan = new PlanControl(store, runId, () => broker.canWake(runId)); }
+  constructor(private store: Store, private broker: Broker, private runtime: ManagedRuntime, private runId: string, private parent: ActorRef, private scope: FixtureScope, private routingHistory?: import('./routing-summary.js').RoutingHistory) {
+    if (scope.modelRoutingSummary?.sha256 !== routingHistory?.reference.sha256 || scope.modelRoutingSummary?.path !== routingHistory?.reference.path ||
+      (routingHistory && !scope.plan)) throw new Error('routing summary scope mismatch');
+    if (scope.plan) this.plan = new PlanControl(store, runId, () => broker.canWake(runId), () => broker.executionLimits(runId).maxCorrectionsPerTask, routingHistory);
+  }
   // Only the pinned parent's MCP process can enter this non-tool endpoint.
   async humanResponse(input: unknown, identity: CallerIdentity): Promise<unknown> {
+    if (input && typeof input === 'object' && Object.hasOwn(input, 'decision')) {
+      const args = z.object({ decision: HumanDecisionRef, answer: DecisionAnswer }).strict().parse(input);
+      const binding = this.store.binding(this.runId);
+      if (!sameActor(identity.actor, this.parent) || !this.broker.canWake(this.runId) || binding?.state !== 'consumed' || binding.scope_hash !== this.scopeHash()) throw new Error('human response binding rejected');
+      this.plan?.assertCurrent();
+      // Only this non-tool, native-authenticated callback can mint the opaque
+      // context. Serialized flags and coordinator tool arguments cannot do so.
+      const context = {};
+      let expectedRevision = this.store.run(this.runId).revision;
+      try { expectedRevision = this.store.operation(args.decision.formGeneration).expected_revision; } catch { /* first response */ }
+      const service = new DecisionService(this.store, () => { throw new Error('coordinator endpoint required'); }, verified => verified === context ? { runId: this.runId, operationId: args.decision.formGeneration, expectedRevision } : undefined);
+      const result = service.resolveHuman(args.decision, args.answer, context);
+      return { state: result.state, decisionId: result.id };
+    }
     const args = z.object({ worker: Worker, key: z.string().max(512), payloadHash: z.string().regex(/^[a-f0-9]{64}$/), formGeneration: Id, action: z.enum(['accept', 'decline', 'cancel']) }).strict().parse(input);
     const item = this.runtime.pendingRequests?.().find(r => r.key === args.key);
     const current = () => !!item && this.broker.canReviewRequest(this.runId, item) && this.store.binding(this.runId)?.state === 'consumed' && this.store.binding(this.runId)?.scope_hash === this.scopeHash();
@@ -60,13 +97,17 @@ export class McpController {
     return { state: 'response_sent' };
   }
   private scopeHash(): string {
+    if (Buffer.byteLength(JSON.stringify(this.scope)) > 60000) throw new Error('scope exceeds frame budget');
     if (this.plan) {
       if (this.scope.fixture !== true || this.scope.assignments.length) throw new Error('plan scope cannot contain fixture assignments');
       this.plan.open(this.scope.planPath, this.scope.repositoryPath, this.scope.branchScope);
       this.plan.git().assertRepository();
-      return hash({ ...this.scope, planPath: realpathSync(this.scope.planPath), planHash: this.store.plan(this.runId)!.bindingHash, pin: this.store.plan(this.runId)!.pin });
+      const stored = this.store.plan(this.runId)!;
+      if (this.routingHistory && this.routingHistory.repositoryKey !== createHash('sha256').update(stored.pin.commonDir.toLowerCase()).digest('hex')) throw new Error('routing summary repository pin changed');
+      const routing = this.modelRoutingPermit();
+      return hash({ ...this.scope, planPath: realpathSync(this.scope.planPath), planHash: stored.bindingHash, pin: stored.pin, ...(routing ? { modelRouting: routing } : {}) });
     }
-    if (this.scope.fixture !== true || !path.isAbsolute(this.scope.planPath) || !this.scope.assignments.length || this.scope.assignments.length > 2 || new Set(this.scope.assignments.map(a => a.workerId)).size !== this.scope.assignments.length) throw new Error('explicit fixture scope required');
+    if (this.scope.fixture !== true || !path.isAbsolute(this.scope.planPath) || !this.scope.assignments.length || this.scope.assignments.length > 128 || new Set(this.scope.assignments.map(a => a.workerId)).size !== this.scope.assignments.length) throw new Error('explicit fixture scope required');
     const git = (cwd: string, args: string[]) => {
       const result = spawnSync('git', ['-C', cwd, ...args], { windowsHide: true, encoding: 'utf8', timeout: 5000 });
       if (result.status !== 0) throw new Error('Git scope unavailable'); return result.stdout.trim();
@@ -78,10 +119,74 @@ export class McpController {
     }
     return hash({ ...this.scope, planPath: realpathSync(this.scope.planPath), planHash: createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex'), assignments: this.scope.assignments.map(a => ({ ...a, cwd: realpathSync(a.cwd) })) });
   }
-  authorize(bindingId: string): void {
+  private modelRoutingPermit() {
+    if (!this.plan) return undefined;
+    const stored = this.store.plan(this.runId)!;
+    const snapshot = stored.bindingHash === stored.snapshot.planHash ? stored.snapshot : this.store.planRevision(this.runId, stored.bindingHash);
+    const plan = snapshot?.plan;
+    if (plan?.schema_version !== 2 || !plan.run.worker_model_policy) return undefined;
+    const policy = plan.run.worker_model_policy;
+    const maxCorrections = this.broker.executionLimits(this.runId).maxCorrectionsPerTask;
+    return { ...policy, planHash: stored.bindingHash, maxAutomaticChangesPerTask: Math.min(policy.candidates.length - 1, maxCorrections ?? Infinity),
+      ...(this.routingHistory ? { summarySha256: this.routingHistory.reference.sha256 } : {}),
+      tasks: plan.tasks.filter(task => task.model_routing).map(({ id: taskId, agent: { model, effort } }) => ({ taskId, agent: { model, effort } })) };
+  }
+  authorize(bindingId: string, displayedScopeHash?: string): void {
     const binding = this.store.binding(this.runId);
     if (!binding || binding.id !== bindingId || binding.scope_hash !== this.scopeHash() || !sameActor(JSON.parse(binding.parent), this.parent)) throw new Error('binding scope mismatch');
+    if (this.modelRoutingPermit()) {
+      if (displayedScopeHash !== binding.scope_hash) throw new Error('model routing approval scope mismatch');
+      this.plan!.assertCurrent();
+    }
     this.store.confirmBinding(bindingId);
+  }
+  async prepareHistoryResume(input: z.infer<typeof HistoryResume>, isCurrent = () => true) {
+    const { target, ...ref } = HistoryResume.parse(input);
+    const plan = this.plan;
+    if (!plan || ref.runId !== this.runId) throw new Error('history resume requires a bound plan');
+    const assertPermit = () => {
+      const binding = this.store.binding(this.runId);
+      if (!isCurrent() || !binding || binding.state !== 'consumed' || !sameActor(JSON.parse(binding.parent), this.parent) ||
+          binding.scope_hash !== this.scopeHash() || !this.broker.canWake(this.runId)) throw new Error('active and authorized run required');
+      return binding.id as string;
+    };
+    const bindingId = assertPermit();
+    const prepared = this.store.prepareOperation(ref, hash({ kind: 'history_resume', target, bindingId }));
+    if (!prepared.fresh) return prepared.operation.result ? JSON.parse(prepared.operation.result) : { state: prepared.operation.state };
+    try {
+      const before = plan.historyCheckpoint(target);
+      let reason: string | undefined;
+      if (before.modelProvider === undefined) reason = 'history_provider_unrecorded';
+      else {
+        const read = await readSavedWorkerHistory(this.store, this.runtime, this.runId, target);
+        if (read.state === 'history_unavailable') reason = read.reason;
+        else {
+          const latest = read.history.turns[0];
+          if (latest?.status === 'inProgress' || (before.completedTurnId && (latest?.id !== before.completedTurnId || latest.status !== 'completed'))) reason = 'history_execution_mismatch';
+        }
+      }
+      if (assertPermit() !== bindingId) throw new RevisionConflict();
+      const run = this.store.run(this.runId);
+      if (run.revision !== ref.expectedRevision + 1) throw new RevisionConflict();
+      const after = plan.historyCheckpoint(target);
+      if (after.assignment.baseSha !== before.assignment.baseSha || after.completedTurnId !== before.completedTurnId) throw new Error('history checkpoint changed during verification');
+      const result = reason
+        ? { state: 'history_unavailable', reason, handoff: after.state.hold ? 'create_worker_after_resume_task' : 'record_decision:handoff_new' }
+        : { state: 'history_handoff_ready', taskId: after.taskId, sourceThreadId: target.threadId, head: after.assignment.baseSha };
+      this.store.transaction(() => {
+        if (result.state === 'history_handoff_ready') {
+          this.store.savePlanState(this.runId, after.taskId, { ...after.state, state: 'pending', dispatch: { mode: 'history', target, head: after.assignment.baseSha, stopGeneration: run.stop_generation } });
+        } else if (after.state.dispatch?.mode === 'history') {
+          const { dispatch: _invalid, ...state } = after.state;
+          this.store.savePlanState(this.runId, after.taskId, { ...state, ...(state.hold ? { dispatch: { mode: 'new' } } : {}) });
+        }
+        this.store.operationResult(ref.operationId, 'settled', result);
+      });
+      return result;
+    } catch (error) {
+      this.store.operationResult(ref.operationId, 'cancelled', { state: 'not_applied' });
+      throw error;
+    }
   }
   async call(name: string, input: unknown, identity: CallerIdentity): Promise<any> {
     if (!Object.hasOwn(schemas, name)) throw new Error('unsupported tool');
@@ -91,7 +196,11 @@ export class McpController {
       if (!sameActor(identity.actor, this.parent)) throw new Error('only verified parent can request binding');
       if (realpathSync(args.planPath) !== realpathSync(this.scope.planPath)) throw new Error('plan outside fixture scope');
       const scopeHash = this.scopeHash(); let binding = this.store.binding(this.runId);
-      const scopeRecord = { ...this.scope, planHash: this.plan ? this.store.plan(this.runId)!.bindingHash : createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex') };
+      const routing = this.modelRoutingPermit();
+      const modelRouting = routing ? { ...routing, scopeHash } : undefined;
+      if (routing && binding?.state !== 'consumed') this.plan!.assertCurrent();
+      const scopeRecord = { ...this.scope, planHash: this.plan ? this.store.plan(this.runId)!.bindingHash : createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex'),
+        ...(routing ? { modelRouting: routing } : {}) };
       if (binding && (binding.scope_hash !== scopeHash || !sameActor(JSON.parse(binding.parent), identity.actor))) {
         const { windowBindingId: _oldWindow, ...oldScope } = JSON.parse(binding.scope);
         const { windowBindingId: _newWindow, ...newScope } = scopeRecord;
@@ -105,21 +214,104 @@ export class McpController {
       }
       if (binding.operation_id !== args.operationId || binding.scope_hash !== scopeHash || !sameActor(JSON.parse(binding.parent), identity.actor)) throw new Error('binding scope or operation mismatch');
       if (binding.state === 'confirmed') this.store.consumeBinding(binding.id);
-      return { runId: this.runId, bindingId: binding.id, state: binding.state === 'pending' ? 'awaiting_authorization' : this.store.run(this.runId).state };
+      return { runId: this.runId, bindingId: binding.id, state: binding.state === 'pending' ? 'awaiting_authorization' : this.store.run(this.runId).state,
+        ...(modelRouting ? { modelRouting } : {}) };
     }
     if (args.runId !== this.runId) throw new Error('run binding mismatch');
     const binding = this.store.binding(this.runId);
     if (!binding || binding.state !== 'consumed') throw new Error('human permit required');
     if (!sameActor(JSON.parse(binding.parent), this.parent)) throw new Error('run parent changed');
+    if (name === 'get_worker_history') {
+      if (!sameActor(identity.actor, this.parent)) throw new Error('history requires verified parent');
+      return readSavedWorkerHistory(this.store, this.runtime, this.runId, args.target, args.cursor);
+    }
     let scopeValid = false;
     try { scopeValid = binding.scope_hash === this.scopeHash(); } catch { /* allow observation and safety stops when Git scope drifts */ }
-    if (!scopeValid && !['get_status', 'report', 'stop_run', 'stop_worker'].includes(name)) throw new Error('run scope changed');
-    if (this.plan && !(name === 'record_decision' && args.decision === 'pause') && !['get_status', 'report', 'stop_run', 'stop_worker', 'reconcile_plan', 'write_progress'].includes(name)) this.plan.assertCurrent();
+    const closesDecision = name === 'answer_consultation' && args.close !== undefined;
+    if (!scopeValid && !closesDecision && !['get_status', 'get_decisions', 'report', 'stop_run', 'stop_worker', 'retire_worker'].includes(name)) throw new Error('run scope changed');
+    if (this.plan && !closesDecision && !(name === 'record_decision' && args.decision === 'pause') && !['get_status', 'get_decisions', 'report', 'stop_run', 'stop_worker', 'retire_worker', 'apply_plan_change', 'reconcile_plan', 'write_progress'].includes(name)) this.plan.assertCurrent();
     const registrations = this.store.attempts(this.runId).map(row => ({ row, reg: JSON.parse(row.registration) as Registration }));
     const context = resolveCallContext(identity, { runId: this.runId, parent: this.parent, workers: registrations.filter(({ row }) => !['completed', 'stopped', 'unknown'].includes(row.state)).map(({ reg }) => reg.worker) });
-    if (context.role === 'worker' && !['get_status', 'report'].includes(name)) throw new Error('worker cannot control or accept results');
+    if (context.role === 'worker' && !['get_status', 'get_decisions', 'propose_decision', 'report'].includes(name)) throw new Error('worker cannot control or accept results');
     const own = registrations.find(({ reg }) => sameActor(reg.worker, identity.actor));
     if (context.role === 'worker' && args.taskId && args.taskId !== own?.reg.taskId) throw new Error('worker cannot access peer');
+    if (name === 'resume_worker_history') return this.prepareHistoryResume(args);
+    if (name === 'get_decisions') {
+      const rows = this.store.coordinationDecisions(this.runId, args.afterId ?? '', args.limit + 1, args.pendingOnly);
+      const decisions: { decision: Decision; answer: DecisionAnswer | null }[] = [];
+      let bytes = 0, lastId = args.afterId, scanned = 0;
+      for (const decision of rows.slice(0, args.limit)) {
+        const visible = context.role === 'parent' || decision.taskIds.length > 0 && decision.taskIds.every(id => id === own?.reg.taskId);
+        const item = visible ? { decision, answer: this.store.coordinationDecision(this.runId, decision.id)!.answer } : undefined;
+        const size = item ? Buffer.byteLength(JSON.stringify(item)) : 0;
+        if (decisions.length && bytes + size > 80000) break;
+        if (item) { decisions.push(item); bytes += size; }
+        lastId = decision.id; scanned++;
+      }
+      return { decisions, nextAfterId: rows.length > scanned ? lastId : null };
+    }
+    if (name === 'apply_plan_change') {
+      if (!this.plan) throw new Error('plan is not enabled');
+      return this.plan.applyChange(Operation.parse({ runId: args.runId, operationId: args.operationId, expectedRevision: args.expectedRevision }), args.decisionId, args.expectedPlanHash, args.proposedPlanHash);
+    }
+    if (name === 'propose_decision' || name === 'answer_consultation' || name === 'propose_plan_change') {
+      if (!this.broker.canWake(this.runId)) throw new Error('run is stopped');
+      const service = new DecisionService(this.store, (_ref, taskIds, coordinatorOnly) => {
+        if (context.role === 'worker' && (coordinatorOnly || !taskIds.length || taskIds.some(id => id !== own?.reg.taskId))) throw new Error('decision scope rejected');
+      }, () => undefined);
+      const ref = Operation.parse({ runId: args.runId, operationId: args.operationId, expectedRevision: args.expectedRevision });
+      if (name === 'propose_plan_change') {
+        if (!this.plan) throw new Error('plan is not enabled');
+        const { expectedPlanHash, tasks, reason, alternatives, recommendation } = args;
+        const input: PlanChange = { expectedPlanHash, tasks, reason, alternatives, recommendation };
+        const { draft, affected, differences } = this.plan.proposeChange(input, this.scope.permissionPermit);
+        return service.propose(ref, {
+          kind: 'plan_change', recipient: 'human', taskIds: affected, blockingTaskIds: affected,
+          planHash: input.expectedPlanHash, proposedPlanHash: draft.planHash,
+          question: [
+            '工程表の変更を確認してください。',
+            `対象: ${affected.join(', ')}`,
+            ...differences,
+            'リポジトリ、作業範囲、実行上限、統合済みの実績を維持します。',
+            `理由: ${input.reason}`,
+            ...input.alternatives.map(text => `代替案: ${text}`),
+            `推奨案: ${input.recommendation}`
+          ].join('\n'),
+          options: [{ id: 'approve', label: 'この差分を承認', description: '表示された変更を対象の工程表に適用できます。' }, { id: 'decline', label: '見送る', description: '工程表を現行版のままにします。' }],
+          allowFreeText: true
+        }, draft);
+      }
+      if (name === 'propose_decision') return service.propose(ref, args.proposal);
+      if (args.close) return service.close(ref, args.decisionId, args.close);
+      if (args.answer) return service.resolveCoordinator(ref, args.decisionId, args.answer);
+      const status = { state: 'waiting_decision', decisionId: args.decisionId };
+      // Retried presentation operations never display or replay an old form.
+      try { this.store.operation(args.operationId); service.present(ref, args.decisionId); return status; }
+      catch (error) { if (!(error instanceof Error && error.message === 'unknown operation')) throw error; }
+      const form = service.present(ref, args.decisionId);
+      return { ...status, humanDecisionForm: { form, decision: this.store.coordinationDecision(this.runId, args.decisionId)!.decision } };
+    }
+    if (name === 'hold_task' || name === 'resume_task') {
+      if (!this.plan) throw new Error('plan is not enabled');
+      const ref = Operation.parse({ runId: args.runId, operationId: args.operationId, expectedRevision: args.expectedRevision });
+      if (name === 'resume_task') return this.plan.resumeTask(ref, args.taskId, args.resolvedDecisionId);
+      const hold = this.plan.holdTask(ref, args.taskId, args.decisionId, args.replacesDecisionId);
+      const held = this.store.planStates(this.runId)[args.taskId];
+      // A retry after resume reads its recorded result; it must never hold the
+      // new attempt. While parking is in flight, Broker shares the same stop.
+      if (held?.state === 'held' && held.hold?.decisionIds.includes(args.decisionId)) {
+        let releasedExecutionSlot = held.hold.releasedExecutionSlot;
+        if (!held.hold.releasedExecutionSlot && held.attemptId) {
+          const target = registrations.find(({ row }) => row.id === held.attemptId);
+          if (!target) throw new Error('held attempt registration unavailable');
+          releasedExecutionSlot = (await this.broker.parkTask(this.runId, target.reg.worker)).state === 'stopped';
+        }
+        const result = { ...hold, releasedExecutionSlot };
+        this.store.operationResult(ref.operationId, 'settled', result);
+        return { state: 'held', ...result };
+      }
+      return { state: 'held', ...hold };
+    }
     if (name === 'get_status') {
       const selected = registrations.filter(({ reg }) => (context.role === 'parent' || reg.worker.attemptId === own?.reg.worker.attemptId) && (!args.taskId || args.taskId === reg.taskId));
       const offset = args.attemptOffset ?? 0, reportOffset = args.reportOffset ?? 0;
@@ -130,18 +322,48 @@ export class McpController {
         const bytes = Buffer.byteLength(JSON.stringify(report)); if (reports.length && reportBytes + bytes > 80000) break;
         reports.push(report); reportBytes += bytes;
       }
-      return { ...(this.plan && context.role === 'parent' ? { plan: await this.plan.status() } : {}), requests: this.runtime.pendingRequests?.().filter(r => context.role === 'parent' || r.worker.attemptId === own?.reg.worker.attemptId) ?? [], run: this.store.run(this.runId), scopeValid, attempts: selected.slice(offset, offset + 4).map(({ row, reg }) => ({ state: row.state, worker: reg.worker, taskId: reg.taskId, cwd: reg.cwd, branch: reg.branch, agent: { model: reg.model, effort: reg.effort }, ...(this.plan ? { git: this.store.gitAssignment(reg.worker.attemptId) } : {}), stopResult: row.stop_result ? JSON.parse(row.stop_result) : null })), nextAttemptOffset: selected.length > offset + 4 ? offset + 4 : null, reports, nextReportOffset: this.store.reportCount(this.runId, context.role === 'worker' ? own!.reg.worker.attemptId : undefined) > reportOffset + reports.length ? reportOffset + reports.length : null, events: this.store.events(this.runId, args.afterEventSeq ?? 0, 100) };
+      const visibleRequests = this.runtime.pendingRequests?.().filter(r => context.role === 'parent' || r.worker.attemptId === own?.reg.worker.attemptId) ?? [];
+      const requestOffset = args.requestOffset ?? 0, requests: HumanRequest[] = []; let requestBytes = 0;
+      for (const request of visibleRequests.slice(requestOffset)) {
+        const bytes = Buffer.byteLength(JSON.stringify(request)); if (requests.length && requestBytes + bytes > 40000) break;
+        if (bytes > 80000) throw new Error('request exceeds status byte budget');
+        requests.push(request); requestBytes += bytes;
+      }
+      const result = { ...(this.plan && context.role === 'parent' ? { plan: await this.plan.status() } : {}), requests, nextRequestOffset: visibleRequests.length > requestOffset + requests.length ? requestOffset + requests.length : null, run: this.store.run(this.runId), scopeValid, attempts: selected.slice(offset, offset + 4).map(({ row, reg }) => ({ state: row.state, worker: reg.worker, taskId: reg.taskId, cwd: reg.cwd, branch: reg.branch, agent: { model: reg.model, effort: reg.effort }, ...(reg.settings ? { settings: reg.settings } : {}), ...(this.plan ? { git: this.store.gitAssignment(reg.worker.attemptId) } : {}), stopResult: row.stop_result ? JSON.parse(row.stop_result) : null })), nextAttemptOffset: selected.length > offset + 4 ? offset + 4 : null, reports, nextReportOffset: this.store.reportCount(this.runId, context.role === 'worker' ? own!.reg.worker.attemptId : undefined) > reportOffset + reports.length ? reportOffset + reports.length : null, events };
+      // The broker's stdout response cap is 200,000 bytes, inside the native
+      // transport cap. Bound the combined sections, not only each array.
+      const sections = args.reportOffset !== undefined ? [requests, result.attempts, reports]
+        : args.requestOffset !== undefined ? [reports, result.attempts, requests] : [reports, requests, result.attempts];
+      const modelRouting = context.role === 'parent' && args.taskId ? this.plan?.modelRoutingStatus(args.taskId) : undefined;
+      if (modelRouting) {
+        Object.assign(result, { modelRouting });
+        sections.unshift(modelRouting.outcomes, modelRouting.summary);
+      }
+      while (Buffer.byteLength(JSON.stringify(result)) > 179000) {
+        const section = sections.find(section => section.length);
+        if (!section) throw new Error('status metadata exceeds frame budget');
+        section.pop();
+      }
+      result.nextAttemptOffset = selected.length > offset + result.attempts.length ? offset + result.attempts.length : null;
+      result.nextReportOffset = this.store.reportCount(this.runId, context.role === 'worker' ? own!.reg.worker.attemptId : undefined) > reportOffset + reports.length ? reportOffset + reports.length : null;
+      result.nextRequestOffset = visibleRequests.length > requestOffset + requests.length ? requestOffset + requests.length : null;
+      return result;
     }
     if (name === 'report' && context.role !== 'worker') throw new Error('only main worker can report');
     if (name === 'report' && Buffer.byteLength(JSON.stringify(args.report)) > 60000) throw new Error('report exceeds byte limit');
     if (name === 'report' && this.plan) this.plan.validateReport(args.taskId, own!.reg.worker, args.report);
+    if (name === 'record_decision' && args.modelAssessment && (!this.plan || !['retry_same', 'handoff_new'].includes(args.decision))) {
+      throw new Error('model assessment requires a plan retry or handoff');
+    }
     const ref = Operation.parse({ operationId: args.operationId, runId: args.runId, expectedRevision: args.expectedRevision });
     if (name === 'send_instruction') {
       const target = registrations.find(({ reg }) => reg.worker.attemptId === args.target.attemptId);
       if (!target || target.reg.taskId !== args.taskId) throw new Error('task target mismatch');
       if (this.plan) {
-        const task = this.store.plan(this.runId)!.snapshot.plan.tasks.find(t => t.id === args.taskId);
-        if (!task || task.agent.model !== args.agent.model || task.agent.effort !== args.agent.effort || ['completed', 'stopped', 'unknown'].includes(target.row.state)) {
+        const plan = this.store.plan(this.runId)!.snapshot.plan;
+        const task = plan.tasks.find(t => t.id === args.taskId);
+        const expected = target.reg.modelRouting?.modelSwitch?.agent ?? target.reg.modelRouting?.initialRecommendation?.selected ?? task?.agent;
+        if (!task || !expected || expected.model !== args.agent.model || expected.effort !== args.agent.effort || ['completed', 'stopped', 'unknown'].includes(target.row.state)) {
           // Recorded operations remain observable; this never sends to the old attempt again.
           let previous; try { previous = this.store.operation(args.operationId); } catch { /* new instruction */ }
           if (!previous) throw new Error('plan agent or current attempt mismatch');
@@ -154,47 +376,65 @@ export class McpController {
     const prepared = this.store.prepareOperation(ref, hash({ name, args, actor: identity.actor }), !(name === 'answer_request' && args.answer === undefined));
     if (!prepared.fresh) return prepared.operation.result ? JSON.parse(prepared.operation.result) : { state: prepared.operation.state };
     const humanRequest = name === 'answer_request' && args.answer === undefined ? this.runtime.pendingRequests?.().find(r => r.key === args.requestKey) : undefined;
-    if (!['stop_run', 'stop_worker', 'resume_run', 'report'].includes(name) && !this.broker.canWake(this.runId) && !(humanRequest && this.broker.canReviewRequest(this.runId, humanRequest))) {
+    if (!['stop_run', 'stop_worker', 'retire_worker', 'resume_run', 'report'].includes(name) && !this.broker.canWake(this.runId) && !(humanRequest && this.broker.canReviewRequest(this.runId, humanRequest))) {
       this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('run is stopped');
     }
     let result: any;
     if (name === 'create_worker') {
       let assignment = this.scope.assignments.find(a => a.workerId === args.taskId);
+      let historySource: HistorySource | undefined;
+      let modelRouting: Registration['modelRouting'];
       let previous = registrations.filter(({ reg }) => reg.taskId === args.taskId).at(-1);
       let reuse = this.store.historyDecision(this.runId, args.taskId) === 'continue_history';
       const attemptId = randomUUID();
-      if (this.plan) {
-        try {
-          this.plan.git().approvalRoots();
-          const allocated = this.plan.reserveAssignment(args.taskId, attemptId);
-          const gitApprovalRoots = this.plan.git().approvalRoots(allocated.assignment);
-          assignment = { workerId: allocated.workerId, cwd: allocated.assignment.cwd, branch: allocated.assignment.branch, repositoryId: this.scope.repositoryId, ...allocated.agent, gitApprovalRoots };
-          reuse = !!allocated.previous;
-          if (reuse) previous = registrations.find(({ row }) => row.id === allocated.previous!.attemptId);
-        } catch (error) { this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw error; }
-      }
-      if (!assignment) { this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('task outside fixture scope'); }
-      if (registrations.some(({ row, reg }) => reg.taskId === args.taskId && !['completed', 'stopped'].includes(row.state)) || registrations.filter(({ row }) => !['completed', 'stopped'].includes(row.state)).length >= 2 || (reuse && previous?.row.state !== 'completed')) {
-        this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('attempt cleanup or completion is unresolved');
-      }
-      if (registrations.some(({ reg }) => reg.taskId === args.taskId) && !this.store.reserveCorrection(this.runId, args.taskId)) {
+      const correction = registrations.some(({ reg }) => reg.taskId === args.taskId), limit = this.broker.executionLimits(this.runId).maxCorrectionsPerTask;
+      if (correction && limit !== null && this.store.correctionCount(this.runId, args.taskId) >= limit) {
         this.store.operationResult(args.operationId, 'cancelled', { state: 'correction_limit' });
         await this.broker.stopRun(this.runId, 'correction_limit');
         this.store.appendEvent({ runId: this.runId, kind: 'correction_limit' }); throw new Error('correction limit exhausted');
       }
+      if (this.plan) {
+        try {
+          const allocated = this.plan.reserveAssignment(args.taskId, attemptId, this.scope.permissionPermit);
+          modelRouting = allocated.modelRouting;
+          if (modelRouting && (modelRouting.modelSwitch || modelRouting.initialRecommendation?.reason === 'learned')) {
+            modelRouting = { ...modelRouting, creationOperationId: args.operationId };
+          }
+          const gitApprovalRoots = allocated.agent.permissionProfileId === 'read-only' ? [] : this.plan.git().approvalRoots(allocated.assignment);
+          assignment = { workerId: allocated.workerId, cwd: allocated.assignment.cwd, branch: allocated.assignment.branch, repositoryId: this.scope.repositoryId, ...allocated.agent, permissionPermit: allocated.permissionPermit, gitApprovalRoots };
+          reuse = !!allocated.previous;
+          historySource = allocated.historySource;
+          if (reuse) previous = registrations.find(({ row }) => row.id === allocated.previous!.attemptId);
+        } catch (error) { this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw error; }
+      }
+      if (!assignment) { this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('task outside fixture scope'); }
+      assignment = { ...assignment, permissionProfileId: assignment.permissionProfileId ?? 'workspace', permissionPermit: this.scope.permissionPermit ?? assignment.permissionPermit ?? { allowedProfileIds: ['workspace'], writableRoots: [assignment.cwd], allowedReviewers: ['user'] } };
+      try { resolveTaskPermissions({ model: assignment.model, effort: assignment.effort, permissionProfileId: assignment.permissionProfileId! }, assignment.permissionPermit!); }
+      catch (error) { this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw error; }
+      if (registrations.some(({ row, reg }) => reg.taskId === args.taskId && !['completed', 'stopped'].includes(row.state)) || this.store.attempts(this.runId).filter(row => !['completed', 'stopped'].includes(row.state)).length >= Math.min(this.store.effectiveParallelLimit(this.runId), this.store.plan(this.runId)?.snapshot.plan.run.max_parallel ?? 128) || (reuse && previous?.row.state !== 'completed')) {
+        this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('attempt cleanup or completion is unresolved');
+      }
+      if (correction) this.store.reserveCorrection(this.runId, args.taskId, limit);
       const identity = { workerId: assignment.workerId, attemptId, ownerId: randomUUID(), ownerEpoch: randomUUID() };
       const pending = { ...identity, threadId: 'pending' };
-      const reg: Registration = { ...assignment, runId: this.runId, taskId: args.taskId, assignmentId: randomUUID(), worker: pending, hostPid: 0, hostCreated: 'unconfirmed', childPid: 0, childCreated: 'unconfirmed', jobId: 'unconfirmed', binding: { windowBindingId: this.scope.windowBindingId, terminalId: randomUUID(), worker: pending } };
+      const reg: Registration = { ...assignment, ...(modelRouting ? { modelRouting } : {}), runId: this.runId, taskId: args.taskId, assignmentId: randomUUID(), worker: pending, hostPid: 0, hostCreated: 'unconfirmed', childPid: 0, childCreated: 'unconfirmed', jobId: 'unconfirmed', binding: { windowBindingId: this.scope.windowBindingId, terminalId: randomUUID(), worker: pending } };
+      const learned = modelRouting?.initialRecommendation?.reason === 'learned' ? modelRouting.initialRecommendation : undefined;
       let started: WorkerRef | undefined;
       try {
         this.store.reserve(reg); this.store.operationState(args.operationId, 'sent_unknown');
-        started = await this.runtime.start({ ...assignment, identity, ...(reuse ? { previous: previous!.reg.worker } : {}) });
-        this.store.register({ ...reg, ...this.runtime.registration(started), worker: started, binding: { ...reg.binding, worker: started } });
+        started = await this.runtime.start({ ...assignment, identity, ...(reuse ? { previous: previous!.reg.worker } : {}), ...(historySource ? { historySource } : {}), ...(learned ? { initialFallback: learned.planned } : {}) });
+        if ((assignment.permissionProfileId === 'read-only' || modelRouting?.modelSwitch || learned) &&
+            (started.threadId === 'pending' || this.store.hasRegisteredThread(started.threadId))) {
+          throw new Error(assignment.permissionProfileId === 'read-only' ? 'read-only assignment requires a fresh thread' : 'model switch requires a fresh thread');
+        }
+        const settings = this.runtime.settings?.(started);
+        this.store.register({ ...reg, ...this.runtime.registration(started), ...(settings ? { settings } : {}),
+          ...(learned && settings?.initialFallback ? learned.planned : {}), worker: started, binding: { ...reg.binding, worker: started } });
         this.store.attemptState(started, 'idle');
         this.store.historyDecision(this.runId, args.taskId, 'new_worker'); result = started;
       } catch (error) {
         // Fixed diagnostic labels only; preserve unknown delivery and never expose provider text.
-        const known = ['agent is not in catalog', 'managed permission profile not confirmed', 'root thread identity or provider mismatch', 'requested model or provider not confirmed', 'managed MCP catalog unavailable', 'worker identity unavailable', 'MCP entry identity mismatch'];
+        const known = ['agent is not in catalog', 'managed permission profile not confirmed', 'read-only sandbox not confirmed', 'read-only MCP inventory not confirmed', 'read-only assignment requires a fresh thread', 'root thread identity or provider mismatch', 'requested model or provider not confirmed', 'managed MCP catalog unavailable', 'worker identity unavailable', 'MCP entry identity mismatch', 'requested task settings not confirmed', 'model switch requires a fresh thread'];
         const reasons = ['thread_runtime_unavailable', 'mcp_startup_pending', 'experimental_api_required', 'permission_default_required', 'mcp_inventory_failed'];
         const creationFailure = error instanceof RequestFailure ? (reasons.includes(error.reason ?? '') ? error.reason : 'rpc_rejected')
           : error instanceof RpcTransportFailure ? 'rpc_' + error.reason
@@ -249,7 +489,8 @@ export class McpController {
         else await this.plan.project(args.expectedFileHash);
         result = { state: name === 'reconcile_plan' ? 'plan_reconciled' : 'progress_written' };
       } catch (error) { this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw error; }
-    } else if (name === 'stop_worker') {
+    } else if (name === 'retire_worker') result = await this.broker.retireWorker(this.runId, args.target);
+    else if (name === 'stop_worker') {
       const target = registrations.find(({ reg }) => JSON.stringify(reg.worker) === JSON.stringify(args.target));
       if (!target) throw new Error('stale worker binding'); result = await this.broker.closeTerminal(this.runId, target.reg.binding);
     } else if (name === 'stop_run') result = await this.broker.stopRun(this.runId);
@@ -257,15 +498,30 @@ export class McpController {
     this.store.operationResult(args.operationId, 'settled', result ?? null); return result;
   }
 }
-export function createMcpServer(invoke: (name: string, args: unknown, metadata: unknown) => Promise<any>, humanResponse?: (ref: HumanRequest, action: HumanAction, metadata: unknown) => Promise<unknown>): McpServer {
+export function createMcpServer(invoke: (name: string, args: unknown, metadata: unknown) => Promise<any>, humanResponse?: (ref: HumanRequest, action: HumanAction, metadata: unknown) => Promise<unknown>, humanDecisionResponse?: (ref: HumanDecisionRef, answer: DecisionAnswer, metadata: unknown) => Promise<unknown>): McpServer {
   const server = new McpServer({ name: 'meristem-chat-control', version: '0.0.0' });
   for (const [name, schema] of Object.entries(schemas)) server.registerTool(name, {
-    description: name === 'record_decision' ? 'Record parent decisions. Plan mode separates candidate acceptance from checked integration acceptance; only integration releases dependencies.' : `Fixture-scoped ${name}; caller identity comes from native ownership and Codex metadata.`,
+    description: name === 'hold_task' ? 'Park a task for a blocking consultation or plan change. Use replacesDecisionId to replace a stale hold reason. Parent only.'
+      : name === 'resume_task' ? 'Validate hold resolutions, applied plan changes and Git, then prepare a task for explicit create_worker and send_instruction. Parent only.'
+      : name === 'get_worker_history' ? 'Read a page of official Codex history for a saved attempt. Select the exact WorkerRef from get_status. Parent only.'
+      : name === 'resume_worker_history' ? 'Reconcile one stopped attempt against Codex, Git and delivery records and prepare a fresh-thread handoff. Afterwards explicitly create_worker and send_instruction. Parent only.'
+      : name === 'propose_plan_change' ? 'Stage a bounded task diff for human review through answer_consultation. Parent only.'
+      : name === 'apply_plan_change' ? 'Apply the exact human-approved plan diff after parking affected attempts. Parent only.'
+      : name === 'reconcile_plan' ? 'Unfreeze a plan after restoring its approved contents. Parent only.'
+      : name === 'retire_worker' ? 'Stop only the exact worker attempt and keep the run active after confirmed cleanup. Does not complete its task or delete its worktree or logs. Parent only.'
+      : name === 'record_decision' ? 'Parent only. For code, accept the candidate and then the checked integration. For a read-only review, inspect the saved report and call accept_review with its reportRef in evidenceRefs and the reviewed SHA in integrationSha. Both final decisions release dependencies.' : `Fixture-scoped ${name}; caller identity comes from native ownership and Codex metadata.`,
     inputSchema: schema,
-    annotations: { readOnlyHint: name === 'get_status', openWorldHint: false }
+    annotations: { readOnlyHint: ['get_status', 'get_decisions', 'get_worker_history'].includes(name), openWorldHint: false }
   }, async (args: unknown, extra: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<CallToolResult> => {
     try {
       let value = await invoke(name, args, extra._meta);
+      if (value?.humanDecisionForm) {
+        const { humanDecisionForm, ...status } = value; value = status;
+        if (humanDecisionResponse && server.server.getClientCapabilities()?.elicitation?.form) {
+          const answer = await elicitDecision(humanDecisionForm.decision, request => server.server.elicitInput(request, { timeout: 120000, signal: extra.signal, relatedRequestId: extra.requestId }));
+          if (answer && !extra.signal.aborted) value = await humanDecisionResponse(humanDecisionForm.form, answer, extra._meta);
+        }
+      }
       if (value?.humanForm) {
         const { humanForm, ...status } = value; value = status;
         if (humanResponse && server.server.getClientCapabilities()?.elicitation?.form) {
@@ -285,10 +541,13 @@ export function createMcpServer(invoke: (name: string, args: unknown, metadata: 
 }
 export async function serveMcp(pipeName: string): Promise<void> {
   const server = createMcpServer(async (name, args, metadata) => {
-    const result = await pipeRequest(pipeName, { method: 'mcp', name, args, metadata }, name === 'create_worker' ? 125000 : 25000);
+    const result = await pipeRequest(pipeName, { method: 'mcp', name, args, metadata }, ['create_worker', 'hold_task'].includes(name) ? 125000 : 25000);
     if (!result.ok) { if (result.error === 'stale_revision') throw new RevisionConflict(); throw new Error('control rejected'); } return result.value;
   }, async (ref, action, metadata) => {
     const result = await pipeRequest(pipeName, { method: 'mcp_human_response', metadata, args: { worker: ref.worker, key: ref.key, payloadHash: ref.payloadHash, formGeneration: ref.formGeneration, action } });
+    if (!result.ok) throw new Error('human response rejected'); return result.value;
+  }, async (decision, answer, metadata) => {
+    const result = await pipeRequest(pipeName, { method: 'mcp_human_response', metadata, args: { decision, answer } });
     if (!result.ok) throw new Error('human response rejected'); return result.value;
   });
   await server.connect(new StdioServerTransport());

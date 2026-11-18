@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Store } from '../src/store.js';
 import { Broker } from '../src/broker.js';
 import { McpController, createMcpServer, type FixtureScope } from '../src/mcp.js';
-import type { WorkerRef } from '../src/contracts.js';
+import type { WorkerRef, ExecutionLimits } from '../src/contracts.js';
 import { connectClient } from './fixtures/mcp-client.js';
 import { gitScope } from './fixtures/git-scope.js';
 import { spawnSync } from 'node:child_process';
@@ -15,6 +15,393 @@ import { WorkerRequests } from '../src/requests.js';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import type { PlanSnapshot } from '../src/plan.js';
+import type { RepositoryPin } from '../src/git-evidence.js';
+import { planControllerFixture } from './fixtures/plan-controller.js';
+import { git, commitFile } from './fixtures/serial-git.js';
+
+test('resume_checks_codex_history_git_and_execution_records', async t => {
+  const f = await planControllerFixture(t);
+  let status = 'inProgress', provider = 'other', threadId = '';
+  Object.assign(f.runtime, {
+    registration: () => ({ hostPid: 1, hostCreated: '1', childPid: 2, childCreated: '2', jobId: 'job', modelProvider: 'mock' }),
+    readHistory: async () => ({ threadId, modelProvider: provider, turns: [{ id: 'saved-turn', status, messages: [] }], nextCursor: null }),
+  });
+  const source = await f.create('A');
+  threadId = source.threadId;
+  const { ownerId, ownerEpoch } = source;
+  await assert.rejects(f.controller.call('get_worker_history', { runId: 'run', target: source }, { actor: { ownerId, ownerEpoch, threadId }, turnId: 'worker-turn' }), /verified parent/);
+  const args = () => ({ ...f.ref(), target: source });
+  const resume = (input = args()) => f.controller.call('resume_worker_history', input, f.parent);
+  await assert.rejects(resume(), /stop|cleanup/);
+  await f.broker.retireWorker('run', source);
+  assert.equal((await resume()).reason, 'history_identity_mismatch');
+  provider = 'mock';
+  threadId = 'other-thread';
+  assert.equal((await resume()).reason, 'history_identity_mismatch');
+  threadId = source.threadId;
+  assert.equal((await resume()).reason, 'history_execution_mismatch');
+  status = 'interrupted';
+  const { cwd, branch } = f.store.gitAssignment(source.attemptId)!;
+  git(cwd, 'switch', '-c', 'drifted');
+  await assert.rejects(resume(), /worktree|branch/);
+  git(cwd, 'switch', branch);
+  const pending = await blockingConsultation(f);
+  await assert.rejects(resume(), /consultation/);
+  await f.call('answer_consultation', { decisionId: pending.id, close: 'cancelled' });
+
+  const before = f.store.run('run');
+  const viewed = await f.controller.call('get_worker_history', { runId: 'run', target: source }, f.parent);
+  assert.equal(viewed.history.threadId, source.threadId);
+  assert.deepEqual(f.store.run('run'), before);
+  assert.equal(f.store.attempts('run').length, 1);
+  const confirmed = args();
+  const ready = await resume(confirmed);
+  assert.equal(ready.state, 'history_handoff_ready');
+  assert.deepEqual(await resume(confirmed), ready);
+  assert.equal(f.store.planStates('run').A.integrationSha, undefined);
+  assert.equal(f.store.planStates('run').A.candidate, undefined);
+  assert.equal(f.starts.length, 1);
+  status = 'inProgress';
+  assert.equal((await resume()).reason, 'history_execution_mismatch');
+  await assert.rejects(f.create('A'), /continuation decision/);
+  status = 'interrupted';
+  assert.equal((await resume()).state, 'history_handoff_ready');
+  await f.call('stop_run');
+  await f.call('resume_run');
+  await assert.rejects(f.create('A'), /checkpoint changed/);
+  assert.equal((await resume()).state, 'history_handoff_ready');
+  commitFile(cwd, 'a.txt', 'changed after preparation');
+  await assert.rejects(f.create('A'), /changed/);
+  const refreshed = await resume();
+  assert.equal(refreshed.state, 'history_handoff_ready');
+  const next = await f.create('A');
+  assert.notEqual(next.attemptId, source.attemptId);
+  assert.notEqual(next.threadId, source.threadId);
+  assert.equal(f.starts[1].cwd, cwd);
+  assert.deepEqual(f.starts[1].historySource, { threadId: source.threadId, modelProvider: 'mock' });
+  await assert.rejects(resume(), /attempt|cleanup/);
+});
+
+test('restart_keeps_pending_decisions_and_unknown_operations', async t => {
+  let closed = false;
+  const f = await planControllerFixture({ after(fn) { t.after(() => { if (!closed) fn(); }); } });
+  const decision = await blockingConsultation(f, 'human');
+  const form = (await f.call('answer_consultation', { decisionId: decision.id })).humanDecisionForm.form;
+  const unknown = f.ref();
+  f.store.prepareOperation(unknown, 'a'.repeat(64));
+  f.store.operationState(unknown.operationId, 'sent_unknown');
+  // Close and reopen the real writer, then use the newly started controller.
+  f.store.close(); closed = true;
+  const store = new Store(path.join(f.root, 'state'), f.repository);
+  t.after(() => store.close());
+  const controller = new McpController(store, new Broker(store, f.runtime), f.runtime, 'run', f.parent.actor, f.scope);
+  const inbox = await controller.call('get_decisions', { runId: 'run', pendingOnly: true }, f.parent);
+  assert.deepEqual(inbox.decisions.map((item: any) => item.decision.id), [decision.id]);
+  assert.equal(store.coordinationDecision('run', decision.id)?.formGeneration, null);
+  assert.doesNotMatch(JSON.stringify(inbox), new RegExp(form.formGeneration));
+  assert.equal(store.operation(unknown.operationId).state, 'sent_unknown');
+  const newParent = { ...f.parent, actor: { ...f.parent.actor, ownerEpoch: 'new-epoch' } };
+  const newController = new McpController(store, new Broker(store, f.runtime), f.runtime, 'run', newParent.actor, { ...f.scope, windowBindingId: 'reopened-window' });
+  await assert.rejects(newController.call('start_run', { planPath: f.planPath, operationId: 'rebind' }, newParent), /reconciliation/);
+  await assert.rejects(controller.call('resume_run', { runId: 'run', operationId: 'resume', expectedRevision: store.run('run').revision }, f.parent), /reconciliation/);
+  assert.equal(store.run('run').state, 'needs_reconcile');
+  assert.equal(f.starts.length, 0);
+});
+
+test('window_lease_restart_does_not_reuse_a_suspended_consultation_form', async t => {
+  const f = await planControllerFixture(t);
+  const decision = await blockingConsultation(f, 'human');
+  const old = (await f.call('answer_consultation', { decisionId: decision.id })).humanDecisionForm.form;
+  await f.broker.leaseLost('run');
+  await f.call('resume_run');
+  await assert.rejects(f.controller.humanResponse({ decision: old, answer: { optionId: 'resume' } }, f.parent), /stale decision form/);
+  const inbox = await f.controller.call('get_decisions', { runId: 'run', pendingOnly: true }, f.parent);
+  assert.equal(inbox.decisions[0].decision.id, decision.id);
+  const fresh = (await f.call('answer_consultation', { decisionId: decision.id })).humanDecisionForm.form;
+  assert.notEqual(fresh.formGeneration, old.formGeneration);
+  assert.deepEqual(await f.controller.humanResponse({ decision: fresh, answer: { optionId: 'resume' } }, f.parent), { state: 'resolved', decisionId: decision.id });
+});
+
+test('chat_discussion_does_not_forge_authorization', async t => {
+  const f = await planControllerFixture(t);
+  const expectedPlanHash = f.store.plan('run')!.snapshot.planHash;
+  const input = { expectedPlanHash, tasks: [{ id: 'A', completion: ['changed'] }], reason: 'The human agreed in chat.', alternatives: ['Keep the current check.'], recommendation: 'Use the replacement.' };
+  const change = await f.call('propose_plan_change', input);
+  const apply = { decisionId: change.id, expectedPlanHash, proposedPlanHash: change.proposedPlanHash };
+  await assert.rejects(f.call('apply_plan_change', { ...apply, humanApproved: true }));
+  await assert.rejects(f.call('answer_consultation', { decisionId: change.id, answer: { optionId: 'approve' } }), /recipient/);
+  const first = (await f.call('answer_consultation', { decisionId: change.id })).humanDecisionForm.form;
+  const current = (await f.call('answer_consultation', { decisionId: change.id })).humanDecisionForm.form;
+  await assert.rejects(f.controller.humanResponse({ decision: first, answer: { optionId: 'approve' } }, f.parent));
+  await assert.rejects(f.controller.humanResponse({ decision: { ...current, proposalHash: 'f'.repeat(64) }, answer: { optionId: 'approve' } }, f.parent));
+  const response = await f.controller.humanResponse({ decision: current, answer: { optionId: 'approve', text: 'Change a different acceptance case.' } }, f.parent) as { state: string };
+  assert.equal(response.state, 'superseded');
+  await assert.rejects(f.call('apply_plan_change', apply), /agreement/);
+  const denial = await f.call('propose_plan_change', input);
+  const form = (await f.call('answer_consultation', { decisionId: denial.id })).humanDecisionForm.form;
+  await f.controller.humanResponse({ decision: form, answer: { optionId: 'decline' } }, f.parent);
+  await assert.rejects(f.call('apply_plan_change', { ...apply, decisionId: denial.id }), /agreement/);
+  const cancelled = await f.call('propose_plan_change', input);
+  const server = createMcpServer((name, args) => f.controller.call(name, args, f.parent), undefined,
+    (ref, answer) => f.controller.humanResponse({ decision: ref, answer }, f.parent));
+  const client = new Client({ name: 'simulated-plan-change-UI', version: '0' }, { capabilities: { elicitation: { form: {} } } });
+  t.after(async () => { await client.close(); await server.close(); });
+  client.setRequestHandler(ElicitRequestSchema, async ({ params }) => {
+    assert.match(params.message, /"test".*"changed"/);
+    return { action: 'accept', content: { optionId: 'approve' } };
+  });
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  await Promise.all([client.connect(left), server.connect(right)]);
+  const available = (await client.listTools()).tools.map(tool => tool.name);
+  assert(available.includes('propose_plan_change') && available.includes('apply_plan_change'));
+  const responseFromForm = await client.callTool({ name: 'answer_consultation', arguments: { ...f.ref(), decisionId: cancelled.id } });
+  assert.deepEqual(responseFromForm.structuredContent, { state: 'resolved', decisionId: cancelled.id });
+  assert.doesNotMatch(JSON.stringify(responseFromForm), /formGeneration|humanDecisionForm/);
+  assert.equal((await f.call('answer_consultation', { decisionId: cancelled.id, close: 'cancelled' })).state, 'cancelled');
+  assert.deepEqual(f.store.coordinationDecision('run', cancelled.id)?.answer, { optionId: 'approve' });
+  await assert.rejects(f.call('apply_plan_change', { ...apply, decisionId: cancelled.id }), /agreement/);
+  assert.equal(f.store.plan('run')!.snapshot.planHash, expectedPlanHash);
+});
+
+test('permission_permit_is_run_bound_and_not_a_coordinator_tool_argument', async t => {
+  const f = fixture(t); await f.activate();
+  await assert.rejects(f.controller.call('create_worker', { ...f.ref('injected-permit'), taskId: 'A', permissionPermit: { allowedProfileIds: ['full-access'], writableRoots: [f.scope.repositoryPath], allowedReviewers: ['user'] } }, f.parent));
+  assert.equal(f.starts(), 0);
+  Object.assign(f.scope, { permissionPermit: { allowedProfileIds: ['workspace'], writableRoots: [f.scope.repositoryPath], allowedReviewers: ['auto_review'] } });
+  await assert.rejects(f.controller.call('create_worker', { ...f.ref('changed-permit'), taskId: 'A' }, f.parent));
+  assert.equal(f.starts(), 0);
+});
+
+const proposal = { taskIds: ['A'], blockingTaskIds: [], kind: 'consultation', recipient: 'coordinator', planHash: 'a'.repeat(64), question: '既定範囲で続けてよいか', options: [{ id: 'yes', label: '続行', description: '既定仕様のまま進める' }], allowFreeText: true };
+
+const parallelCoordination = (t: Parameters<typeof planControllerFixture>[0]) => planControllerFixture(t, f => {
+  f.plan.run.max_parallel = 2; f.plan.tasks[1].depends_on = [];
+  f.plan.tasks.push({ ...f.plan.tasks[0], id: 'C', scope: ['c.txt'], depends_on: [] });
+});
+async function blockingConsultation(f: Awaited<ReturnType<typeof parallelCoordination>>, recipient = 'coordinator') {
+  return f.call('propose_decision', { proposal: { ...proposal, recipient, blockingTaskIds: ['A'], planHash: f.store.plan('run')!.snapshot.planHash,
+    options: [{ id: 'resume', label: '現在の計画で再開', description: '権限・仕様を追加せず続行' }, { id: 'deny', label: '保留を続ける', description: '再開しない' }] } });
+}
+
+test('consultation_answer_does_not_resume_before_safe_parking', async t => {
+  const f = await parallelCoordination(t), a = await f.create('A'), b = await f.create('B'), decision = await blockingConsultation(f);
+  let finish!: (value: any) => void, started!: () => void, stops = 0;
+  const entered = new Promise<void>(resolve => started = resolve);
+  t.mock.method(f.runtime, 'stop', async () => { stops++; started(); return new Promise(resolve => finish = resolve); });
+  const args = { ...f.ref(), taskId: 'A', decisionId: decision.id };
+  const holding = f.controller.call('hold_task', args, f.parent);
+  await Promise.race([entered, holding.then(() => { throw new Error('parking did not start'); })]);
+  const duplicate = f.controller.call('hold_task', args, f.parent);
+  await f.call('answer_consultation', { decisionId: decision.id, answer: { optionId: 'resume' } });
+  assert.deepEqual(f.store.taskHolds('run', 'A'), []);
+  await assert.rejects(f.call('resume_task', { taskId: 'A', resolvedDecisionId: decision.id }));
+  await assert.rejects(f.create('C'));
+  assert.equal(f.store.attempts('run').filter(row => !['completed', 'stopped'].includes(row.state)).length, 2);
+  finish({ worker: a, state: 'stopped', evidenceRefs: ['confirmed'] });
+  assert.equal((await holding).releasedExecutionSlot, true); assert.deepEqual(await duplicate, await holding); assert.equal(stops, 1);
+  assert.equal(f.store.attempts('run').find(row => row.id === b.attemptId)!.state, 'idle');
+  const resume = { ...f.ref(), taskId: 'A', resolvedDecisionId: decision.id };
+  assert.equal((await f.controller.call('resume_task', resume, f.parent)).state, 'resume_ready');
+  const next = await f.create('A'); assert.notEqual(next.attemptId, a.attemptId);
+  const revision = f.store.run('run').revision;
+  assert.deepEqual(await f.controller.call('hold_task', args, f.parent), await holding);
+  assert.equal((await f.controller.call('resume_task', resume, f.parent)).state, 'resume_ready');
+  assert.equal(stops, 1); assert.equal(f.store.run('run').revision, revision);
+  assert.equal(f.store.planStates('run').A.attemptId, next.attemptId);
+});
+
+test('cancelled_or_superseded_consultation_never_resumes_held_work', async t => {
+  for (const outcome of ['cancelled', 'superseded', 'deny', 'amended'] as const) {
+    const f = await parallelCoordination(t), a = await f.create('A'), decision = await blockingConsultation(f, 'human');
+    const dirty = path.join(f.store.gitAssignment(a.attemptId)!.cwd, 'draft.txt'); writeFileSync(dirty, 'preserve');
+    await f.call('hold_task', { taskId: 'A', decisionId: decision.id });
+    if (outcome === 'cancelled' || outcome === 'superseded') await f.call('answer_consultation', { decisionId: decision.id, close: outcome });
+    else {
+      const shown = await f.call('answer_consultation', { decisionId: decision.id });
+      await f.controller.humanResponse({ decision: shown.humanDecisionForm.form, answer: outcome === 'deny' ? { optionId: 'deny' } : { optionId: 'resume', text: 'revised plan required' } }, f.parent);
+    }
+    assert.deepEqual(f.store.taskHolds('run', 'A'), []);
+    await assert.rejects(f.call('resume_task', { taskId: 'A', resolvedDecisionId: decision.id }));
+    await assert.rejects(f.create('A')); assert.equal(f.store.planStates('run').A.state, 'held');
+    assert.equal(readFileSync(dirty, 'utf8'), 'preserve');
+    const other = await blockingConsultation(f); assert.equal(f.store.coordinationDecision('run', other.id)!.decision.state, 'pending');
+    f.plan.tasks[0].completion = ['new-plan']; f.savePlan();
+    await assert.rejects(f.call('resume_task', { taskId: 'A', resolvedDecisionId: decision.id }));
+    assert.equal(readFileSync(dirty, 'utf8'), 'preserve'); assert.equal(f.store.coordinationDecision('run', other.id)!.decision.state, 'pending');
+  }
+});
+
+test('consultation_hold_answer_resume_keeps_independent_worker_running', async t => {
+  const f = await parallelCoordination(t), a = await f.create('A'), b = await f.create('B');
+  const decision = await blockingConsultation(f, 'human');
+  const child = { actor: { ownerId: b.ownerId, ownerEpoch: b.ownerEpoch, threadId: b.threadId }, turnId: 'turn' };
+  for (const [name, args] of [['hold_task', { taskId: 'A', decisionId: decision.id }], ['resume_task', { taskId: 'A', resolvedDecisionId: decision.id }]] as const) await assert.rejects(f.call(name, args, child));
+  await f.call('hold_task', { taskId: 'A', decisionId: decision.id });
+  await f.call('send_instruction', { taskId: 'B', target: b, agent: { model: 'mock', effort: 'low' }, text: 'continue independently' });
+  const server = createMcpServer((name, args) => f.controller.call(name, args, f.parent), undefined,
+    (form, answer) => f.controller.humanResponse({ decision: form, answer }, f.parent));
+  const client = new Client({ name: 'simulated-hold-answer-UI', version: '0' }, { capabilities: { elicitation: { form: {} } } });
+  client.setRequestHandler(ElicitRequestSchema, async () => ({ action: 'accept', content: { optionId: 'resume' } }));
+  const [left, right] = InMemoryTransport.createLinkedPair();
+  try {
+    await Promise.all([client.connect(left), server.connect(right)]);
+    assert.equal((await client.callTool({ name: 'answer_consultation', arguments: { ...f.ref(), decisionId: decision.id } })).isError, undefined);
+    assert.equal(f.starts.length, 2, 'answer must not start another attempt');
+    assert.equal(f.store.planStates('run').A.state, 'held');
+    assert((await client.listTools()).tools.some(tool => tool.name === 'hold_task'));
+    assert.equal((await client.callTool({ name: 'resume_task', arguments: { ...f.ref(), taskId: 'A', resolvedDecisionId: decision.id } })).isError, undefined);
+    const creation = { ...f.ref(), taskId: 'A' }, next = await f.controller.call('create_worker', creation, f.parent);
+    assert.deepEqual(await f.controller.call('create_worker', creation, f.parent), next);
+    assert.equal(f.starts.length, 3); assert.notEqual(next.attemptId, a.attemptId); assert.notEqual(next.threadId, a.threadId);
+    assert.equal(f.store.gitAssignment(next.attemptId)!.cwd, f.store.gitAssignment(a.attemptId)!.cwd);
+    await assert.rejects(f.call('send_instruction', { taskId: 'A', target: a, agent: { model: 'mock', effort: 'low' }, text: 'stale' }));
+    assert.equal(f.store.attempts('run').find(row => row.id === b.attemptId)!.state, 'running'); assert.equal(f.store.run('run').state, 'active');
+  } finally { await client.close(); await server.close(); }
+});
+
+test('hold_result_keeps_confirmed_cleanup_if_resume_wins_the_reply_race', async t => {
+  const f = await parallelCoordination(t), a = await f.create('A'), decision = await blockingConsultation(f);
+  const park = f.broker.parkTask.bind(f.broker);
+  let next!: WorkerRef;
+  t.mock.method(f.broker, 'parkTask', async (runId: string, worker: WorkerRef) => {
+    const result = await park(runId, worker);
+    await f.call('answer_consultation', { decisionId: decision.id, answer: { optionId: 'resume' } });
+    await f.call('resume_task', { taskId: 'A', resolvedDecisionId: decision.id });
+    next = await f.create('A');
+    return result;
+  });
+  const args = { ...f.ref(), taskId: 'A', decisionId: decision.id };
+  const result = await f.controller.call('hold_task', args, f.parent);
+  assert.equal(result.releasedExecutionSlot, true);
+  assert.notEqual(next.attemptId, a.attemptId); assert.equal(f.store.planStates('run').A.attemptId, next.attemptId);
+  assert.deepEqual(await f.controller.call('hold_task', args, f.parent), result);
+});
+
+test('human_callback_checks_plan_file_before_any_status_refresh', async t => {
+  const f = await planControllerFixture(t);
+  const decision = await f.call('propose_decision', { proposal: { ...proposal, recipient: 'human', planHash: f.store.plan('run')!.snapshot.planHash } });
+  const displayed = await f.call('answer_consultation', { decisionId: decision.id });
+  f.plan.tasks[0].completion = ['changed-before-answer']; f.savePlan();
+  assert.equal(f.store.plan('run')!.frozen, false, 'no status call has observed the changed file yet');
+  await assert.rejects(f.controller.humanResponse({ decision: displayed.humanDecisionForm.form, answer: { optionId: 'yes' } }, f.parent));
+  assert.equal(f.store.coordinationDecision('run', decision.id)?.decision.state, 'pending');
+  assert.equal(f.store.coordinationDecision('run', decision.id)?.answer, null);
+});
+async function coordinationFixture(t: { after(fn: () => void): void }) {
+  const f = fixture(t); await f.activate();
+  f.store.savePlan('run', { planHash: proposal.planHash, plan: { run: { max_parallel: 2 }, tasks: [{ id: 'A' }, { id: 'B' }] } } as PlanSnapshot, {} as RepositoryPin);
+  return f;
+}
+
+test('consultation_tools_enforce_own_task_recipient_and_once_only_events', async t => {
+  const f = await coordinationFixture(t);
+  const worker = await f.controller.call('create_worker', { ...f.ref('worker'), taskId: 'A' }, f.parent);
+  const actor = { actor: { ownerId: worker.ownerId, ownerEpoch: worker.ownerEpoch, threadId: worker.threadId }, turnId: 'turn' };
+  const args = { ...f.ref('consultation'), proposal };
+  const decision = await f.controller.call('propose_decision', args, actor);
+  assert.deepEqual(await f.controller.call('propose_decision', args, actor), decision);
+  assert.equal(f.store.events('run', 0, 100).filter(e => e.kind === 'decision_changed').length, 1);
+  assert.equal((await f.controller.call('get_status', { runId: 'run' }, f.parent)).attempts[0].state, 'idle');
+  await assert.rejects(f.controller.call('propose_decision', { ...f.ref('peer'), proposal: { ...proposal, taskIds: ['B'] } }, actor), /scope|peer/);
+  await assert.rejects(f.controller.call('propose_decision', { ...f.ref('empty'), proposal: { ...proposal, taskIds: [] } }, actor), /scope/);
+  await assert.rejects(f.controller.call('answer_consultation', { ...f.ref('worker-answer'), decisionId: decision.id, answer: { optionId: 'yes' } }, actor));
+  await f.controller.call('answer_consultation', { ...f.ref('parent-answer'), decisionId: decision.id, answer: { optionId: 'yes' } }, f.parent);
+  assert.equal(f.store.coordinationDecision('run', decision.id)?.decision.state, 'resolved');
+});
+
+test('human_consultation_uses_non_tool_callback_and_keeps_peer_running', async t => {
+  const f = await coordinationFixture(t);
+  const b = await f.controller.call('create_worker', { ...f.ref('B'), taskId: 'B' }, f.parent);
+  await f.controller.call('send_instruction', { ...f.ref('send-B'), taskId: 'B', target: b, agent: { model: 'mock', effort: 'low' }, text: 'work independently' }, f.parent);
+  const decision = await f.controller.call('propose_decision', { ...f.ref('human'), proposal: { ...proposal, recipient: 'human' } }, f.parent);
+  await assert.rejects(f.controller.call('answer_consultation', { ...f.ref('model-answer'), decisionId: decision.id, answer: { optionId: 'yes' } }, f.parent), /recipient/);
+  const server = createMcpServer((name, args) => f.controller.call(name, args, f.parent), undefined,
+    (form, answer) => f.controller.humanResponse({ decision: form, answer }, f.parent));
+  const client = new Client({ name: 'simulated-consultation-UI', version: '0' }, { capabilities: { elicitation: { form: {} } } });
+  let shown!: () => void, respond!: (value: any) => void;
+  const displayed = new Promise<void>(resolve => shown = resolve), response = new Promise<any>(resolve => respond = resolve);
+  client.setRequestHandler(ElicitRequestSchema, async () => { shown(); return response; });
+  const [a, c] = InMemoryTransport.createLinkedPair();
+  try {
+    await Promise.all([client.connect(a), server.connect(c)]);
+    const pending = client.callTool({ name: 'answer_consultation', arguments: { ...f.ref('form'), decisionId: decision.id } });
+    await Promise.race([displayed, pending.then(result => { throw new Error(`Form was not displayed: ${JSON.stringify(result)}`); })]);
+    assert.equal(f.store.coordinationDecision('run', decision.id)?.decision.state, 'pending');
+    assert.equal((await f.controller.call('get_status', { runId: 'run' }, f.parent)).attempts[0].state, 'running');
+    respond({ action: 'accept', content: { optionId: 'yes' } });
+    const result = await pending;
+    assert.equal(result.isError, undefined);
+    assert.doesNotMatch(JSON.stringify(result), /formGeneration|humanDecisionForm/);
+    assert.equal(f.store.coordinationDecision('run', decision.id)?.decision.state, 'resolved');
+    const tools = (await client.listTools()).tools.map(tool => tool.name);
+    assert(tools.includes('get_decisions')); assert(!tools.includes('human_response'));
+  } finally { respond({ action: 'cancel' }); await client.close(); await server.close(); }
+});
+
+test('decision_pages_are_bounded_and_worker_cannot_read_peer_answers', async t => {
+  const f = await coordinationFixture(t);
+  const worker = await f.controller.call('create_worker', { ...f.ref('A'), taskId: 'A' }, f.parent);
+  for (let i = 0; i < 5; i++) await f.controller.call('propose_decision', { ...f.ref(`page-${i}`), proposal: { ...proposal, taskIds: i % 2 ? ['B'] : ['A'], question: 'x'.repeat(4096) } }, f.parent);
+  let afterId: string | undefined, found = 0;
+  do {
+    const page = await f.controller.call('get_decisions', { runId: 'run', afterId, limit: 2 }, { actor: { ownerId: worker.ownerId, ownerEpoch: worker.ownerEpoch, threadId: worker.threadId }, turnId: 'turn' });
+    assert(Buffer.byteLength(JSON.stringify(page)) < 90000);
+    for (const item of page.decisions) { assert.deepEqual(item.decision.taskIds, ['A']); assert.equal(item.answer, null); found++; }
+    assert.doesNotMatch(JSON.stringify(page), /formGeneration/);
+    afterId = page.nextAfterId ?? undefined;
+  } while (afterId);
+  assert.equal(found, 3);
+  await assert.rejects(f.controller.call('get_decisions', { runId: 'run', limit: 101 }, f.parent));
+});
+
+test('decision_forms_reject_old_generation_cancellation_plan_drift_and_worker_callbacks', async t => {
+  const f = await coordinationFixture(t);
+  const decision = await f.controller.call('propose_decision', { ...f.ref('human'), proposal: { ...proposal, recipient: 'human' } }, f.parent);
+  const first = await f.controller.call('answer_consultation', { ...f.ref('first-form'), decisionId: decision.id }, f.parent);
+  const second = await f.controller.call('answer_consultation', { ...f.ref('second-form'), decisionId: decision.id }, f.parent);
+  await assert.rejects(f.controller.humanResponse({ decision: first.humanDecisionForm.form, answer: { optionId: 'yes' } }, f.parent));
+  await assert.rejects(f.controller.humanResponse({ decision: second.humanDecisionForm.form, answer: { optionId: 'yes' } }, { actor: { ...f.parent.actor, ownerEpoch: 'forged' }, turnId: 'turn' }));
+  await f.controller.call('answer_consultation', { ...f.ref('cancel'), decisionId: decision.id, close: 'cancelled' }, f.parent);
+  await assert.rejects(f.controller.humanResponse({ decision: second.humanDecisionForm.form, answer: { optionId: 'yes' } }, f.parent));
+  const other = await f.controller.call('propose_decision', { ...f.ref('other'), proposal: { ...proposal, recipient: 'human' } }, f.parent);
+  const form = await f.controller.call('answer_consultation', { ...f.ref('old-plan'), decisionId: other.id }, f.parent);
+  f.store.savePlan('run', { planHash: 'b'.repeat(64), plan: { run: { max_parallel: 2 }, tasks: [{ id: 'A' }] } } as PlanSnapshot, {} as RepositoryPin);
+  await assert.rejects(f.controller.humanResponse({ decision: form.humanDecisionForm.form, answer: { optionId: 'yes' } }, f.parent));
+  writeFileSync(f.scope.planPath, 'changed plan');
+  assert.equal((await f.controller.call('answer_consultation', { ...f.ref('close-stale'), decisionId: other.id, close: 'superseded' }, f.parent)).state, 'superseded');
+});
+
+test('decision_callback_replay_and_presentation_retry_never_repeat_mutation_or_form', async t => {
+  const f = await coordinationFixture(t);
+  const decision = await f.controller.call('propose_decision', { ...f.ref('human'), proposal: { ...proposal, recipient: 'human' } }, f.parent);
+  const args = { ...f.ref('display'), decisionId: decision.id };
+  const shown = await f.controller.call('answer_consultation', args, f.parent);
+  assert.equal((await f.controller.call('answer_consultation', args, f.parent)).humanDecisionForm, undefined);
+  const callback = { decision: shown.humanDecisionForm.form, answer: { optionId: 'yes' } };
+  const result = await f.controller.humanResponse(callback, f.parent), revision = f.store.run('run').revision;
+  assert.deepEqual(await f.controller.humanResponse(callback, f.parent), result);
+  assert.equal(f.store.run('run').revision, revision);
+  await assert.rejects(f.controller.humanResponse({ ...callback, answer: { text: 'changed' } }, f.parent));
+  const changes = f.store.events('run', 0, 100).filter(event => event.kind === 'decision_changed');
+  assert.deepEqual(changes.map(event => event.transition), ['decision_proposed', 'decision_answered']);
+});
+
+test('multibyte_decision_and_answer_pages_respect_wire_byte_budget', async t => {
+  const f = await coordinationFixture(t);
+  for (let i = 0; i < 4; i++) {
+    const decision = await f.controller.call('propose_decision', { ...f.ref(`large-${i}`), proposal: { ...proposal, question: 'あ'.repeat(2730), options: Array.from({ length: 4 }, (_, j) => ({ id: `choice-${j}`, label: '選択肢', description: 'x'.repeat(4096) })) } }, f.parent);
+    await f.controller.call('answer_consultation', { ...f.ref(`answer-${i}`), decisionId: decision.id, answer: { text: 'い'.repeat(5460) } }, f.parent);
+  }
+  let afterId: string | undefined, found = 0;
+  do {
+    const page = await f.controller.call('get_decisions', { runId: 'run', afterId }, f.parent);
+    assert(Buffer.byteLength(JSON.stringify(page)) < 81000);
+    assert(page.decisions.length > 0 && page.decisions.length < 4);
+    found += page.decisions.length; afterId = page.nextAfterId ?? undefined;
+  } while (afterId);
+  assert.equal(found, 4);
+});
 
 test('formal_elicitation_delivers_human_choice_without_exposing_response_tool', async () => {
   const item = { key: 'key', payloadHash: 'hash', formGeneration: 'generation', cwd: 'fixture', worker: { workerId: 'A', attemptId: 'attempt', threadId: 'thread' }, requestId: 7, turnId: 'turn', detail: 'scope: report only' };
@@ -154,7 +541,7 @@ test('creation_diagnostic_write_failure_still_stops_run', async t => {
   assert.equal(f.store.operation('failed-start').state, 'sent_unknown');
 });
 
-function fixture(t: { after(fn: () => void): void }) {
+function fixture(t: { after(fn: () => void): void }, limits: Partial<ExecutionLimits> = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'cc02-')), planPath = path.join(root, 'plan.md'); writeFileSync(planPath, 'fixture plan');
   const store = new Store(path.join(root, 'state'), process.cwd()); store.createRun('run'); t.after(() => store.close());
   const parent = { actor: { ownerId: 'parent-owner', ownerEpoch: 'epoch', threadId: 'P' }, turnId: 'p-turn' };
@@ -167,7 +554,7 @@ function fixture(t: { after(fn: () => void): void }) {
     async stop(worker: WorkerRef) { return { worker, state: 'stopped' as const, evidenceRefs: ['confirmed'] }; },
     async releaseCompleted(worker: WorkerRef) { return { worker, state: 'stopped' as const, evidenceRefs: ['confirmed'] }; }
   };
-  const broker = new Broker(store, runtime), controller = new McpController(store, broker, runtime, 'run', parent.actor, scope);
+  const broker = new Broker(store, runtime, undefined, limits), controller = new McpController(store, broker, runtime, 'run', parent.actor, scope);
   const ref = (operationId: string) => ({ runId: 'run', operationId, expectedRevision: store.run('run').revision });
   const activate = async () => {
     const pending: any = await controller.call('start_run', { planPath, operationId: 'start' }, parent);
@@ -176,16 +563,72 @@ function fixture(t: { after(fn: () => void): void }) {
   };
   return { controller, store, scope, parent, runtime, ref, activate, sends: () => sends, starts: () => starts };
 }
-test('third_correction_stops_run_and_duplicate_decision_does_not_consume_budget', async t => {
+test('unlimited_default_allows_more_than_two_corrections', async t => {
   const f = fixture(t); await f.activate();
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 5; i++) {
     const args = { ...f.ref('create-' + i), taskId: 'A' };
     const worker = await f.controller.call('create_worker', args, f.parent);
     await f.controller.call('create_worker', args, f.parent);
     f.store.saveStop('run', { worker, state: 'stopped', evidenceRefs: [] }, true);
   }
-  await assert.rejects(f.controller.call('create_worker', { ...f.ref('third'), taskId: 'A' }, f.parent), /correction/);
+  assert.equal(f.starts(), 5); assert.equal(f.store.run('run').state, 'active');
+});
+
+test('explicit_correction_budget_reserves_before_start_and_counts_unknown_once', async t => {
+  const f = fixture(t, { maxCorrectionsPerTask: 2 }); await f.activate();
+  for (let i = 0; i < 2; i++) {
+    const args = { ...f.ref('creation-' + i), taskId: 'A' }, worker = await f.controller.call('create_worker', args, f.parent);
+    assert.deepEqual(await f.controller.call('create_worker', args, f.parent), worker);
+    f.store.saveStop('run', { worker, state: 'stopped', evidenceRefs: [] }, true);
+  }
+  t.mock.method(f.runtime, 'start', async () => { assert.equal(f.store.correctionCount('run', 'A'), 2); throw new Error('ACK lost'); });
+  const unknown = { ...f.ref('unknown-start'), taskId: 'A' };
+  await assert.rejects(f.controller.call('create_worker', unknown, f.parent));
+  assert.equal((await f.controller.call('create_worker', unknown, f.parent)).state, 'sent_unknown');
+  assert.equal(f.store.correctionCount('run', 'A'), 2);
   assert.equal(f.store.run('run').state, 'stopped');
+  const limited = fixture(t, { maxCorrectionsPerTask: 2 }); await limited.activate();
+  for (let i = 0; i < 3; i++) { const worker = await limited.controller.call('create_worker', { ...limited.ref('creation-' + i), taskId: 'A' }, limited.parent); limited.store.saveStop('run', { worker, state: 'stopped', evidenceRefs: [] }, true); }
+  await assert.rejects(limited.controller.call('create_worker', { ...limited.ref('exhausted'), taskId: 'A' }, limited.parent), /correction/);
+  assert.equal(limited.starts(), 3); assert.equal(limited.store.run('run').state, 'stopped');
+});
+
+test('plan_execution_limits_apply_before_allocation_and_do_not_relax_config_bounds', async t => {
+  const f = await planControllerFixture(t, f => {
+    Object.assign(f.plan, { schema_version: 2 });
+    Object.assign(f.plan.run, { execution_limits: { maxWakeTurns: 3, maxCorrectionsPerTask: 2 } });
+    for (const task of f.plan.tasks) Object.assign(task.agent, { permissionProfileId: 'workspace' });
+  });
+  assert.deepEqual(f.broker.executionLimits('run'), { maxWakeTurns: 3, maxCorrectionsPerTask: 2 });
+  const stricter = new Broker(f.store, f.runtime, undefined, { maxWakeTurns: 1, maxCorrectionsPerTask: 1 });
+  assert.deepEqual(stricter.executionLimits('run'), { maxWakeTurns: 1, maxCorrectionsPerTask: 1 });
+  for (let i = 0; i < 3; i++) {
+    const a = await f.create('A'); await f.complete('A', a, 'revision-' + i);
+    await f.call('record_decision', { taskId: 'A', decision: 'retry_same', evidenceRefs: [] });
+  }
+  const before = f.store.planStates('run').A, worktrees = spawnSync('git', ['-C', f.repository, 'worktree', 'list'], { encoding: 'utf8', windowsHide: true }).stdout;
+  await assert.rejects(f.create('A'), /correction/);
+  assert.deepEqual(f.store.planStates('run').A, before); assert.equal(spawnSync('git', ['-C', f.repository, 'worktree', 'list'], { encoding: 'utf8', windowsHide: true }).stdout, worktrees);
+});
+
+test('retire_one_worker_keeps_run_active_and_is_parent_only', async t => {
+  const f = await parallelCoordination(t), a = await f.create('A'), b = await f.create('B');
+  const dirty = path.join(f.store.gitAssignment(a.attemptId)!.cwd, 'draft.txt'); writeFileSync(dirty, 'preserve');
+  const child = { actor: b, turnId: 'worker-turn' };
+  await assert.rejects(f.call('retire_worker', { target: a }, child));
+  const args = { ...f.ref(), target: a };
+  assert.equal((await f.controller.call('retire_worker', args, f.parent)).state, 'stopped');
+  assert.equal((await f.controller.call('retire_worker', args, f.parent)).state, 'stopped');
+  const status = await f.status();
+  assert.equal(status.run.state, 'active'); assert.equal(status.plan.tasks.A.state, 'retired');
+  assert(!status.plan.eligible.includes('A')); assert(!status.plan.eligible.includes('B'));
+  assert(status.plan.eligible.includes('C')); assert.equal(readFileSync(dirty, 'utf8'), 'preserve');
+  assert.equal(f.store.attempts('run').find(row => row.id === b.attemptId)!.state, 'idle');
+  await assert.rejects(f.call('send_instruction', { taskId: 'A', target: a, agent: { model: 'mock', effort: 'low' }, text: 'stale' }));
+  await f.call('record_decision', { taskId: 'A', decision: 'handoff_new', evidenceRefs: [] });
+  const next = await f.create('A'); assert.notEqual(next.attemptId, a.attemptId);
+  await f.call('retire_worker', { target: a });
+  assert.equal(f.store.attempts('run').find(row => row.id === next.attemptId)!.state, 'idle');
 });
 test('stop_fence_blocks_new_worker_before_database_stop', async t => {
   const f = fixture(t); await f.activate(); let release!: () => void;
@@ -331,4 +774,33 @@ test('terminal_snapshot_keeps_old_live_attempt_when_peer_has_many_completed_atte
     f.store.saveStop('run', { worker, state: 'stopped', evidenceRefs: [] }, true);
   }
   const visible = f.store.displayAttempts('run'); assert(visible.some(row => row.id === a.attemptId)); assert.equal(visible.length, 4);
+});
+
+test('many_worker_requests_remain_paged_within_status_frame_limit', async t => {
+  const f = fixture(t); await f.activate();
+  Object.assign(f.runtime, { pendingRequests: () => Array.from({ length: 128 }, (_, i) => ({ key: `request-${i}`, detail: '長'.repeat(4000), worker: { attemptId: `attempt-${i}` } })) });
+  let offset: number | null = 0, count = 0;
+  do {
+    const page: any = await f.controller.call('get_status', { runId: 'run', requestOffset: offset }, f.parent);
+    assert(Buffer.byteLength(JSON.stringify(page)) < 262144); assert(page.requests.length > 0);
+    count += page.requests.length; offset = page.nextRequestOffset;
+  } while (offset !== null);
+  assert.equal(count, 128);
+});
+
+test('combined_status_pages_fit_the_broker_response_budget_and_each_cursor_can_progress', async t => {
+  const f = fixture(t); await f.activate();
+  const worker = { workerId: 'A', attemptId: 'a', ownerId: 'owner', ownerEpoch: 'epoch', threadId: 'thread' };
+  t.mock.method(f.store, 'attempts', () => Array.from({ length: 4 }, (_, i) => ({ id: `a${i}`, run_id: 'run', cwd: 'x', state: 'running', completed_turn_id: null, stop_result: null,
+    registration: JSON.stringify({ worker: { ...worker, attemptId: `a${i}` }, taskId: 'A', cwd: 'x'.repeat(4096), branch: 'b'.repeat(512), model: 'm'.repeat(128), effort: 'low' }) })));
+  t.mock.method(f.store, 'reports', () => [{ payload: 'x'.repeat(59000) }]);
+  t.mock.method(f.store, 'reportCount', () => 1);
+  t.mock.method(f.store, 'events', () => Array.from({ length: 100 }, (_, seq) => ({ seq, kind: 'k'.repeat(128), attempt_id: 'a'.repeat(128) })));
+  Object.assign(f.runtime, { pendingRequests: () => [{ key: 'request', detail: 'x'.repeat(79000), worker }] });
+  const initial = await f.controller.call('get_status', { runId: 'run' }, f.parent);
+  assert(Buffer.byteLength(JSON.stringify(initial)) < 180000);
+  const reports = await f.controller.call('get_status', { runId: 'run', reportOffset: 0 }, f.parent);
+  assert.equal(reports.reports.length, 1); assert(Buffer.byteLength(JSON.stringify(reports)) < 180000);
+  const requests = await f.controller.call('get_status', { runId: 'run', requestOffset: 0 }, f.parent);
+  assert.equal(requests.requests.length, 1); assert(Buffer.byteLength(JSON.stringify(requests)) < 180000);
 });

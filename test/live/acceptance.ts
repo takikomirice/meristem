@@ -10,7 +10,7 @@ import { install } from '../../src/install.js';
 import { planControllerFixture } from '../fixtures/plan-controller.js';
 import { git } from '../fixtures/serial-git.js';
 import { serialGit } from './serial-git.js';
-import { parallelMerge } from './parallel-merge.js';
+import { parallelMerge, nWayMerge } from './parallel-merge.js';
 
 export async function coordinationGuards() {
   const cleanup: (() => void)[] = [], f = await planControllerFixture({ after(fn) { cleanup.push(fn); } });
@@ -50,10 +50,11 @@ async function main() {
   const args = process.argv.slice(2), action = args.shift();
   const arg = (name: string) => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
   const run = (file: string, rest: string[]) => { const result = spawnSync(process.execPath, [path.resolve('dist/test/live', file), ...rest], { stdio: 'inherit', windowsHide: true }); assert.equal(result.status, 0, 'acceptance step failed'); };
-  if (action === 'fixture') {
+  if (action === 'fixture' || action === 'fixture-mc12') {
     const output = arg('--evidence'); assert(output && path.isAbsolute(output) && !existsSync(output));
     const guards = await coordinationGuards(), serial = await serialGit(), parallel = await parallelMerge();
-    const evidence = { ...serial, testId: 'CC-07-acceptance', assertions: guards, scenarios: { serial, parallel }, limitations: ['Deterministic runtime and local bare remote only.', 'Human approval, skill/subagent compatibility, real VS Code and GitHub need separate observations.'] };
+    const expanded = action === 'fixture-mc12' ? await nWayMerge() : undefined;
+    const evidence = { ...serial, testId: expanded ? 'MC-12' : 'CC-07-acceptance', assertions: guards, scenarios: { serial, parallel, ...(expanded ? { expanded } : {}) }, limitations: ['Deterministic runtime and local bare remote only.', 'Human approval, skill/subagent compatibility, real VS Code and GitHub need separate observations.'] };
     writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' }); console.log(JSON.stringify({ result: 'passed', evidence_kind: 'fixture' }));
   } else if (action === 'prepare') {
     assert(args.includes('--live'));
@@ -82,6 +83,6 @@ async function main() {
     writeFileSync(file, JSON.stringify(session, null, 2)); console.log(JSON.stringify(result));
   } else if (['launch', 'relaunch', 'open-parent', 'parent', 'status', 'reconcile', 'cleanup'].includes(action ?? '')) {
     run('cc02-session.js', [action!, ...args]);
-  } else throw new Error('usage: acceptance fixture|prepare|install|launch|parent|status|reconcile|cleanup');
+  } else throw new Error('usage: acceptance fixture|fixture-mc12|prepare|install|launch|parent|status|reconcile|cleanup');
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) void main().catch(error => { console.error(error); process.exitCode = 1; });

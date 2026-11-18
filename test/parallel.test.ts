@@ -6,6 +6,9 @@ import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { WorkerRuntime } from '../src/workers.js';
 import { GitEvidence } from '../src/git-evidence.js';
+import { Broker, PlanControl } from '../src/broker.js';
+import { DecisionService } from '../src/decisions.js';
+import { Store } from '../src/store.js';
 import path from 'node:path';
 import { planControllerFixture } from './fixtures/plan-controller.js';
 import { git, checks, commitFile } from './fixtures/serial-git.js';
@@ -15,6 +18,213 @@ const parallel = (t: Parameters<typeof planControllerFixture>[0], configure?: Pa
   f.plan.tasks.push({ ...f.plan.tasks[0], id: 'C', scope: ['c.txt'], depends_on: ['A', 'B'] });
   f.plan.tasks.push({ ...f.plan.tasks[0], id: 'D', scope: ['d.txt'] });
   configure?.(f);
+});
+
+function coordination(f: Awaited<ReturnType<typeof parallel>>) {
+  const control = new PlanControl(f.store, 'run', () => f.broker.canWake('run'));
+  const decisions = new DecisionService(f.store, () => {}, () => undefined);
+  const propose = (taskId: string, blocking = true) => decisions.propose(f.ref(), {
+    taskIds: [taskId], blockingTaskIds: blocking ? [taskId] : [], kind: 'consultation', recipient: 'coordinator',
+    planHash: f.store.plan('run')!.snapshot.planHash, question: 'Continue the approved work?',
+    options: [{ id: 'resume', label: 'Resume', description: 'Continue within the current plan' }, { id: 'deny', label: 'Hold', description: 'Keep held' }], allowFreeText: true
+  });
+  return { control, decisions, propose };
+}
+
+test('two_held_tasks_allow_independent_work_after_safe_parking', async t => {
+  const f = await parallel(t, f => {
+    f.plan.tasks[0].conflicts_with = ['lockfile'];
+    f.plan.tasks.find(task => task.id === 'D')!.conflicts_with = [];
+    f.plan.tasks.push({ ...f.plan.tasks[0], id: 'E', scope: ['a.txt/nested'] });
+    f.plan.tasks.push({ ...f.plan.tasks[0], id: 'F', scope: ['f.txt'] });
+  });
+  const c = coordination(f), a = await f.create('A'), b = await f.create('B');
+  const dirty = path.join(f.store.gitAssignment(a.attemptId)!.cwd, 'draft.txt'); writeFileSync(dirty, 'keep');
+  const da = c.propose('A'), db = c.propose('B');
+  c.control.holdTask(f.ref(), 'A', da.id); c.control.holdTask(f.ref(), 'B', db.id);
+  await assert.rejects(f.create('D'));
+  await f.broker.parkTask('run', a); await f.broker.parkTask('run', b);
+  assert.equal(f.store.run('run').state, 'active');
+  await assert.rejects(f.create('E')); await assert.rejects(f.create('F')); await assert.rejects(f.create('C'));
+  await f.create('D');
+  assert.equal(readFileSync(dirty, 'utf8'), 'keep');
+  assert.equal((await f.status()).plan.tasks.A.state, 'held');
+  assert.equal(f.store.attempts('run').filter(row => !['stopped', 'completed'].includes(row.state)).length, 1);
+});
+
+test('nonblocking_consultation_keeps_worker_running', async t => {
+  const f = await parallel(t), c = coordination(f), a = await f.create('A');
+  const decision = c.propose('A', false);
+  assert.throws(() => c.control.holdTask(f.ref(), 'A', decision.id));
+  await f.broker.dispatch({ kind: 'send', ref: f.ref(), worker: a, text: 'independent work' });
+  assert.equal(f.store.attempts('run')[0].state, 'running'); assert.deepEqual(f.store.requests('run'), []);
+  assert.equal(f.store.coordinationDecision('run', decision.id)!.decision.state, 'pending');
+  c.propose('A');
+  await assert.rejects(f.broker.dispatch({ kind: 'send', ref: f.ref(), worker: a, text: 'blocked work' }));
+});
+
+test('unassigned_task_can_be_held_and_explicitly_resumed_before_git_initialization', async t => {
+  const f = await parallel(t), c = coordination(f), d = c.propose('A');
+  assert.equal(c.control.holdTask(f.ref(), 'A', d.id).releasedExecutionSlot, true);
+  await assert.rejects(f.create('A'));
+  c.decisions.resolveCoordinator(f.ref(), d.id, { optionId: 'resume' });
+  c.control.resumeTask(f.ref(), 'A', d.id);
+  await f.create('A'); assert.equal(f.store.attempts('run').length, 1);
+});
+
+test('execution_hold_survives_answer_row_release_and_broker_restart', async t => {
+  const cleanup: (() => void)[] = [], f = await parallel({ after(fn) { cleanup.push(fn); } });
+  let closed = false; t.after(() => { if (!closed) cleanup[0](); });
+  const c = coordination(f), a = await f.create('A'), d = c.propose('A');
+  c.control.holdTask(f.ref(), 'A', d.id); await f.broker.parkTask('run', a);
+  c.decisions.resolveCoordinator(f.ref(), d.id, { optionId: 'resume' });
+  cleanup[0](); closed = true;
+  const restored = new Store(path.join(f.root, 'state'), f.repository); t.after(() => restored.close());
+  const control = new PlanControl(restored, 'run');
+  assert.deepEqual(restored.taskHolds('run', 'A'), []);
+  assert.equal(restored.planStates('run').A.state, 'held'); assert.equal(restored.planStates('run').A.hold?.releasedExecutionSlot, true);
+  assert.equal(restored.run('run').state, 'needs_reconcile'); assert.deepEqual((await control.status()).eligible, []);
+  assert.throws(() => control.resumeTask({ runId: 'run', operationId: 'restart-resume', expectedRevision: restored.run('run').revision }, 'A', d.id));
+});
+
+test('hold_answer_and_safe_parking_are_separate_idempotent_gates', async t => {
+  const f = await parallel(t), c = coordination(f), a = await f.create('A');
+  const d = c.propose('A'), ref = f.ref();
+  const first = c.control.holdTask(ref, 'A', d.id);
+  assert.deepEqual(c.control.holdTask(ref, 'A', d.id), first);
+  let finish!: (value: any) => void;
+  t.mock.method(f.runtime, 'stop', () => new Promise(resolve => { finish = resolve; }));
+  const parking = f.broker.parkTask('run', a);
+  c.decisions.resolveCoordinator(f.ref(), d.id, { optionId: 'resume' });
+  assert.deepEqual(f.store.taskHolds('run', 'A'), []);
+  assert.throws(() => c.control.resumeTask(f.ref(), 'A', d.id));
+  assert.equal(f.store.planStates('run').A.hold?.releasedExecutionSlot, false);
+  await assert.rejects(f.broker.dispatch({ kind: 'send', ref: f.ref(), worker: a, text: 'old' }));
+  finish({ worker: a, state: 'stopped', evidenceRefs: ['confirmed'] }); await parking;
+  const resume = f.ref(); c.control.resumeTask(resume, 'A', d.id); c.control.resumeTask(resume, 'A', d.id);
+  const next = await f.create('A'); assert.notEqual(next.attemptId, a.attemptId); assert.notEqual(next.threadId, a.threadId);
+  assert.equal(f.store.gitAssignment(next.attemptId)!.cwd, f.store.gitAssignment(a.attemptId)!.cwd);
+  await assert.rejects(f.broker.dispatch({ kind: 'send', ref: f.ref(), worker: a, text: 'stale' }));
+});
+
+test('closed_negative_and_free_text_answers_never_resume_held_work', async t => {
+  for (const outcome of ['cancelled', 'superseded', 'deny', 'text', 'amended'] as const) {
+    const f = await parallel(t), c = coordination(f), a = await f.create('A'), d = c.propose('A');
+    c.control.holdTask(f.ref(), 'A', d.id); await f.broker.parkTask('run', a);
+    if (outcome === 'cancelled' || outcome === 'superseded') c.decisions.close(f.ref(), d.id, outcome);
+    else c.decisions.resolveCoordinator(f.ref(), d.id, outcome === 'text' ? { text: 'maybe' } : { optionId: outcome === 'amended' ? 'resume' : 'deny', ...(outcome === 'amended' ? { text: 'change the plan' } : {}) });
+    assert.throws(() => c.control.resumeTask(f.ref(), 'A', d.id));
+    await assert.rejects(f.create('A')); assert.equal(f.store.planStates('run').A.state, 'held');
+  }
+});
+
+test('held_scope_and_stale_results_remain_fenced', async t => {
+  const f = await parallel(t), c = coordination(f), a = await f.create('A'), d = c.propose('A');
+  c.control.holdTask(f.ref(), 'A', d.id); await f.broker.parkTask('run', a);
+  c.decisions.resolveCoordinator(f.ref(), d.id, { optionId: 'resume' });
+  await assert.rejects(f.call('record_decision', { taskId: 'A', decision: 'handoff_new', evidenceRefs: [] }));
+  await assert.rejects(f.complete('A', a));
+  f.plan.tasks[0].completion = ['new-check']; f.savePlan();
+  assert.throws(() => c.control.resumeTask(f.ref(), 'A', d.id));
+  await assert.rejects(f.create('C')); assert.equal(f.store.planStates('run').A.state, 'held');
+});
+
+test('resume_rechecks_dirty_git_other_decisions_and_operation_identity', async t => {
+  const f = await parallel(t), c = coordination(f), a = await f.create('A'), d = c.propose('A');
+  c.control.holdTask(f.ref(), 'A', d.id); await f.broker.parkTask('run', a);
+  c.decisions.resolveCoordinator(f.ref(), d.id, { optionId: 'resume' });
+  const other = c.propose('A');
+  assert.throws(() => c.control.resumeTask(f.ref(), 'A', d.id));
+  c.control.holdTask(f.ref(), 'A', other.id); c.decisions.resolveCoordinator(f.ref(), other.id, { optionId: 'resume' });
+  const dirty = path.join(f.store.gitAssignment(a.attemptId)!.cwd, 'draft.txt'); writeFileSync(dirty, 'keep');
+  assert.throws(() => c.control.resumeTask(f.ref(), 'A', d.id)); assert.equal(readFileSync(dirty, 'utf8'), 'keep');
+  unlinkSync(dirty);
+  const ref = f.ref(); c.control.resumeTask(ref, 'A', d.id);
+  assert.throws(() => c.control.resumeTask(ref, 'A', other.id), /payload/);
+  writeFileSync(dirty, 'late edit'); await assert.rejects(f.create('A')); assert.equal(readFileSync(dirty, 'utf8'), 'late edit');
+});
+
+test('unknown_or_wrong_owner_parking_never_releases_execution_slot', async t => {
+  for (const mismatch of [false, true]) {
+    const f = await parallel(t), c = coordination(f), a = await f.create('A');
+    const d = c.propose('A'); c.control.holdTask(f.ref(), 'A', d.id);
+    t.mock.method(f.runtime, 'stop', async () => ({ worker: mismatch ? { ...a, ownerEpoch: 'other' } : a, state: mismatch ? 'stopped' : 'unknown', evidenceRefs: ['fixture'] }));
+    const result = await f.broker.parkTask('run', a);
+    assert.equal(result.state, 'unknown'); assert.equal(f.store.planStates('run').A.hold?.releasedExecutionSlot, false);
+    await assert.rejects(f.create('D')); assert.equal(f.store.run('run').state, 'stopped');
+  }
+});
+
+test('unknown_parking_fences_parent_wake_and_stops_independent_attempts', async t => {
+  const f = await parallel(t), c = coordination(f), a = await f.create('A'), b = await f.create('B'), d = c.propose('A');
+  c.control.holdTask(f.ref(), 'A', d.id);
+  let fenced = false;
+  const broker = new Broker(f.store, f.runtime, async blocked => { fenced = blocked; });
+  t.mock.method(f.runtime, 'stop', async (worker: typeof a) => ({ worker, state: worker.attemptId === a.attemptId ? 'unknown' : 'stopped', evidenceRefs: ['fixture'] }));
+  const generation = f.store.run('run').stop_generation;
+  assert.equal((await broker.parkTask('run', a)).state, 'unknown');
+  assert.equal(fenced, true); assert(f.store.run('run').stop_generation > generation);
+  assert.equal(f.store.attempts('run').find(row => row.id === b.attemptId)!.state, 'stopped');
+  assert.equal(f.store.planStates('run').A.hold?.releasedExecutionSlot, false);
+});
+
+test('held_task_resumes_after_independent_integration_and_keeps_final_sha_checks', async t => {
+  const f = await parallel(t), c = coordination(f), a = await f.create('A'), d = c.propose('A');
+  c.control.holdTask(f.ref(), 'A', d.id); await f.broker.parkTask('run', a);
+  const b = await f.create('B'), one = await f.complete('B', b, 'independent');
+  const integrate = async (taskId: string, candidate: string, fastForward: boolean) => {
+    await f.call('record_decision', { taskId, decision: 'accept_candidate', candidateSha: candidate, evidenceRefs: [] });
+    await f.call('record_decision', { taskId, decision: 'prepare_integration', inputCandidateShas: [candidate], evidenceRefs: [] });
+    const cwd = f.store.plan('run')!.pin.integrationCwd;
+    git(cwd, 'merge', fastForward ? '--ff-only' : '--no-edit', candidate);
+    const sha = git(cwd, 'rev-parse', 'HEAD');
+    await f.call('record_decision', { taskId, decision: 'accept_integration', integrationSha: sha, checks: [...checks, { ...checks[0], name: 'integration' }].map(check => ({ ...check, checked_sha: sha })), evidenceRefs: [] });
+    return { cwd, sha };
+  };
+  await integrate('B', one.sha, true);
+  c.decisions.resolveCoordinator(f.ref(), d.id, { optionId: 'resume' });
+  c.control.resumeTask(f.ref(), 'A', d.id);
+  const next = await f.create('A'); assert.notEqual(next.attemptId, a.attemptId);
+  const two = await f.complete('A', next, 'resumed');
+  const final = await integrate('A', two.sha, false);
+  assert.equal(git(final.cwd, 'show', `${final.sha}:a.txt`), 'resumed');
+  assert.equal(git(final.cwd, 'show', `${final.sha}:b.txt`), 'independent');
+  assert.equal(f.store.planStates('run').A.integrationSha, final.sha);
+});
+
+test('parked_history_worktree_cannot_be_assigned_to_another_task', async t => {
+  const f = await parallel(t, f => { f.plan.tasks[1].depends_on = ['A']; f.plan.tasks[2].depends_on = ['A']; });
+  const c = coordination(f), a = await f.create('A'), one = await f.complete('A', a);
+  await f.call('record_decision', { taskId: 'A', decision: 'accept_candidate', candidateSha: one.sha, evidenceRefs: [] });
+  await f.call('record_decision', { taskId: 'A', decision: 'prepare_integration', inputCandidateShas: [one.sha], evidenceRefs: [] });
+  git(f.store.plan('run')!.pin.integrationCwd, 'merge', '--ff-only', one.sha);
+  await f.call('record_decision', { taskId: 'A', decision: 'accept_integration', integrationSha: one.sha, checks: [...checks, { ...checks[0], name: 'integration' }].map(check => ({ ...check, checked_sha: one.sha })), evidenceRefs: [] });
+  for (const taskId of ['B', 'C']) await f.call('record_decision', { taskId, decision: 'continue_same', sourceTaskId: 'A', evidenceRefs: [] });
+  const b = await f.create('B'), d = c.propose('B'); c.control.holdTask(f.ref(), 'B', d.id); await f.broker.parkTask('run', b);
+  // C has disjoint scope, but its chosen history would reuse B's reserved worktree.
+  await assert.rejects(f.create('C'));
+  assert.equal(f.store.planStates('run').B.state, 'held'); assert.equal(f.store.run('run').state, 'active');
+});
+
+test('parking_confirms_native_job_without_stopping_independent_worker', { timeout: 120000 }, async t => {
+  const stateDirectory = mkdtempSync(path.join(tmpdir(), 'mc04-native-'));
+  const hostExe = path.resolve('.local/chat-control-build/CodexWorkerHost.exe'), realExe = path.resolve('.local/chat-control-build/MockCodex.exe');
+  const sha = (p: string) => createHash('sha256').update(readFileSync(p)).digest('hex');
+  const runtime = new WorkerRuntime({ stateDirectory, hostExe, hostSha256: sha(hostExe), realExe, realSha256: sha(realExe), authHome: stateDirectory, fixture: true });
+  const f = await planControllerFixture(t, f => { f.plan.run.max_parallel = 2; f.plan.tasks[1].depends_on = []; }, runtime);
+  const a = await f.create('A'), b = await f.create('B');
+  t.after(async () => { await runtime.stop(a, 'test_cleanup'); await runtime.stop(b, 'test_cleanup'); });
+  await runtime.send(a, 'fixture-start-marker'); await runtime.send(b, 'fixture-start-marker');
+  const markerA = path.join(f.store.gitAssignment(a.attemptId)!.cwd, 'worker.marker'), markerB = path.join(f.store.gitAssignment(b.attemptId)!.cwd, 'worker.marker');
+  for (let i = 0; i < 100 && (!existsSync(markerA) || !existsSync(markerB)); i++) await delay(50);
+  assert(existsSync(markerA) && existsSync(markerB));
+  const d = await f.call('propose_decision', { proposal: { taskIds: ['A'], blockingTaskIds: ['A'], kind: 'consultation', recipient: 'coordinator', planHash: f.store.plan('run')!.snapshot.planHash,
+    question: 'Hold current work?', options: [{ id: 'resume', label: 'Resume', description: 'Continue current plan' }], allowFreeText: false } });
+  const result = await f.call('hold_task', { taskId: 'A', decisionId: d.id }); assert.equal(result.releasedExecutionSlot, true);
+  assert(JSON.parse(f.store.attempts('run').find(row => row.id === a.attemptId)!.stop_result!).evidenceRefs.includes('native_job_empty'));
+  const lengthA = readFileSync(markerA).length, lengthB = readFileSync(markerB).length;
+  await delay(2100); assert.equal(readFileSync(markerA).length, lengthA); assert(readFileSync(markerB).length > lengthB);
+  assert.equal(f.store.planStates('run').A.hold?.releasedExecutionSlot, true); assert.equal(f.store.run('run').state, 'active');
 });
 
 test('limits_workers_to_two_and_blocks_dependencies', async t => {
@@ -166,4 +376,165 @@ test('workers_have_separate_jobs_worktrees_branches_and_terminals', { timeout: 1
     assert.equal(git(resultB.assignment.cwd, 'rev-parse', 'HEAD'), resultB.sha);
     assert(readFileSync(markerA).length > 0); assert.equal(f.store.run('run').state, 'stopped');
   });
+});
+
+async function expanded(t: Parameters<typeof planControllerFixture>[0], maximum = 4) {
+  const { expandedParallelPlan } = await import('./fixtures/parallel-git.js');
+  return planControllerFixture(t, f => expandedParallelPlan(f, maximum));
+}
+async function proposeMaximum(f: Awaited<ReturnType<typeof expanded>>, maximum: number) {
+  return f.call('propose_decision', { proposal: { taskIds: ['A', 'B', 'C', 'D'], blockingTaskIds: [], kind: 'parallelism', recipient: 'human',
+    requestedMaximum: maximum, planHash: f.store.plan('run')!.snapshot.planHash, question: 'Independent tasks need more workers; approve the maximum?',
+    options: [{ id: 'approve', label: 'Approve', description: 'Approve this run ceiling' }, { id: 'deny', label: 'Deny', description: 'Keep the current ceiling' }], allowFreeText: true } });
+}
+async function approveMaximum(f: Awaited<ReturnType<typeof expanded>>, maximum: number) {
+  const decision = await proposeMaximum(f, maximum);
+  const { humanDecisionForm: { form } } = await f.call('answer_consultation', { decisionId: decision.id });
+  const input = { decision: form, answer: { optionId: 'approve' } };
+  await f.controller.humanResponse(input, f.parent);
+  await f.controller.humanResponse(input, f.parent); // Callback replay must settle once.
+  return decision;
+}
+
+test('third_worker_requires_current_human_grant', async t => {
+  const f = await expanded(t); await f.create('A'); await f.create('B');
+  assert.deepEqual((await f.status()).plan.eligible, []);
+  await assert.rejects(f.create('C'));
+  const decision = await proposeMaximum(f, 4);
+  await assert.rejects(f.call('answer_consultation', { decisionId: decision.id, answer: { optionId: 'approve' } }));
+  await assert.rejects(f.create('C'));
+  const first = await f.call('answer_consultation', { decisionId: decision.id });
+  const second = await f.call('answer_consultation', { decisionId: decision.id });
+  await assert.rejects(f.controller.humanResponse({ decision: first.humanDecisionForm.form, answer: { optionId: 'approve' } }, f.parent));
+  await f.controller.humanResponse({ decision: second.humanDecisionForm.form, answer: { optionId: 'approve', text: 'Use three instead' } }, f.parent);
+  await assert.rejects(f.create('C')); // Changed text creates a fresh pending proposal.
+  assert.equal(f.store.parallelismApproval('run'), undefined);
+  await approveMaximum(f, 3); await f.create('C'); await assert.rejects(f.create('D'));
+  f.store.createRun('other'); assert.throws(() => f.store.saveParallelismApproval('other', decision.id, 4));
+  assert.equal((f.store as any).effectiveParallelLimit('other'), 2);
+});
+
+test('grant_four_allows_replacement_but_not_five', async t => {
+  const f = await expanded(t, 5); await approveMaximum(f, 4);
+  const a = await f.create('A'); await f.create('B'); await f.create('C'); await f.create('D');
+  await assert.rejects(f.create('E'));
+  await f.call('retire_worker', { target: a });
+  const pending = await Promise.allSettled([f.create('E'), f.create('F')]);
+  assert.equal(pending.filter(r => r.status === 'fulfilled').length, 1);
+  assert.equal(f.store.attempts('run').filter(row => !['completed', 'stopped'].includes(row.state)).length, 4);
+  await approveMaximum(f, 5);
+  const remaining = pending[0].status === 'rejected' ? 'E' : 'F'; await f.create(remaining);
+  assert.equal(f.store.attempts('run').filter(row => !['completed', 'stopped'].includes(row.state)).length, 5);
+});
+
+async function threeCandidates(t: Parameters<typeof planControllerFixture>[0]) {
+  const f = await expanded(t, 3); await approveMaximum(f, 3);
+  const workers = await Promise.all(['A', 'B', 'C'].map(id => f.create(id)));
+  const results = [];
+  for (const [i, worker] of workers.entries()) {
+    const id = ['A', 'B', 'C'][i], result = await f.complete(id, worker, 'one', true, 'turn', [{ ...checks[0], name: id }]);
+    results.push(result);
+  }
+  for (const [i, result] of results.entries()) await f.call('record_decision', { taskId: ['A', 'B', 'C'][i], decision: 'accept_candidate', candidateSha: result.sha, evidenceRefs: [] });
+  const inputs = results.map(result => result.sha), cwd = f.store.plan('run')!.pin.integrationCwd;
+  await f.call('record_decision', { taskId: 'C', decision: 'prepare_integration', inputCandidateShas: inputs, evidenceRefs: [] });
+  for (const sha of inputs) git(cwd, 'merge', '--no-edit', sha);
+  const sha = git(cwd, 'rev-parse', 'HEAD');
+  const verified = ['A', 'B', 'C', 'integration'].map(name => ({ ...checks[0], name, checked_sha: sha }));
+  return { ...f, results, inputs, cwd, sha, verified };
+}
+
+test('three_candidates_are_pinned_and_checked_at_final_sha', async t => {
+  const f = await threeCandidates(t);
+  const accept = (checks: unknown) => f.call('record_decision', { taskId: 'C', decision: 'accept_integration', integrationSha: f.sha, checks, evidenceRefs: [] });
+  await assert.rejects(accept(f.verified.slice(1)));
+  await assert.rejects(accept(f.verified.map(check => ({ ...check, checked_sha: f.inputs[0] }))));
+  await accept(f.verified);
+  for (const id of ['A', 'B', 'C']) assert.equal(f.store.planStates('run')[id].integrationSha, f.sha);
+  assert.deepEqual(f.store.planStates('run').C.integrationEvidence?.inputCandidateShas, f.inputs);
+});
+
+test('candidate_changed_during_integration_is_rejected', async t => {
+  const f = await threeCandidates(t);
+  commitFile(f.results[0].assignment.cwd, 'a.txt', 'changed'); git(f.results[0].assignment.cwd, 'push', 'origin', f.results[0].assignment.branch);
+  await assert.rejects(f.call('record_decision', { taskId: 'C', decision: 'accept_integration', integrationSha: f.sha, checks: f.verified, evidenceRefs: [] }));
+  for (const id of ['A', 'B', 'C']) assert.equal(f.store.planStates('run')[id].state, 'candidate_accepted');
+});
+
+test('human_grant_keeps_scope_and_shared_locks_and_counts_starting_reservations', async t => {
+  const { expandedParallelPlan } = await import('./fixtures/parallel-git.js');
+  const f = await planControllerFixture(t, f => {
+    expandedParallelPlan(f, 3); f.plan.tasks[1].scope = ['A.txt/nested'];
+    f.plan.tasks[0].conflicts_with = ['lock']; f.plan.tasks[2].conflicts_with = ['lock'];
+  });
+  await approveMaximum(f, 3);
+  let finish!: (worker: any) => void, entered!: () => void;
+  const waiting = new Promise<void>(resolve => entered = resolve), original = f.runtime.start.bind(f.runtime);
+  t.mock.method(f.runtime, 'start', async (assignment: any) => {
+    const worker = await original(assignment);
+    if (assignment.workerId === 'A') { entered(); return new Promise(resolve => finish = () => resolve(worker)); }
+    return worker;
+  });
+  const starting = f.create('A'); await waiting;
+  try {
+    assert.equal(f.store.attempts('run')[0].state, 'starting');
+    await assert.rejects(f.create('B')); await assert.rejects(f.create('C'));
+    await f.create('D'); await f.create('E'); await assert.rejects(f.create('F'));
+    assert.equal(f.store.attempts('run').length, 3);
+  } finally { finish(undefined); await starting; }
+});
+
+test('plan_change_during_third_candidate_verification_rejects_the_entire_batch', async t => {
+  const f = await threeCandidates(t), original = GitEvidence.prototype.verifyCandidate;
+  t.mock.method(GitEvidence.prototype, 'verifyCandidate', async function(this: GitEvidence, ...args: Parameters<GitEvidence['verifyCandidate']>) {
+    const result = await original.apply(this, args);
+    if (args[0] === 'B') { f.plan.tasks[0].completion = ['changed']; f.savePlan(); }
+    return result;
+  });
+  await assert.rejects(f.call('record_decision', { taskId: 'C', decision: 'accept_integration', integrationSha: f.sha, checks: f.verified, evidenceRefs: [] }));
+  for (const id of ['A', 'B', 'C']) assert.equal(f.store.planStates('run')[id].state, 'candidate_accepted');
+  assert.equal(f.store.effectiveParallelLimit('run'), 2);
+});
+
+test('integration_checks_can_be_batched_without_weakening_frame_or_final_sha', async t => {
+  const { expandedParallelPlan } = await import('./fixtures/parallel-git.js');
+  const f = await planControllerFixture(t, f => { expandedParallelPlan(f, 3); for (const task of f.plan.tasks) task.completion = Array.from({ length: 11 }, (_, i) => `${task.id}-${i}`); });
+  await approveMaximum(f, 3);
+  const inputs = [];
+  for (const id of ['A', 'B', 'C']) {
+    const worker = await f.create(id), result = await f.complete(id, worker, 'one', true, 'turn', Array.from({ length: 11 }, (_, i) => ({ ...checks[0], name: `${id}-${i}` })));
+    inputs.push(result.sha); await f.call('record_decision', { taskId: id, decision: 'accept_candidate', candidateSha: result.sha, evidenceRefs: [] });
+  }
+  const cwd = f.store.plan('run')!.pin.integrationCwd;
+  await f.call('record_decision', { taskId: 'C', decision: 'prepare_integration', inputCandidateShas: inputs, evidenceRefs: [] });
+  for (const sha of inputs) git(cwd, 'merge', '--no-edit', sha);
+  const sha = git(cwd, 'rev-parse', 'HEAD'), verified = [...['A', 'B', 'C'].flatMap(id => Array.from({ length: 11 }, (_, i) => `${id}-${i}`)), 'integration'].map(name => ({ ...checks[0], name, checked_sha: sha }));
+  const record = (batch: unknown, checkedSha = sha) => f.call('record_decision', { taskId: 'C', decision: 'record_integration_checks', integrationSha: checkedSha, checks: batch, evidenceRefs: [] });
+  await assert.rejects(record(verified));
+  await assert.rejects(record([{ ...verified[0], checked_sha: inputs[0] }]));
+  await record(verified.slice(0, 32));
+  await assert.rejects(f.call('record_decision', { taskId: 'C', decision: 'accept_integration', integrationSha: sha, checks: [], evidenceRefs: [] }));
+  await assert.rejects(record([verified[0]]));
+  await assert.rejects(record(verified.slice(32), inputs[0]));
+  await record(verified.slice(32));
+  await f.call('record_decision', { taskId: 'C', decision: 'accept_integration', integrationSha: sha, checks: [], evidenceRefs: [] });
+  assert.equal(f.store.planStates('run').C.integrationEvidence?.checks.length, 34);
+  for (const id of ['A', 'B', 'C']) assert.equal(f.store.planStates('run')[id].integrationSha, sha);
+});
+
+test('multiple_candidates_require_final_sha_checks_even_with_a_serial_worker_ceiling', async t => {
+  const f = await expanded(t, 1), inputs: string[] = [];
+  for (const id of ['A', 'B', 'C']) {
+    const worker = await f.create(id), result = await f.complete(id, worker, 'one', true, 'turn', [{ ...checks[0], name: id }]);
+    inputs.push(result.sha); await f.call('record_decision', { taskId: id, decision: 'accept_candidate', candidateSha: result.sha, evidenceRefs: [] });
+  }
+  await f.call('record_decision', { taskId: 'C', decision: 'prepare_integration', inputCandidateShas: inputs, evidenceRefs: [] });
+  const cwd = f.store.plan('run')!.pin.integrationCwd;
+  for (const sha of inputs) git(cwd, 'merge', '--no-edit', sha);
+  const sha = git(cwd, 'rev-parse', 'HEAD'), verified = ['A', 'B', 'C', 'integration'].map(name => ({ ...checks[0], name, checked_sha: sha }));
+  const accept = (checks: unknown) => f.call('record_decision', { taskId: 'C', decision: 'accept_integration', integrationSha: sha, checks, evidenceRefs: [] });
+  await assert.rejects(accept(verified.slice(0, 3).map(({ checked_sha: _, ...check }) => check)));
+  await assert.rejects(accept(verified.map(check => ({ ...check, checked_sha: inputs[0] }))));
+  await accept(verified);
+  for (const id of ['A', 'B', 'C']) assert.equal(f.store.planStates('run')[id].integrationSha, sha);
 });

@@ -7,7 +7,7 @@ import path from 'node:path';
 import { serialAcceptancePlan, serialFixture } from './fixtures/serial-git.js';
 import { eligibleTasks, readPlan } from '../src/plan.js';
 
-test('vscode_restart_does_not_resurrect_stopped_worker', async () => { await coordinationGuards(); });
+test('broker store restart does not resurrect a stopped worker', async () => { await coordinationGuards(); });
 
 test('serial_acceptance_checks_detect_failed_correction_and_gate_handoff', () => {
   const f = serialAcceptancePlan(serialFixture(), { model: 'mock', effort: 'low' });

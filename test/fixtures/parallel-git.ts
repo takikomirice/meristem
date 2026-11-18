@@ -32,3 +32,12 @@ console.log('passed: ' + names.join(','));
   }));
   f.savePlan(); return f;
 }
+
+// MC-06: version 2 requests a ceiling; trusted human consent controls capacity.
+export function expandedParallelPlan(f: ReturnType<typeof serialFixture>, maximum = 4) {
+  f.plan.schema_version = 2; f.plan.run.max_parallel = maximum;
+  f.plan.tasks = ['A', 'B', 'C', 'D', 'E', 'F'].map(id => ({
+    ...f.plan.tasks[0], id, depends_on: [], scope: [id.toLowerCase() + '.txt'], conflicts_with: [],
+    agent: Object.assign({ model: 'mock', effort: 'low' }, { permissionProfileId: 'workspace' }), completion: [id]
+  }));
+}

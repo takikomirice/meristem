@@ -126,7 +126,7 @@ test('malformed_or_disconnected_display_client_does_not_stop_worker',{timeout:15
   const cwd=mkdtempSync(path.join(os.tmpdir(),'cc00r-display-loss-')),name=pipeName(),marker=path.join(cwd,'marker');
   const host=spawn(hostExe,['--pipe',name,'--exe',mockExe,'--cwd',cwd,'--arg','spawn-ticker','--arg',marker],{windowsHide:true,stdio:['ignore','ignore','pipe']});const sockets=[];
   let stderr='';host.stderr.on('data',data=>stderr+=data);
-  t.after(async()=>{for(const socket of sockets)socket.destroy();await killAndWait(host);rmSync(cwd,{recursive:true,force:true});});
+  t.after(async()=>{for(const socket of sockets)socket.destroy();await killAndWait(host);rmSync(cwd,{recursive:true,force:true,maxRetries:10,retryDelay:50});});
   await until(()=>existsSync(marker));
   for(const payload of [Buffer.alloc(65537,120),Buffer.from([0xff,10]),Buffer.from('{"method":"events"}\n')]){
     const socket=net.connect(`\\\\.\\pipe\\${name}-${nextSlot++%16}`);sockets.push(socket);socket.on('error',()=>{});

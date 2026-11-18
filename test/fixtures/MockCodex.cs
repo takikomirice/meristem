@@ -51,7 +51,7 @@ internal static class MockCodex {
             Write(new { argv=args }); Console.Error.WriteLine("mock-stderr");
             Console.OpenStandardInput().CopyTo(Console.OpenStandardOutput()); return 23;
         }
-        string line;object approvalThread=null;string approvalTurn=null;bool approvalCompleteFirst=false;Dictionary<string,object> threadConfig=null;
+        string line;object approvalThread=null;string approvalTurn=null;bool approvalCompleteFirst=false;Dictionary<string,object> threadConfig=null;string compatibilityThread=null,reviewCall=null;
         while ((line=Console.ReadLine()) != null) {
             var m=Json.Deserialize<Dictionary<string,object>>(line);
             if (!m.ContainsKey("id")) continue;
@@ -67,6 +67,53 @@ internal static class MockCodex {
             }
             var p=m.ContainsKey("params") ? m["params"] as Dictionary<string,object> : new Dictionary<string,object>();
             object result=new {};
+            if(File.Exists("history-fixture.json")) {
+                string method=(string)m["method"];
+                File.AppendAllText("history-fixture-methods.txt",method+Environment.NewLine);
+                if(method=="thread/read"||method=="thread/turns/list") {
+                    var saved=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText("history-fixture.json"));
+                    if(!Object.Equals(p["threadId"],saved["threadId"])) Write(new {id=m["id"],error=new {code=-32602,message="fixture thread absent"}});
+                    else Write(new {id=m["id"],result=saved[method]});
+                    continue;
+                }
+            }
+            // Opt-in protocol fixture for MC-02. Never evidence of real Codex/UI behavior.
+            if(File.Exists("compatibility-fixture.json")) {
+                string scenario=(string)Json.Deserialize<Dictionary<string,object>>(File.ReadAllText("compatibility-fixture.json"))["scenario"];
+                string method=(string)m["method"];
+                if(method=="thread/inject_items") {
+                    if(scenario=="inject_rejected") {Write(new {id=m["id"],error=new {code=-32600,message="private-error"}});continue;}
+                    var items=p["items"] as System.Collections.ArrayList;
+                    var call=items[items.Count-1] as Dictionary<string,object>;reviewCall=(string)call["call_id"];
+                    Write(new {id=m["id"],result=new {}});continue;
+                }
+                if(method=="thread/guardianReview") {
+                    if(scenario=="guardian_rejected") {Write(new {id=m["id"],error=new {code=-32600,message="private-error"}});continue;}
+                    Write(new {id=m["id"],result=new {callId=reviewCall,assessment=new {outcome=reviewCall.Contains("deny")?"deny":"allow",rationale="private-rationale"}}});continue;
+                }
+                if(method=="model/list"&&scenario=="model_paged"&&(!p.ContainsKey("cursor")||p["cursor"]==null)) {
+                    Write(new {id=m["id"],result=new {data=new object[0],nextCursor="next"}});continue;
+                }
+                if(method=="account/read") { Write(new {id=m["id"],result=new {account=scenario=="account_missing"?null:new {type="chatgpt",email="private-account"},requiresOpenaiAuth=true}});continue; }
+                if(method=="turn/start") {
+                    File.AppendAllText("probe-turn-count.txt","1");
+                    if(scenario=="turn_rejected")Write(new {id=m["id"],error=new {code=-32600,message="private-error"}});
+                    else {
+                        Write(new {method="turn/completed",@params=new {threadId=p["threadId"],turn=new {id="mc02-turn",status="completed"}}});
+                        Write(new {id=m["id"],result=new {turn=new {id="mc02-turn"}}});
+                    }
+                    continue;
+                }
+                if(method=="thread/start"||method=="thread/resume"||method=="thread/read") {
+                    if(method=="thread/start"&&scenario=="reviewer_rejected"||method=="thread/read"&&scenario=="read_rejected") {
+                        Write(new {id=m["id"],error=new {code=-32600,message="private-error"}});continue;
+                    }
+                    if(method=="thread/start")compatibilityThread=Guid.NewGuid().ToString();
+                    string id=method=="thread/resume"&&scenario=="resume_mismatch"?"wrong-thread":compatibilityThread;
+                    var thread=new {id=id,cwd=Directory.GetCurrentDirectory(),parentThreadId=(string)null,modelProvider="mock",status=new {type="idle"},turns=new object[0],preview="private-history"};
+                    Write(new {id=m["id"],result=new {thread=thread,model="mock",approvalsReviewer=scenario=="reviewer_mismatch"?"user":"auto_review",activePermissionProfile=new {id=scenario=="profile_mismatch"?":workspace":"meristem-managed"}}});continue;
+                }
+            }
             string expectedSandbox=Path.Combine(Directory.GetCurrentDirectory(),"expected-sandbox.txt");
             if(File.Exists(expectedSandbox)&&((string)m["method"]=="thread/start"||(string)m["method"]=="thread/resume")) {
                 var requestedConfig=p.ContainsKey("config")?p["config"] as Dictionary<string,object>:null;
@@ -92,7 +139,17 @@ internal static class MockCodex {
                     }
                     result=new { data=new [] {new { id="mock", model="mock", supportedReasoningEfforts=new [] {new {reasoningEffort="low", description="mock"}}}}, nextCursor=(string)null }; break;
                 case "echo": result=p; break;
-                case "mcpServerStatus/list": result=new {data=new[]{new {name="meristem",toolsError=(string)null,tools=new {start_run=new {},report=new {}}}}};break;
+                case "mcpServerStatus/list":
+                    if(!p.ContainsKey("serverName")&&File.Exists("review-mcp-inventory.json")) {
+                        result=Json.DeserializeObject(File.ReadAllText("review-mcp-inventory.json"));
+                        if(File.Exists("review-mcp-next.json")) File.Replace("review-mcp-next.json","review-mcp-inventory.json",null);
+                    }
+                    else {
+                        var server=new {name="meristem",runtimeStatus="connected",httpOrigin=(string)null,pluginId=(string)null,toolsError=(string)null,tools=new {start_run=new {},report=new {}}};
+                        bool hasServer=p.ContainsKey("serverName")||threadConfig!=null&&threadConfig.ContainsKey("mcp_servers.meristem");
+                        result=new {data=hasServer?new object[]{server}:new object[0],nextCursor=(string)null};
+                    }
+                    break;
                 case "fixture/mcp": {
                     RunMcp((string)p["executable"],(string)p["helper"],(string)p["file"]);break;
                 }
@@ -108,9 +165,37 @@ internal static class MockCodex {
                         Console.Write("{\"id\":"+Json.Serialize(m["id"])+",\"result\":{\"payload\":\"management-private-payload\""); return 0;
                     }
                     result=new { payload="management-private-payload"+new string('x',8*1024*1024+17) }; break;
-                case "thread/start": threadConfig=p.ContainsKey("config")?(Dictionary<string,object>)p["config"]:null; result=new { thread=new { id=Guid.NewGuid().ToString(), parentThreadId=(string)null, environments=new[]{new{environmentId="local",cwd=p["cwd"]}}, cwd=p["cwd"], modelProvider="mock", status=new { type="idle" } }, cwd=p["cwd"], model=p.ContainsKey("model")?p["model"]:"mock", reasoningEffort="low" }; break;
+                case "thread/start":
+                    threadConfig=p.ContainsKey("config")?(Dictionary<string,object>)p["config"]:null;
+                    bool readOnly=Object.Equals(p.ContainsKey("permissions")?p["permissions"]:null,"meristem-read-only");
+                    if(readOnly) {
+                        var profile=threadConfig==null||!threadConfig.ContainsKey("permissions.meristem-read-only")?null:threadConfig["permissions.meristem-read-only"] as Dictionary<string,object>;
+                        var filesystem=profile==null||!profile.ContainsKey("filesystem")?null:profile["filesystem"] as Dictionary<string,object>;
+                        if(filesystem==null||filesystem.Count!=1||!filesystem.ContainsValue("deny")||!Object.Equals(profile["extends"],":read-only")||
+                           !Object.Equals(threadConfig["default_permissions"],"meristem-read-only")) {
+                            Write(new {id=m["id"],error=new {code=-32602,message="invalid read-only profile"}});continue;
+                        }
+                        foreach(string feature in new[]{"request_permissions_tool","exec_permission_approvals","plugins","apps","hooks","skill_mcp_dependency_install"})
+                            if(!threadConfig.ContainsKey("features."+feature)||!Object.Equals(threadConfig["features."+feature],false)) throw new Exception("read-only feature must be disabled");
+                    }
+                    var settings=new Dictionary<string,object> {
+                        {"thread",new { id=Guid.NewGuid().ToString(), parentThreadId=(string)null, environments=new[]{new{environmentId="local",cwd=p["cwd"]}}, cwd=p["cwd"], modelProvider="mock", status=new { type="idle" } }},
+                        {"cwd",p["cwd"]},{"runtimeWorkspaceRoots",p.ContainsKey("runtimeWorkspaceRoots")?p["runtimeWorkspaceRoots"]:new object[]{p["cwd"]}},{"model",p.ContainsKey("model")?p["model"]:"mock"},
+                        {"reasoningEffort",threadConfig!=null&&threadConfig.ContainsKey("model_reasoning_effort")?threadConfig["model_reasoning_effort"]:"low"},
+                        {"approvalsReviewer",p.ContainsKey("approvalsReviewer")?p["approvalsReviewer"]:"user"},
+                        {"approvalPolicy",p.ContainsKey("approvalPolicy")?p["approvalPolicy"]:"on-request"},
+                        {"activePermissionProfile",new {id=p.ContainsKey("permissions")?p["permissions"]:":workspace",extends=readOnly?":read-only":":workspace"}},
+                        {"sandbox",new {type=readOnly?"readOnly":"workspaceWrite",networkAccess=false}}
+                    };
+                    if(File.Exists("mc07-ack.json")) foreach(var pair in Json.Deserialize<Dictionary<string,object>>(File.ReadAllText("mc07-ack.json")))settings[pair.Key]=pair.Value;
+                    result=settings; break;
                 case "thread/resume": result=new { thread=new { id=p["threadId"], parentThreadId=(string)null, cwd=Directory.GetCurrentDirectory(), modelProvider="mock", status=new { type="idle" } }, model="mock", reasoningEffort="low" }; break;
                 case "turn/start":
+                    if(File.Exists("observed-settings.json")) {
+                        var observed=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText("observed-settings.json"));
+                        if(!observed.ContainsKey("threadId")) observed["threadId"]=p["threadId"];
+                        Write(new {method="thread/settings/updated",@params=observed});
+                    }
                     if(Json.Serialize(p).Contains("fixture-exit-before-ack")) return 23;
                     if(Json.Serialize(p).Contains("fixture-auth-error")) { Write(new { id=m["id"], error=new {code=-32000,message="Bearer secret-must-not-persist",data=new {codexErrorInfo="unauthorized"}} });continue; }
                     if(Json.Serialize(p).Contains("fixture-limit-error")) { Write(new { id=m["id"], error=new {code=-32000,message="private-limit-details",data=new {codexErrorInfo="usageLimitExceeded"}} });continue; }
@@ -128,6 +213,15 @@ internal static class MockCodex {
                     }
                     string turnId=Guid.NewGuid().ToString();
                     Write(new {method="turn/started",@params=new {threadId=p["threadId"],turn=new {id=turnId,status="inProgress"}}});
+                    if(File.Exists(Path.Combine(Directory.GetCurrentDirectory(),"display-activity"))) {
+                        var threadId=p["threadId"];
+                        for(int index=0;index<320;index++) Write(new {method="item/started",@params=new {threadId,turnId,item=new {type="commandExecution",command="fixture-private",aggregatedOutput="api_key=fixture-private"}}});
+                        Write(new {method="item/completed",@params=new {threadId,turnId,item=new {type="commandExecution",command="npm test -- fixture-private",exitCode=0,aggregatedOutput="claimed-test-count"}}});
+                        Write(new {method="item/completed",@params=new {threadId,turnId,item=new {type="fileChange",changes=new[]{new {path="fixture-private",diff="api_key=fixture-private"}}}}});
+                        Write(new {method="item/completed",@params=new {threadId,turnId="old-turn",item=new {type="commandExecution",command="fixture-private"}}});
+                        Write(new {method="item/completed",@params=new {threadId,turnId,item=new {type="reasoning",summary=new[]{"fixture-private"},content=new[]{"fixture-private"}}}});
+                        Write(new {method="item/completed",@params=new {threadId,turnId,item=new {type="agentMessage",phase="commentary",text="api_key=fixture-private"}}});
+                    }
                     if(Json.Serialize(p).Contains("fixture-parallel-completion")) {
                         File.WriteAllText(Path.Combine(Directory.GetCurrentDirectory(),"active-turn.txt"),turnId);
                         var parallelThread=p["threadId"];var parallelTurn=turnId;
@@ -156,11 +250,14 @@ internal static class MockCodex {
                     }
                     if(Json.Serialize(p).Contains("fixture-human-approval")) {
                         approvalThread=p["threadId"];approvalTurn=turnId;approvalCompleteFirst=Json.Serialize(p).Contains("fixture-human-approval-complete-first");
+                        if(Json.Serialize(p).Contains("fixture-auto-review-denial")) Write(new {method="item/autoApprovalReview/completed",@params=new {threadId=approvalThread,turnId=turnId,targetItemId="tool-call",review=new {status="denied"},action=new {type="mcpToolCall",server="meristem",toolName="report"}}});
                         Write(new {id="human-approval",method="mcpServer/elicitation/request",@params=new {threadId=approvalThread,turnId=turnId,serverName="meristem",mode="form",message="fixture approval",requestedSchema=new {type="object",properties=new {}},_meta=new {codex_approval_kind="mcp_tool_call",connector_id="meristem",tool_name="report",tool_params=new {report=new {summary="fixture"}}}}});
                     }
                     if(Json.Serialize(p).Contains("fixture-question")) {
                         approvalThread=p["threadId"];approvalTurn=turnId;
-                        Write(new {id="human-approval",method="item/tool/requestUserInput",@params=new {threadId=approvalThread,turnId=turnId,itemId="question-item",questions=new[]{new {id="format",header="Format",question="Which format?",isSecret=false}}}});
+                        var questions=new List<object>{new {id="format",header="Format",question="Which format?",isOther=true,isSecret=false,options=new[]{new {label="JSON",description="Structured"},new {label="Text",description="Plain text"}}}};
+                        if(Json.Serialize(p).Contains("fixture-question-multiple"))questions.Add(new {id="reason",header="Reason",question="Why?",isOther=true,isSecret=false,options=(object)null});
+                        Write(new {id="human-approval",method="item/tool/requestUserInput",@params=new {threadId=approvalThread,turnId=turnId,itemId="question-item",isBlocking=true,autoResolutionMs=(object)null,questions=questions}});
                     }
                     if(Json.Serialize(p).Contains("fixture-mcp-report")) {
                         string file=Path.Combine(Directory.GetCurrentDirectory(),"mcp-report.json");var report=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file));

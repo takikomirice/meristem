@@ -1,0 +1,11 @@
+{
+  "source": "real_codex_sandbox",
+  "modelTurns": 0,
+  "exeSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+  "windowsSandbox": "elevated",
+  "state": "observed",
+  "result": {
+    "denied": true,
+    "sandboxExitCode": 0
+  }
+}

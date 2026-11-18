@@ -1,0 +1,29 @@
+{
+  "source": "real_worker_runtime",
+  "modelTurns": 0,
+  "exeSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+  "requested": {
+    "model": "gpt-6-luna",
+    "effort": "low",
+    "profile": "workspace",
+    "reviewer": "auto_review"
+  },
+  "state": "observed",
+  "applied": {
+    "agent": {
+      "model": "gpt-6-luna",
+      "effort": "low",
+      "permissionProfileId": "workspace"
+    },
+    "profile": "meristem-managed",
+    "reviewer": "auto_review",
+    "writableRootMatchesCwd": true
+  },
+  "stop": {
+    "state": "stopped",
+    "evidenceRefs": [
+      "native_job_empty",
+      "native_creation_identity"
+    ]
+  }
+}

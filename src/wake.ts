@@ -4,11 +4,11 @@ import { randomUUID } from 'node:crypto';
 import { Store } from './store.js';
 export type WakeRef = { runId: string; sourceEventSeq: number };
 export type WakeResult = { state: 'deferred' | 'acked' | 'sent_unknown' | 'stopped' | 'empty'; turnId?: string };
-const candidates = new Set(['completed', 'failed', 'authentication_required', 'limit_reached', 'waiting_input', 'waiting_approval']);
+const candidates = new Set(['completed', 'failed', 'authentication_required', 'limit_reached', 'waiting_input', 'waiting_approval', 'decision_changed']);
 export class WakeCoordinator {
   private busy = new Set<string>();
-  constructor(private store: Store, private parent: ActorRef, private agent: { model: string; effort: string }, private relay: (method: string, params: Record<string, unknown>) => Promise<any>, private stop: (runId: string, reason: string) => Promise<unknown> = async runId => store.stopRun(runId), private limit = 12, private canWake: (runId: string) => boolean = runId => store.run(runId).state === 'active') {
-    if (!Number.isInteger(limit) || limit < 1 || limit > 12) throw Error('invalid wake budget');
+  constructor(private store: Store, private parent: ActorRef, private agent: { model: string; effort: string }, private relay: (method: string, params: Record<string, unknown>) => Promise<any>, private stop: (runId: string, reason: string) => Promise<unknown> = async runId => store.stopRun(runId), private limit: number | null | ((runId: string) => number | null) = null, private canWake: (runId: string) => boolean = runId => store.run(runId).state === 'active') {
+    if (typeof limit !== 'function' && limit !== null && (!Number.isSafeInteger(limit) || limit < 1)) throw Error('invalid wake budget');
   }
   enqueueWake(runId: string, sourceEventSeq: number): WakeRef {
     const event = this.store.events(runId, sourceEventSeq - 1, 1)[0];
@@ -30,7 +30,9 @@ export class WakeCoordinator {
       if (!this.canWake(runId) || current.stop_generation !== run.stop_generation) return { state: 'stopped' };
       cursor = this.store.wakeCursor(runId);
       if (cursor.pending_seq <= Math.max(cursor.delivered_seq, cursor.read_seq)) return { state: 'empty' };
-      if (this.store.wakeCount(runId) >= this.limit) {
+      const limit = typeof this.limit === 'function' ? this.limit(runId) : this.limit;
+      if (limit !== null && (!Number.isSafeInteger(limit) || limit < 1)) throw Error('invalid wake budget');
+      if (limit !== null && this.store.wakeCount(runId) >= limit) {
         await this.stop(runId, 'wake_limit'); this.store.appendEvent({ runId, kind: 'wake_limit' }); return { state: 'stopped' };
       }
       const operationId = randomUUID();

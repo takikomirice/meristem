@@ -1,0 +1,469 @@
+{
+  "stage": "MC-02",
+  "dateJapan": "2026-11-17",
+  "scope": "Dedicated app-server probes; fixture results and UI choices are not live observations",
+  "runs": [
+    {
+      "run": "live-01",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:00:50.091Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "a63e440182e2086c84d1a517c5f9cf1c58d5792f08bb91116db2129621a4ca5f",
+          "node": "v24.22.1"
+        },
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "processExited": true,
+        "checks": {
+          "account": {
+            "status": "not_run"
+          },
+          "reviewer": {
+            "status": "not_run"
+          },
+          "profile": {
+            "status": "not_run"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          },
+          "initialization": {
+            "status": "unconfirmed"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-02",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:01:40.331Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "a63e440182e2086c84d1a517c5f9cf1c58d5792f08bb91116db2129621a4ca5f",
+          "node": "v24.22.1"
+        },
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "processExited": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "unconfirmed",
+            "reason": "transport_or_shape"
+          },
+          "profile": {
+            "status": "not_run"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-03",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:03:29.281Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "a63e440182e2086c84d1a517c5f9cf1c58d5792f08bb91116db2129621a4ca5f",
+          "node": "v24.22.1"
+        },
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "unconfirmed",
+            "reason": "transport_timeout_or_closed"
+          },
+          "profile": {
+            "status": "not_run"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-user-baseline",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:06:02.584Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "a63e440182e2086c84d1a517c5f9cf1c58d5792f08bb91116db2129621a4ca5f",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "user",
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "observed"
+          },
+          "profile": {
+            "status": "observed"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "observed"
+          },
+          "historyTurns": {
+            "status": "rejected",
+            "reason": "failed"
+          },
+          "historyResume": {
+            "status": "rejected",
+            "reason": "failed"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-history",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:08:51.941Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "53072054b01ed7dde752579693876bdfa6b6465235236a1251c374a38dfa438e",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "user",
+        "maxTurns": 1,
+        "turnsSent": 0,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "unconfirmed",
+            "reason": "transport_timeout_or_closed"
+          },
+          "profile": {
+            "status": "not_run"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-auto-model",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:09:43.194Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "53072054b01ed7dde752579693876bdfa6b6465235236a1251c374a38dfa438e",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "auto_review",
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "observed"
+          },
+          "profile": {
+            "status": "observed"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "observed"
+          },
+          "historyTurns": {
+            "status": "rejected",
+            "reason": "failed"
+          },
+          "historyResume": {
+            "status": "rejected",
+            "reason": "failed"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-auto-history",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live",
+        "capturedAt": "2026-11-17T05:13:18.958Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "53072054b01ed7dde752579693876bdfa6b6465235236a1251c374a38dfa438e",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "auto_review",
+        "maxTurns": 1,
+        "turnsSent": 1,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "observed"
+          },
+          "profile": {
+            "status": "observed"
+          },
+          "modelTurn": {
+            "status": "observed"
+          },
+          "historyRead": {
+            "status": "observed"
+          },
+          "historyTurns": {
+            "status": "observed",
+            "count": 1
+          },
+          "historyResume": {
+            "status": "observed"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-guardian",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live_guardian_dry_run",
+        "capturedAt": "2026-11-17T05:32:14.012Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "1a859bc90e8e73e2114b6cc874f328446610b519f09e2402cd8b28857874a537",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "auto_review",
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "reviewsSent": 0,
+        "reviewFilesUnchanged": true,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated"
+          },
+          "reviewer": {
+            "status": "observed"
+          },
+          "profile": {
+            "status": "observed"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          },
+          "reviewAllow": {
+            "status": "unconfirmed",
+            "reason": "transport_timeout_or_closed"
+          },
+          "reviewDeny": {
+            "status": "rejected",
+            "reason": "failed"
+          }
+        }
+      }
+    },
+    {
+      "run": "live-guardian-02",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live_guardian_dry_run",
+        "capturedAt": "2026-11-17T05:48:30.660Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "09ab9d28092c7bf8f5b535e50ef4ab402405a446f4945aa075ca3e0cbac9a881",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "auto_review",
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "reviewsSent": 0,
+        "reviewFilesUnchanged": null,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated",
+            "elapsedMs": 304
+          },
+          "reviewer": {
+            "status": "unconfirmed",
+            "reason": "transport_timeout_or_closed",
+            "elapsedMs": 60003
+          },
+          "profile": {
+            "status": "not_run"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "reviewAllow": {
+            "status": "not_run"
+          },
+          "reviewDeny": {
+            "status": "not_run"
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    }
+  ],
+  "completion": {
+    "status": "incomplete_user_requested_stop",
+    "ui": {
+      "configRestored": true,
+      "originalHashMatches": true,
+      "uiModelTurnsSent": 0,
+      "uiResponseObserved": false,
+      "windowCloseConfirmed": false,
+      "reason": "User stopped Computer Use; UI draft was not sent",
+      "stoppedAt": "2026-11-17T05:50:49.551Z"
+    }
+  }
+}

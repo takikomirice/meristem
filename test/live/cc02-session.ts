@@ -8,6 +8,12 @@ import { DatabaseSync } from 'node:sqlite';
 import { relayRequest, pipeRequest } from '../../src/protocol.js';
 import { removeFixtureMcp } from './cc02-restore.js';
 import { uninstall } from '../../src/install.js';
+import { developmentSession } from './development-session.js';
+import { acquireDevelopmentAuthOperation } from '../../src/development.js';
+
+if (process.argv.includes('--environment')) {
+  console.log(JSON.stringify(await developmentSession(process.argv.slice(2))));
+} else {
 
 const args = process.argv.slice(2), action = args[0];
 const arg = (name: string) => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
@@ -17,6 +23,8 @@ const planStage = session.stage === 'CC-06' || session.stage === 'CC-07';
 assert(['CC-02', 'CC-03', 'CC-04', 'CC-06', 'CC-07'].includes(session.stage) && Number.isSafeInteger(session.approvedMaxTurns) && session.approvedMaxTurns >= (planStage ? 12 : 5) && session.approvedMaxTurns <= (planStage ? 20 : 8) && path.resolve(sessionFile).startsWith(path.resolve('.local/chat-control', session.stage) + path.sep));
 const parentMaxTurns = planStage ? session.approvedMaxTurns - 6 : session.stage === 'CC-03' ? 2 : session.approvedMaxTurns - 3; // Child starts are separately reserved by the fixture scope.
 const save = () => writeFileSync(sessionFile, JSON.stringify(session, null, 2) + '\n');
+const releaseAuth = ['launch', 'relaunch', 'cleanup'].includes(action) ? acquireDevelopmentAuthOperation(session.authHome) : undefined;
+try {
 if (action === 'launch' || action === 'relaunch') {
   assert(args.includes('--live'));
   if (action === 'launch') {
@@ -97,3 +105,5 @@ if (action === 'launch' || action === 'relaunch') {
   session.phase = 'restored'; save(); console.log(JSON.stringify({ phase: session.phase, parentDisconnected: true, testMcpRemoved: true, profileSettingsRestored: true }));
   }
 } else throw new Error('usage: launch|status|parent|cleanup --session <file>');
+} finally { releaseAuth?.(); }
+}

@@ -3,11 +3,13 @@ import { existsSync, realpathSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { Id } from './contracts.js';
-import type { PlanSnapshot } from './plan.js';
+import { taskAgent, type PlanSnapshot } from './plan.js';
 
 export const Sha = z.string().regex(/^[a-f0-9]{40}(?:[a-f0-9]{24})?$/);
 export const Check = z.object({ name: z.string().min(1).max(128), command: z.string().min(1).max(2048), result: z.enum(['passed', 'failed', 'not_run']), exit_code: z.number().int().nullable(), evidence_refs: z.array(z.string().min(1).max(512)).min(1).max(16), checked_sha: Sha.optional() }).strict();
 export const Checks = z.array(Check).max(32);
+// Internal aggregate only; each wire batch retains the 32-check limit.
+const IntegrationChecks = z.array(Check).max(4097);
 export const TaskReport = z.object({ task_id: Id, worker_id: Id, attempt_id: Id, actor_id: Id, status: z.enum(['completed', 'failed', 'needs_input']), base_sha: Sha, candidate_sha: Sha.nullable(), branch: z.string().min(1).max(512), push_result: z.object({ status: z.enum(['pushed', 'failed', 'not_attempted']), remote: z.literal('origin'), branch: z.string().min(1).max(512) }).strict(), summary: z.string().min(1).max(8192), checks: Checks, remaining: z.array(z.string().min(1).max(2048)).max(32), question: z.string().trim().min(1).max(8192).optional() }).strict();
 export type CandidateEvidence = { candidateSha: string; baseSha: string; branch: string; checks: z.infer<typeof Checks>; remote: 'origin' };
 export type IntegrationEvidence = { inputCandidateShas: string[]; resultSha: string; checks: z.infer<typeof Checks>; acceptedByParentTurnId: string };
@@ -39,6 +41,11 @@ export function pinRepository(snapshot: PlanSnapshot, runId: string): Repository
   if (canonical(git(repository, ['rev-parse', '--show-toplevel'])) !== canonical(repository) || canonical(root) === canonical(repository) || inside(repository, root)) throw new Error('worktrees must be outside source repository');
   branch(repository, run.integration_branch);
   return { repository, root, commonDir: realpathSync(git(repository, ['rev-parse', '--path-format=absolute', '--git-common-dir'])), ...remoteUrls(repository), integrationBranch: run.integration_branch, integrationCwd: path.join(root, runId, 'integration'), initialSha: git(repository, ['rev-parse', 'HEAD']), runId };
+}
+export function repositoryWorktrees(pin: RepositoryPin): string[] {
+  return git(pin.repository, ['worktree', 'list', '--porcelain', '-z'], true)
+    .split('\0').filter(field => field.startsWith('worktree ')).map(field => field.slice('worktree '.length))
+    .filter(file => existsSync(file));
 }
 export class GitEvidence {
   constructor(readonly snapshot: PlanSnapshot, readonly pin: RepositoryPin) {}
@@ -106,7 +113,7 @@ export class GitEvidence {
   }
   async verifyCandidate(taskId: string, input: unknown, assignment: GitAssignment): Promise<CandidateEvidence> {
     const report = TaskReport.parse(input), task = this.snapshot.plan.tasks.find(t => t.id === taskId);
-    if (!task || report.task_id !== taskId || report.status !== 'completed' || report.question || report.remaining.length || report.base_sha !== assignment.baseSha || report.branch !== assignment.branch || report.attempt_id !== assignment.attemptId || report.push_result.status !== 'pushed' || report.push_result.branch !== assignment.branch) throw new Error('candidate report mismatch');
+    if (!task || taskAgent(task).permissionProfileId === 'read-only' || report.task_id !== taskId || report.status !== 'completed' || report.question || report.remaining.length || report.base_sha !== assignment.baseSha || report.branch !== assignment.branch || report.attempt_id !== assignment.attemptId || report.push_result.status !== 'pushed' || report.push_result.branch !== assignment.branch) throw new Error('candidate report mismatch');
     validateChecks(report.checks, task.completion);
     const sha = this.worktree(assignment.cwd, assignment.branch);
     if (sha !== report.candidate_sha) throw new Error('candidate HEAD changed');
@@ -122,16 +129,24 @@ export class GitEvidence {
     if (this.worktree(assignment.cwd, assignment.branch) !== sha) throw new Error('candidate changed during verification');
     return { candidateSha: sha, baseSha: assignment.baseSha, branch: assignment.branch, checks: report.checks, remote: 'origin' };
   }
+  verifyReview(report: z.infer<typeof TaskReport>, assignment: GitAssignment, required: string[], integrations: string[]) {
+    if (report.status !== 'completed' || !report.summary.trim() || report.remaining.length || report.question ||
+        report.candidate_sha !== null || report.push_result.status !== 'not_attempted' || report.push_result.branch !== assignment.branch) throw new Error('completed report-only review required');
+    const checks = validateChecks(report.checks, required);
+    if (checks.some(check => check.checked_sha !== assignment.baseSha || !check.command.trim() || check.evidence_refs.some(ref => !ref.trim()))) throw new Error('review checks require evidence for the reviewed SHA');
+    if (this.worktree(assignment.cwd, assignment.branch) !== assignment.baseSha || this.integrationBase(integrations) !== assignment.baseSha) throw new Error('reviewed base changed');
+    return assignment.baseSha;
+  }
   verifyIntegration(candidate: string, integrationSha: string, checks: unknown, required: string[], integrations: string[], bindChecks = false) {
-    const verified = validateChecks(checks, required), head = this.worktree(this.pin.integrationCwd, this.pin.integrationBranch);
+    const verified = validateChecks(checks, required, true), head = this.worktree(this.pin.integrationCwd, this.pin.integrationBranch);
     if (head !== Sha.parse(integrationSha)) throw new Error('integration HEAD changed');
     if (bindChecks && verified.some(c => c.checked_sha !== head)) throw new Error('checks must target the integration result SHA');
     this.contains(this.pin.integrationCwd, head, [candidate, ...integrations]);
     return { integrationSha: head, checks: verified };
   }
 }
-function validateChecks(input: unknown, required: string[]) {
-  const checks = Checks.parse(input);
+function validateChecks(input: unknown, required: string[], integration = false) {
+  const checks = (integration ? IntegrationChecks : Checks).parse(input);
   if (new Set(checks.map(c => c.name)).size !== checks.length || checks.some(c => c.result !== 'passed' || c.exit_code !== 0) || required.some(name => !checks.some(c => c.name === name))) throw new Error('required checks have not passed');
   return checks;
 }

@@ -1,13 +1,13 @@
 {
   "name": "meristem-chat-control-fixture",
   "displayName": "Meristem Chat Control",
-  "description": "Read-only worker terminals, stop controls and human approval for a bound local run.",
+  "description": "Worker terminal display, stop controls and human approval for a bound local run.",
   "publisher": "meristem-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
   "engines": { "vscode": "^1.90.0" },
   "main": "./dist/src/extension.js",
   "activationEvents": [ "onStartupFinished" ],
-  "contributes": { "commands": [{ "command": "meristem.chatControl.openManaged", "title": "Meristem: Open Managed Worker Terminals" }, { "command": "meristem.chatControl.reviewRequest", "title": "Meristem: Review Worker MCP Request" }, { "command": "meristem.chatControl.openFixture", "title": "Meristem: Open Fixture Worker Terminal" }, { "command": "meristem.chatControl.stopFixture", "title": "Meristem: Stop Current Worker" }] }
+  "contributes": { "commands": [{ "command": "meristem.chatControl.openManaged", "title": "Meristem: Open Managed Worker Terminals" }, { "command": "meristem.chatControl.showWorkerDetails", "title": "Meristem: Show Current Worker Details" }, { "command": "meristem.chatControl.listWorkers", "title": "Meristem: List Worker Terminals" }, { "command": "meristem.chatControl.listPendingDecisions", "title": "Meristem: 回答待ちの相談を読む" }, { "command": "meristem.chatControl.viewWorkerHistory", "title": "Meristem: ワーカーの Codex 履歴を読む" }, { "command": "meristem.chatControl.prepareWorkerHistoryResume", "title": "Meristem: 履歴を照合して再開を準備" }, { "command": "meristem.chatControl.renameWorker", "title": "Meristem: Rename Current Worker" }, { "command": "meristem.chatControl.retireWorker", "title": "Meristem: Retire Current Worker (Keep Run Active)" }, { "command": "meristem.chatControl.stopRun", "title": "Meristem: Stop All Workers" }, { "command": "meristem.chatControl.reviewRequest", "title": "Meristem: Review Worker MCP Request" }, { "command": "meristem.chatControl.openFixture", "title": "Meristem: Open Fixture Worker Terminal" }, { "command": "meristem.chatControl.stopFixture", "title": "Meristem: Stop Current Worker" }] }
 }

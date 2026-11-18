@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { planControllerFixture } from '../fixtures/plan-controller.js';
-import { parallelPlan } from '../fixtures/parallel-git.js';
+import { parallelPlan, expandedParallelPlan } from '../fixtures/parallel-git.js';
 import { git, commitFile } from '../fixtures/serial-git.js';
 import { fileHash } from '../../src/plan.js';
 import type { WorkerRef } from '../../src/contracts.js';
@@ -56,12 +56,69 @@ export async function parallelMerge() {
   } finally { cleanup.forEach(close => close()); }
 }
 
+// MC-06 acceptance uses only local bare Git and deterministic runtime.
+export async function nWayMerge() {
+  const cleanup: (() => void)[] = [];
+  const started = performance.now();
+  const f = await planControllerFixture({ after(fn) { cleanup.push(fn); } }, f => expandedParallelPlan(f, 4));
+  try {
+    const workers = [await f.create('A'), await f.create('B')];
+    await assert.rejects(f.create('C'));
+    const decision = await f.call('propose_decision', { proposal: {
+      kind: 'parallelism', recipient: 'human', requestedMaximum: 4, taskIds: ['A', 'B', 'C', 'D'], blockingTaskIds: [],
+      planHash: f.store.plan('run')!.snapshot.planHash, question: 'Four independent text tasks; mock/low; local Git only.',
+      options: [{ id: 'approve', label: 'Approve four', description: 'Run-local concurrency ceiling' }], allowFreeText: true
+    } });
+    const { humanDecisionForm: { form } } = await f.call('answer_consultation', { decisionId: decision.id });
+    await assert.rejects(f.create('C'));
+    await f.controller.humanResponse({ decision: form, answer: { optionId: 'approve' } }, f.parent);
+    const candidateShas: string[] = [], integrationShas: string[] = [];
+    const cwd = f.store.plan('run')!.pin.integrationCwd;
+    const complete = async (id: string) => {
+      const worker = await f.create(id);
+      const result = await f.complete(id, worker, id, true, 'turn', [{ name: id, command: 'git diff --check', result: 'passed', exit_code: 0, evidence_refs: ['fixture:diff-check'] }]);
+      await f.call('record_decision', { taskId: id, decision: 'accept_candidate', candidateSha: result.sha, evidenceRefs: [] });
+      candidateShas.push(result.sha); return result.sha;
+    };
+    // Keep all four attempts alive together, then finish their independent work.
+    workers.push(...await Promise.all(['C', 'D'].map(id => f.create(id))));
+    for (const [i, worker] of workers.entries()) {
+      const id = ['A', 'B', 'C', 'D'][i];
+      const result = await f.complete(id, worker, id, true, 'turn', [{ name: id, command: 'git diff --check', result: 'passed', exit_code: 0, evidence_refs: ['fixture:diff-check'] }]);
+      await f.call('record_decision', { taskId: id, decision: 'accept_candidate', candidateSha: result.sha, evidenceRefs: [] });
+      candidateShas.push(result.sha);
+    }
+    const integrate = async (id: string, inputs: string[], names: string[]) => {
+      await f.call('record_decision', { taskId: id, decision: 'prepare_integration', inputCandidateShas: inputs, evidenceRefs: [] });
+      for (const input of inputs) git(cwd, 'merge', '--no-edit', input);
+      const sha = git(cwd, 'rev-parse', 'HEAD');
+      const checks = [...names, 'integration'].map(name => {
+        for (const task of name === 'integration' ? names : [name]) assert.equal(readFileSync(path.join(cwd, task.toLowerCase() + '.txt'), 'utf8'), task);
+        git(cwd, 'diff', '--check', f.store.plan('run')!.pin.initialSha, sha);
+        return { name, command: 'read final files; git diff --check', result: 'passed' as const, exit_code: 0, evidence_refs: ['fixture:final-files'], checked_sha: sha };
+      });
+      if (names.length > inputs.length) await assert.rejects(f.call('record_decision', { taskId: id, decision: 'accept_integration', integrationSha: sha, checks: checks.filter(c => c.name !== 'A'), evidenceRefs: [] }));
+      await f.call('record_decision', { taskId: id, decision: 'accept_integration', integrationSha: sha, checks, evidenceRefs: [] });
+      integrationShas.push(sha);
+    };
+    await integrate('D', candidateShas.slice(), ['A', 'B', 'C', 'D']);
+    const later = await complete('E'); await integrate('E', [later], ['A', 'B', 'C', 'D', 'E']);
+    assert.equal(f.store.effectiveParallelLimit('run'), 4);
+    assert(f.store.attempts('run').every(a => a.state === 'completed'));
+    return { testId: 'MC-06-N-way-local-bare', capturedAt: new Date().toISOString(), result: 'passed', evidence_kind: 'fixture',
+      requestedMaximum: 4, approvedMaximum: f.store.effectiveParallelLimit('run'), simultaneousWorkers: workers.length,
+      candidateShas, integrationShas, elapsedMs: Math.round(performance.now() - started),
+      assertions: { fourCandidatesPinned: true, previousChecksRequiredAtLaterFinalSha: true, finalFilesChecked: true, attemptsCompleted: f.store.attempts('run').every(a => a.state === 'completed') },
+      limitations: ['Trusted UI response is simulated, not a real human observation.', 'Local bare remote and deterministic runtime; no model or UI acceptance.', 'Timing is a local fixture observation, not a production capacity guarantee.'] };
+  } finally { cleanup.forEach(close => close()); }
+}
+
 async function main() {
   const args = process.argv.slice(2), action = args.shift();
   const arg = (name: string) => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
-  if (action === 'fixture') {
+  if (action === 'fixture' || action === 'fixture-n') {
     const output = arg('--evidence'); assert(output && path.isAbsolute(output) && !existsSync(output));
-    const evidence = await parallelMerge(); writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' }); console.log(JSON.stringify({ result: evidence.result }));
+    const evidence = await (action === 'fixture-n' ? nWayMerge() : parallelMerge()); writeFileSync(output, JSON.stringify(evidence, null, 2) + '\n', { flag: 'wx' }); console.log(JSON.stringify({ result: evidence.result }));
   } else if (action === 'prepare') {
     const r = spawnSync(process.execPath, [path.resolve('dist/test/live/cc02-prepare.js'), ...args, '--stage', 'CC-06'], { stdio: 'inherit', windowsHide: true }); process.exitCode = r.status ?? 1;
   } else {

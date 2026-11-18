@@ -1,14 +1,21 @@
 import { connect as netConnect, Socket } from 'node:net';
 
 export type WorkerRef = { id: string; pipeName: string; cwd: string; branch: string; agent: string; state: string; actor?: string; attemptId?: string };
-export type TerminalBinding = { worker: WorkerRef; attemptId: string; fixture?: true };
-export type DisplayEvent = { seq: number; worker: WorkerRef; text: string };
+// Mirrors MC-01's WorkerPresentation. Kept local to the separately built extension.
+export type WorkerPresentation = { displayName: string; taskId: string; activity: string; activitySource: 'tool' | 'worker' | null; lastActivityAt: string | null; decisionIds: string[] };
+export type ConsultationSummary = { id: string; recipient: 'coordinator' | 'human'; question: string; state: 'pending' | 'resolved' | 'cancelled' | 'superseded'; taskIds: string[]; blockingTaskIds: string[] };
+export type WorkerStatus = { cwd: string; branch: string; agent: string; state: string; presentation?: WorkerPresentation; consultations?: ConsultationSummary[]; consultationsTruncated?: boolean; taskState?: string; slotReleased?: boolean; permissionSummary?: string; appliedAgent?: string; lastResult?: string; connection?: 'connected' | 'unknown' };
+export type TerminalBinding = { worker: WorkerRef; attemptId: string; fixture?: true; managed?: true; presentation?: WorkerPresentation };
+export type DisplayEvent = { seq: number; worker: WorkerRef; text: string; source?: 'tool' | 'worker' | 'settings' };
+type DisplayBatch = { events: DisplayEvent[]; lastSeq: number; omittedCount?: number; hasMore?: boolean; activityEvents?: DisplayEvent[]; lastActivitySeq?: number; omittedActivityCount?: number };
 export type StopResult = { ok: boolean; state: string; jobClosed?: boolean };
 export type OwnerRef = { fixture: true; pipeName: string; worker: WorkerRef; attemptId: string };
 export interface ControlConnection {
-  readEvents(afterSeq: number, limit: number): Promise<{ events: DisplayEvent[]; lastSeq: number; omittedCount?:number }>;
-  getStatus(worker: WorkerRef): Promise<{ cwd: string; branch: string; agent: string; state: string }>;
+  readEvents(afterSeq: number, limit: number, afterActivitySeq?: number): Promise<DisplayBatch>;
+  getStatus(worker: WorkerRef): Promise<WorkerStatus>;
   stop(binding: TerminalBinding): Promise<StopResult>;
+  retire?(binding: TerminalBinding): Promise<StopResult>;
+  rename?(binding: TerminalBinding, displayName: string): Promise<string>;
   dispose(): void;
 }
 

@@ -3,6 +3,48 @@ import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { WorkerRef } from './contracts.js';
+import { Decision, Id } from './contracts.js';
+import { DecisionAnswer } from './decisions.js';
+import type { ElicitRequestFormParams, ElicitResult } from '@modelcontextprotocol/sdk/types.js';
+
+// Meristem consultations are not Codex approval/input RPCs. MC-03b wires this
+// form to the human-only MCP callback; its result alone proves no human origin.
+export function decisionForm(input: Decision): ElicitRequestFormParams {
+  const decision = Decision.parse(input);
+  if (decision.recipient !== 'human' || decision.state !== 'pending' || !decision.options.length && !decision.allowFreeText) throw new Error('pending answerable human decision required');
+  const choices = decision.options.length > 0;
+  return {
+    mode: 'form',
+    message: [...(decision.kind === 'parallelism' ? [`このrunの同時稼働上限: ${decision.requestedMaximum}人（交代・再割当を含む）。approve を選ぶと、この人数を承認します。`] : []), decision.question, ...decision.options.map(option => `${option.id}: ${option.label} — ${option.description}`),
+      ...(choices && decision.allowFreeText ? [decision.proposedPlanHash
+        ? '自由記述を添えると今回の差分の確認を終了し、修正案を記録します。変更する差分を再提示します。'
+        : '自由記述の修正案は、選択の有無にかかわらず新しい未承認の案として保存し、再確認します。'] : [])].join('\n\n'),
+    requestedSchema: {
+      type: 'object',
+      properties: {
+        ...(choices ? { optionId: { type: 'string' as const, title: '選択', enum: decision.options.map(option => option.id) } } : {}),
+        ...(decision.allowFreeText ? { text: { type: 'string' as const, title: choices ? '修正案（再確認が必要）' : '回答', maxLength: choices ? 4096 : 8192 } } : {})
+      },
+      required: !decision.allowFreeText ? ['optionId'] : !choices ? ['text'] : []
+    }
+  };
+}
+
+export async function elicitDecision(decision: Decision, elicit: (request: ElicitRequestFormParams) => Promise<ElicitResult>): Promise<DecisionAnswer | undefined> {
+  const request = decisionForm(decision);
+  let response: ElicitResult;
+  try { response = await elicit(request); }
+  catch { return; } // Timeout/disconnect leaves the decision pending, without retry.
+  if (response.action !== 'accept') return;
+  const content = z.object({ optionId: Id.optional(), text: z.string().optional() }).strict().parse(response.content);
+  const answer = { ...(content.optionId ? { optionId: content.optionId } : {}), ...(content.text?.trim() ? { text: content.text.trim() } : {}) };
+  if (!answer.optionId && !answer.text) return;
+  const safe = DecisionAnswer.parse(answer);
+  if (safe.optionId && !decision.options.some(option => option.id === safe.optionId)) throw new Error('unknown decision option');
+  if (safe.text && !decision.allowFreeText) throw new Error('free text is not allowed');
+  if (safe.text && decision.options.length && (safe.text.length > 4096 || Buffer.byteLength(safe.text) > 8192)) throw new Error('revised proposal too large');
+  return safe;
+}
 
 export type RequestKind = 'question' | 'command' | 'file' | 'permissions' | 'connector' | 'elicitation' | 'authentication' | 'unknown';
 export type HumanRequest = { delivery?: 'next_turn'; key: string; kind: RequestKind; payloadHash: string; formGeneration: string; worker: WorkerRef; cwd: string; turnId: string | null; requestId: string | number; state: 'pending' | 'unsupported' | 'replied' | 'resolved' | 'cancelled'; detail: string; expiresAt: number | null };
@@ -31,10 +73,11 @@ function approvalDetail(kind: RequestKind, p: any, grant?: z.infer<typeof filePe
   }
   if (kind === 'elicitation') {
     const report = p._meta.tool_name === 'report';
-    return [report ? '作業結果を親へ報告する要求です。' : '管理システムから作業状況を取得する要求です。',
+    const consultation = p._meta.tool_name === 'propose_decision', decisions = p._meta.tool_name === 'get_decisions';
+    return [report ? '作業結果を親へ報告する要求です。' : consultation ? '担当範囲の相談を記録する要求です。' : decisions ? '担当範囲の相談と回答を読み取る要求です。' : '管理システムから作業状況を取得する要求です。',
       `呼び出す機能: meristem.${p._meta.tool_name}`, '有効期間: 今回の要求1回',
       ...(report ? [`報告内容（担当の説明）: ${line(p._meta.tool_params?.report?.summary) || '要約なし'}`,
-        '許可すると報告が記録されます。成果物の採用・Git操作の許可は別の判断です。'] : ['許可すると状態を読み取ります。Git操作の権限は追加されません。']),
+        '許可すると報告が記録されます。成果物の採用・Git操作の許可は別の判断です。'] : consultation ? ['相談内容への回答・同意は別の判断です。Git操作の権限は追加されません。'] : ['許可すると状態を読み取ります。Git操作の権限は追加されません。']),
     ].join('\n\n');
   }
   return JSON.stringify(p);
@@ -46,6 +89,16 @@ export class WorkerRequests {
   private questions = new Map<string, string[]>();
   private gitGrants = new Map<string, z.infer<typeof filePermissions>>();
   private readonly gitApprovalRoots: string[];
+  private deniedTurns = new Set<string>();
+  autoReviewCompleted(params: any): void {
+    if (params?.threadId !== this.worker.threadId || typeof params.turnId !== 'string' || params.review?.status !== 'denied') return;
+    // MCP approval forms have no itemId, and network reviews may have no target.
+    // No verified item correlation exists: fail closed for this turn's approvals.
+    this.deniedTurns.add(params.turnId);
+    for (const item of this.records.values()) if (item.turnId === params.turnId && item.kind !== 'question' && item.state === 'pending') {
+      item.state = 'unsupported'; item.detail = '自動レビューが拒否しました。親や人の応答で上書きできません。'; this.changed(structuredClone(item));
+    }
+  }
   constructor(private worker: WorkerRef, private cwd: string, private changed: (item: HumanRequest) => void = () => {}, gitApprovalRoots: string[] = [], private environmentId: string | null = null) {
     this.gitApprovalRoots = gitApprovalRoots.map(p => realpathSync(p));
   }
@@ -76,7 +129,7 @@ export class WorkerRequests {
       server: p?.serverName === 'meristem', mode: p?.mode === 'form',
       kind: meta?.codex_approval_kind === 'mcp_tool_call',
       connector: meta?.connector_id === undefined || meta.connector_id === 'meristem',
-      tool: ['report', 'get_status'].includes(meta?.tool_name),
+      tool: ['report', 'get_status', 'propose_decision', 'get_decisions'].includes(meta?.tool_name),
       confirmation: !meta?.['openai/confirmation'],
       schema: !p?.requestedSchema?.required?.length && p?.requestedSchema?.type === 'object' && p.requestedSchema.properties && !Array.isArray(p.requestedSchema.properties) && Object.keys(p.requestedSchema.properties).length === 0,
       size: Buffer.byteLength(raw) <= 24000,
@@ -98,7 +151,7 @@ export class WorkerRequests {
     const gitChecks = { gitPaths: !!grant, cwd: sameCwd, environment: p?.environmentId == null || this.environmentId !== null && p.environmentId === this.environmentId };
     const gitApproval = Object.values(gitChecks).every(Boolean) && checks.thread && checks.turn && checks.size && typeof p.itemId === 'string' && !!p.itemId && !meta
       && (kind === 'permissions' || (p.kind === undefined || p.kind === 'command') && p.networkApprovalContext == null && (p.proposedNetworkPolicyAmendments == null || Array.isArray(p.proposedNetworkPolicyAmendments) && p.proposedNetworkPolicyAmendments.length === 0) && typeof p.command === 'string' && p.command.trim().length > 0 && (p.availableDecisions == null || Array.isArray(p.availableDecisions) && ['accept', 'decline', 'cancel'].every(d => p.availableDecisions.includes(d))));
-    const supported = Object.values(checks).every(Boolean) || question || gitApproval;
+    const supported = question || !this.deniedTurns.has(p?.turnId) && (Object.values(checks).every(Boolean) || gitApproval);
     const label = (value: unknown) => typeof value === 'string' && /^[a-zA-Z0-9_\/-]{1,128}$/.test(value) ? value : 'unknown';
     const diagnostic = JSON.stringify({ method: label(message.method), mode: label(p?.mode), failedChecks: Object.entries(['command', 'permissions'].includes(kind) ? { ...checks, ...gitChecks } : checks).filter(([, ok]) => !ok).map(([name]) => name) });
     const item: HumanRequest = { key, kind, expiresAt: Number.isSafeInteger(p?.autoResolutionMs) && p.autoResolutionMs >= 0 ? Date.now() + p.autoResolutionMs : null, payloadHash: createHash('sha256').update(raw).digest('hex'), formGeneration: randomUUID(), worker: { ...this.worker }, cwd: this.cwd, turnId: typeof p?.turnId === 'string' && p.turnId.length <= 128 ? p.turnId : null, requestId: message.id, state: supported ? 'pending' : 'unsupported', detail: supported ? approvalDetail(kind, p, gitApproval ? grant : undefined) : `未対応の要求です。元の要求は保留されています。\n${diagnostic}` };

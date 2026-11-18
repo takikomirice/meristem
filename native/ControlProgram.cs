@@ -58,7 +58,7 @@ internal sealed class ControlProgram {
             if(stopped)throw new IOException("broker unavailable");pending.Add(id,wait);
             input.WriteLine(Program.Encode(new {id=id,request=request,peer=new {pid=peer==null?0:peer.Id,created=peer==null?"":LocalPipe.Created(peer),inBrokerJob=peer!=null&&broker.Contains(peer.Handle)},internalMethod=internalMethod}));
         }
-        int timeout=Program.Text(request,"method")=="mcp"&&Program.Text(request,"name")=="create_worker"?120000:20000;
+        int timeout=Program.Text(request,"method")=="mcp"&&(Program.Text(request,"name")=="create_worker"||Program.Text(request,"name")=="hold_task")?120000:20000;
         try { if(!wait.Done.WaitOne(timeout)||wait.Reply==null)throw new IOException("broker response unknown");return wait.Reply; }
         finally {lock(gate){pending.Remove(id);wait.Done.Dispose();}}
     }
@@ -72,7 +72,8 @@ internal sealed class ControlProgram {
                     string line=ReadPeerFrame(server);if(line==null)continue;
                     var request=Program.Parse(line);string method=Program.Text(request,"method");
                     if(method!="mcp"&&broker.Contains(peer.Handle)){writer.WriteLine("{\"ok\":false,\"error\":\"worker_peer_denied\"}");continue;}
-                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="status"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="lease"&&method!="requests"&&method!="answer_request"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
+                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="status"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
+                        &&method!="history_targets"&&method!="worker_history"&&method!="resume_worker_history"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
                     string reply=Call(request,peer);writer.WriteLine(reply);
                     if(method=="lease" && Object.Equals(Program.Parse(reply)["ok"],true)) {
                         try { while(server.ReadByte()!=-1) {} }

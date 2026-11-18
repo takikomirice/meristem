@@ -5,25 +5,36 @@ import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { Store } from './store.js';
 import { Broker } from './broker.js';
-import { WorkerRuntime, type RuntimeConfig } from './workers.js';
+import { HistorySelection, readSavedWorkerHistory, WorkerRuntime, type RuntimeConfig } from './workers.js';
 import { pipeRequest, relayRequest } from './protocol.js';
 import { callerMetadata, resolveCallerIdentity, type VerifiedPeer } from './actors.js';
-import { McpController, type FixtureScope } from './mcp.js';
+import { HistoryResume, McpController, type FixtureScope } from './mcp.js';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Binding, Id, sameWorker, type Registration, type ControlEvent } from './contracts.js';
-import { displayEvent } from './terminal-events.js';
+import { Binding, Hash, Id, sameWorker, ExecutionLimits, type Registration, type ControlEvent } from './contracts.js';
+import { displayEvent, terminalText } from './terminal-events.js';
 import { z } from 'zod';
 import { Worker } from './contracts.js';
 import { WakeCoordinator } from './wake.js';
 import { RevisionConflict } from './failures.js';
+import { parseArgs } from 'node:util';
+import { exportRoutingSummary, loadPlanRoutingSummary } from './routing-summary.js';
+import { fileHash, readPlan } from './plan.js';
 
-type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns: number }; parentRelay: { pipeName: string; threadId: string }; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
+type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: { pipeName: string; threadId: string }; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
 type Discovery = { pipeName: string; token: string; ownerId: string; ownerEpoch: string; windowBindingId: string; runId: string };
 function tokenMatches(left: unknown, right: string): boolean { return typeof left === 'string' && Buffer.byteLength(left) === Buffer.byteLength(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right)); }
 export async function serve(configPath: string): Promise<void> {
   const config = JSON.parse(readFileSync(configPath, 'utf8')) as Config;
+  const limits = ExecutionLimits.parse(config.executionLimits ?? {});
+  const legacyWake = ExecutionLimits.parse({ maxWakeTurns: config.mcp?.wake?.maxTurns }).maxWakeTurns;
+  if (legacyWake !== null) limits.maxWakeTurns = limits.maxWakeTurns === null ? legacyWake : Math.min(limits.maxWakeTurns, legacyWake);
   Id.parse(config.runId);
+  const scope = config.mcp?.scope;
+  const routingHistory = scope?.modelRoutingSummary === undefined ? undefined : (() => {
+    if (!scope.plan) throw new Error('routing summary requires a bound plan');
+    return loadPlanRoutingSummary(scope.modelRoutingSummary, readPlan(scope.planPath), config.runId, config.runtime.authHome);
+  })();
   const store = new Store(config.stateDirectory, config.repository);
   const discovery: Discovery = { pipeName: config.pipeName, token: randomUUID() + randomUUID(), ownerId: randomUUID(), ownerEpoch: randomUUID(), windowBindingId: randomUUID(), runId: config.runId };
   let broker: Broker, wake: WakeCoordinator | undefined, wakeTimer: NodeJS.Timeout | undefined;
@@ -47,18 +58,21 @@ export async function serve(configPath: string): Promise<void> {
   }, item => store.saveRequest(config.runId, item));
   broker = new Broker(store, runtime, config.mcp?.wake ? async blocked => {
     await relayRequest(config.mcp!.parentRelay.pipeName, blocked ? 'relay/wake-block' : 'relay/wake-resume', { threadId: config.mcp!.parentRelay.threadId });
-  } : undefined);
+  } : undefined, limits);
   let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId); }
   let mcp: McpController | undefined;
   if (config.mcp) {
     let parent: any;
     for (let i = 0; i < 30; i++) { try { parent = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status'); break; } catch { await delay(100); } }
     if (!parent?.managementEnabled) throw new Error('verified parent owner unavailable');
-    mcp = new McpController(store, broker, runtime, config.runId, { ownerId: parent.ownerId, ownerEpoch: parent.ownerEpoch, threadId: config.mcp.parentRelay.threadId }, { ...config.mcp.scope, windowBindingId: discovery.windowBindingId });
+    mcp = new McpController(store, broker, runtime, config.runId, { ownerId: parent.ownerId, ownerEpoch: parent.ownerEpoch, threadId: config.mcp.parentRelay.threadId }, {
+      ...config.mcp.scope, windowBindingId: discovery.windowBindingId,
+      ...(routingHistory ? { modelRoutingSummary: routingHistory.reference } : {})
+    }, routingHistory);
     if (config.mcp.wake) {
       const actor = { ownerId: parent.ownerId, ownerEpoch: parent.ownerEpoch, threadId: config.mcp.parentRelay.threadId };
       const relay = (method: string, params: Record<string, unknown>) => relayRequest(config.mcp!.parentRelay.pipeName, method, params);
-      wake = new WakeCoordinator(store, actor, config.mcp.wake, relay, (runId, reason) => broker.stopRun(runId, reason), config.mcp.wake.maxTurns, runId => broker.canWake(runId));
+      wake = new WakeCoordinator(store, actor, config.mcp.wake, relay, (runId, reason) => broker.stopRun(runId, reason), runId => broker.executionLimits(runId).maxWakeTurns, runId => broker.canWake(runId));
     }
   }
   if (!existing && !config.mcp) {
@@ -93,9 +107,7 @@ export async function serve(configPath: string): Promise<void> {
   if (wake) wakeTimer = setInterval(() => {
     if (leasedPeer && store.binding(config.runId)?.state === 'consumed') void wake!.monitor(config.runId).catch(() => { void broker.stopRun(config.runId, 'wake_monitor_failed'); });
   }, 500);
-  const snapshot = () => {
-    return { ok: true, run: store.run(config.runId), binding: store.binding(config.runId), attempts: store.displayAttempts(config.runId).map(row => ({ state: row.state, registration: JSON.parse(row.registration), stopResult: row.stop_result ? JSON.parse(row.stop_result) : null })) };
-  };
+  const snapshot = (offset = 0, attemptId?: string, registrationOnly = false) => store.terminalSnapshot(config.runId, offset, attemptId, { registrationOnly, telemetry: worker => runtime.terminalTelemetry(worker) });
   async function handle(envelope: any): Promise<unknown> {
     if (envelope.internalMethod === 'parent_stop') return { ok: true, results: await broker.stopRun(config.runId, 'parent_ui_stop') };
     const request = envelope.request;
@@ -116,17 +128,44 @@ export async function serve(configPath: string): Promise<void> {
       if (request.windowBindingId !== discovery.windowBindingId || leasedPeer) return { ok: false, error: 'window_already_bound' };
       leasedPeer = peerKey; return { ok: true };
     }
-    if (request.method === 'status') return snapshot();
+    if (request.method === 'status' && request.pendingDecisions === true) {
+      const afterId = Id.optional().parse(request.afterDecisionId);
+      const rows = store.coordinationDecisions(config.runId, afterId, 5, true);
+      const decisions = rows.slice(0, 4).map(({ id, kind, recipient, taskIds, question }) => ({ id, kind, recipient, taskIds, question: terminalText(question, 2048) }));
+      return { ok: true, decisions, nextAfterId: rows.length > decisions.length ? decisions.at(-1)!.id : null };
+    }
+    if (request.method === 'status') return snapshot(request.attemptOffset, request.attemptId, request.registrationOnly === true);
+    if (request.method === 'history_targets') {
+      return { ok: true, ...store.historyTargets(config.runId, request.offset ?? 0) };
+    }
+    if (request.method === 'worker_history') {
+      const { target, cursor } = HistorySelection.parse(request.selection);
+      return { ok: true, result: await readSavedWorkerHistory(store, runtime, config.runId, target, cursor) };
+    }
+    if (request.method === 'resume_worker_history' && mcp && config.mcp) {
+      const hasWindow = () => request.windowLease !== true || leasedPeer === peerKey && request.windowBindingId === discovery.windowBindingId;
+      if (!hasWindow()) throw new Error('bound window lease required');
+      const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
+      if (ownership.verified !== true || ownership.owned !== false) throw new Error('verified human peer required');
+      return { ok: true, result: await mcp.prepareHistoryResume(HistoryResume.parse(request.resume), hasWindow) };
+    }
     if ((request.method === 'requests' || request.method === 'answer_request') && mcp && config.mcp) {
       if (leasedPeer !== peerKey || request.windowBindingId !== discovery.windowBindingId) throw new Error('human window lease required');
       const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('model cannot answer human request');
-      if (request.method === 'requests') return { ok: true, requests: runtime.pendingRequests().map(item => {
-        if (item.state !== 'pending' || item.kind === 'question') return item;
-        const form = runtime.presentRequest(item.worker, item.key);
-        store.auditHumanRequest(config.runId, form, 'presentation_prepared', 'human_window');
-        return form;
-      }) };
+      if (request.method === 'requests') {
+        const offset = z.number().int().nonnegative().parse(request.requestOffset ?? 0), items = runtime.pendingRequests();
+        const requests = [];
+        for (const item of items.slice(offset, offset + 4)) {
+          const form = item.state !== 'pending' || item.kind === 'question' ? item : runtime.presentRequest(item.worker, item.key);
+          requests.push(form);
+          if (Buffer.byteLength(JSON.stringify(requests)) > 160000) {
+            requests.pop(); if (!requests.length) throw new Error('request exceeds frame budget'); break;
+          }
+          if (form !== item) store.auditHumanRequest(config.runId, form, 'presentation_prepared', 'human_window');
+        }
+        return { ok: true, requests, nextRequestOffset: items.length > offset + requests.length ? offset + requests.length : null };
+      }
       const answer = z.object({ worker: Worker, key: z.string().max(512), payloadHash: z.string().regex(/^[a-f0-9]{64}$/), formGeneration: Id, action: z.enum(['accept', 'decline', 'cancel']) }).strict().parse(request.answer);
       const item = runtime.pendingRequests().find(r => r.key === answer.key && sameWorker(r.worker, answer.worker));
       const current = () => !!item && broker.canReviewRequest(config.runId, item) && leasedPeer === peerKey;
@@ -138,13 +177,37 @@ export async function serve(configPath: string): Promise<void> {
     if (request.method === 'authorize' && mcp && config.mcp) {
       const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('parent cannot confirm human permit');
-      mcp.authorize(Id.parse(request.bindingId)); return { ok: true, bindingId: request.bindingId };
+      mcp.authorize(Id.parse(request.bindingId), Hash.optional().parse(request.scopeHash)); return { ok: true, bindingId: request.bindingId };
     }
-    if (request.method === 'stop') return { results: await broker.stopRun(config.runId), ...snapshot() };
+    if (request.method === 'stop') return { results: await broker.stopRun(config.runId), ...snapshot(0, undefined, true) };
+    if (request.method === 'retire_worker') {
+      if (leasedPeer !== peerKey || request.windowBindingId !== discovery.windowBindingId) throw new Error('bound human window lease required');
+      const binding = Binding.parse(request.binding), row = store.attempts(config.runId).find(a => a.id === binding.worker.attemptId);
+      const reg = row && JSON.parse(row.registration) as Registration | undefined;
+      if (!reg || reg.binding.terminalId !== binding.terminalId || reg.binding.windowBindingId !== binding.windowBindingId) throw new Error('stale terminal binding');
+      return { ok: true, result: await broker.retireWorker(config.runId, binding.worker) };
+    }
+    if (request.method === 'rename_worker') {
+      if (leasedPeer !== peerKey || request.windowBindingId !== discovery.windowBindingId) throw new Error('bound window lease required');
+      if (config.mcp) {
+        const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
+        if (ownership.verified !== true || ownership.owned !== false || leasedPeer !== peerKey) throw new Error('verified window lease required');
+      }
+      const displayName = store.renameWorker(config.runId, Worker.parse(request.target), request.displayName);
+      return { ok: true, displayName };
+    }
     if (request.method === 'close_terminal') return { ok: true, result: await broker.closeTerminal(config.runId, Binding.parse(request.binding)) };
     if (request.method === 'events') {
-      const events = store.events(config.runId, request.afterSeq, request.limit).map(row => ({ seq: row.seq, attemptId: row.attempt_id, text: displayEvent(row.kind as ControlEvent['kind']) }));
-      return { ok: true, events, lastSeq: events.at(-1)?.seq ?? request.afterSeq };
+      const events = store.events(config.runId, request.afterSeq, request.limit, Id.optional().parse(request.attemptId)).map(row => ({ seq: row.seq, attemptId: row.attempt_id, text: displayEvent((row.transition ?? row.kind) as ControlEvent['kind'], row.decisionKind),
+        source: row.kind === 'report_saved' || row.kind === 'late_report' ? 'worker' : undefined }));
+      let activity = {};
+      if (request.afterActivitySeq !== undefined) {
+        const cursor = z.number().int().nonnegative().parse(request.afterActivitySeq);
+        const reg = store.terminalRegistration(config.runId, request.attemptId);
+        if (!reg) throw new Error('attempt unavailable');
+        activity = runtime.terminalActivity(reg.worker)?.read(cursor, request.limit) ?? { activityEvents: [], lastActivitySeq: cursor, omittedActivityCount: 0 };
+      }
+      return { ok: true, events, lastSeq: events.at(-1)?.seq ?? request.afterSeq, ...activity };
     }
     return { ok: false, error: 'unsupported_method' };
   }
@@ -166,29 +229,70 @@ export async function serve(configPath: string): Promise<void> {
 }
 export async function main(args: string[]): Promise<void> {
   const option = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
+  if (args[0] === 'routing-summary') {
+    const { values } = parseArgs({ args: args.slice(1), options: { state: { type: 'string', multiple: true }, out: { type: 'string' } } });
+    const bytes = exportRoutingSummary(values.state ?? []);
+    if (values.out) {
+      writeFileSync(values.out, bytes, { flag: 'wx', mode: 0o600 });
+      console.log(JSON.stringify({ path: path.resolve(values.out), sha256: fileHash(bytes) }));
+    } else {
+      process.stdout.write(bytes);
+    }
+    return;
+  }
   if (args[0] === 'serve' && option('--config')) { await serve(path.resolve(option('--config')!)); return; }
   const runId = Id.parse(option('--run')), directory = option('--state') ?? path.join(process.env.LOCALAPPDATA ?? '', 'Meristem', 'chat-control', runId);
-  if (!['status', 'stop', 'authorize'].includes(args[0])) throw new Error('usage: status|stop|authorize --run <id> [--state <directory>] [--binding <id>]');
+  const historyCommand = args[0] === 'history' || args[0] === 'resume-history';
+  const pendingDecisions = args[0] === 'status' && args.includes('--pending-decisions');
+  if (!historyCommand && !['status', 'stop', 'authorize'].includes(args[0])) throw new Error('usage: status|stop|authorize|history|resume-history --run <id> [--state <directory>] [--attempt <id>]');
   const discoveryPath = path.join(directory, 'discovery.json');
   try {
     const discovery = JSON.parse(readFileSync(discoveryPath, 'utf8')) as Discovery;
     if (discovery.runId !== runId) throw new Error('run binding mismatch');
+    if (historyCommand) {
+      const attempt = option('--attempt');
+      if (attempt === undefined && args[0] === 'history') {
+        const page = await pipeRequest(discovery.pipeName, { ...discovery, method: 'history_targets', offset: Number(option('--offset') ?? 0) });
+        if (!page.ok) throw new Error('history targets unavailable');
+        console.log(JSON.stringify(page)); return;
+      }
+      const snapshot = await pipeRequest(discovery.pipeName, { ...discovery, method: 'status', attemptId: Id.parse(attempt), registrationOnly: true });
+      const target = Worker.parse((snapshot.attempts as { registration: Registration }[] | undefined)?.[0]?.registration.worker);
+      const input = args[0] === 'history'
+        ? { method: 'worker_history', selection: HistorySelection.parse({ target, cursor: option('--cursor') }) }
+        : { method: 'resume_worker_history', resume: HistoryResume.parse({ target, runId, operationId: randomUUID(), expectedRevision: (snapshot.run as { revision: number }).revision }) };
+      const result = await pipeRequest(discovery.pipeName, { ...discovery, ...input }, 20000);
+      if (!result.ok) throw new Error('history action rejected');
+      console.log(JSON.stringify(result)); return;
+    }
     if (args[0] === 'authorize') {
       const bindingId = Id.parse(option('--binding'));
       const snapshot = await pipeRequest(discovery.pipeName, { ...discovery, method: 'status' });
       const binding = snapshot.binding as any;
       if (!snapshot.ok || !binding || binding.id !== bindingId || binding.state !== 'pending') throw new Error('pending binding unavailable');
-      console.error(JSON.stringify({ bindingId, parent: JSON.parse(binding.parent), scope: JSON.parse(binding.scope) }, null, 2));
+      const scope = JSON.parse(binding.scope);
+      const scopeHash = scope.modelRouting ? Hash.parse(binding.scope_hash) : undefined;
+      console.error(JSON.stringify({ bindingId, parent: JSON.parse(binding.parent), scope, ...(scopeHash ? { scopeHash } : {}) }, null, 2));
       const readline = createInterface({ input: process.stdin, output: process.stderr });
-      try { if ((await readline.question('上記の親・計画hash・repo・branch・作業場所を確認し、許可するbinding IDを入力: ')).trim() !== bindingId) throw new Error('authorization declined'); }
+      const prompt = scopeHash ? '親・計画と許可するモデル候補・対象・最大切り替え回数・集計hashを確認し、許可するbinding IDを入力: '
+        : '上記の親・計画hash・repo・branch・作業場所を確認し、許可するbinding IDを入力: ';
+      try { if ((await readline.question(prompt)).trim() !== bindingId) throw new Error('authorization declined'); }
       finally { readline.close(); }
-      const result = await pipeRequest(discovery.pipeName, { ...discovery, method: 'authorize', bindingId });
+      const result = await pipeRequest(discovery.pipeName, { ...discovery, method: 'authorize', bindingId, ...(scopeHash ? { scopeHash } : {}) });
       if (!result.ok) throw new Error('authorization rejected'); console.log(JSON.stringify(result)); return;
     }
-    const result = await pipeRequest(discovery.pipeName, { ...discovery, method: args[0] });
+    const result = await pipeRequest(discovery.pipeName, { ...discovery, method: args[0], ...(pendingDecisions ? { pendingDecisions, afterDecisionId: Id.optional().parse(option('--after-id')) } : {}) });
     if (!result.ok) throw new Error('control rejected');
+    if (args[0] === 'status') {
+      while (result.nextAttemptOffset !== null && result.nextAttemptOffset !== undefined) {
+        const page = await pipeRequest(discovery.pipeName, { ...discovery, method: 'status', attemptOffset: result.nextAttemptOffset });
+        if (!page.ok) throw new Error('status page rejected');
+        (result.attempts as unknown[]).push(...page.attempts as unknown[]); result.nextAttemptOffset = page.nextAttemptOffset;
+      }
+    }
     console.log(JSON.stringify(result)); return;
-  } catch {
+  } catch (error) {
+    if (historyCommand || pendingDecisions) throw error;
     // Read-only fallback never steals the writer lease, reconnects to an old PID, or claims a stop.
     if (!existsSync(path.join(directory, 'control.sqlite'))) throw new Error('run state unavailable');
     const db = new DatabaseSync(path.join(directory, 'control.sqlite'), { readOnly: true });

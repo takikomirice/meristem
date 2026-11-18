@@ -1,0 +1,242 @@
+{
+  "stage": "MC-02",
+  "dateJapan": "2026-11-17",
+  "scope": "Current PC; explicit live guardian assessments and real human MCP form callback. No executable approval gate or product MC-03/07 acceptance.",
+  "runs": [
+    {
+      "run": "guardian-01",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live_guardian_dry_run",
+        "capturedAt": "2026-11-17T11:20:02.459Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "31a07211177302d3fb87e8f3108b5d3ff6fd46c5eca29fd68a88d71847391736",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "auto_review",
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "reviewsSent": 2,
+        "reviewFilesUnchanged": true,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated",
+            "elapsedMs": 432
+          },
+          "reviewer": {
+            "status": "observed",
+            "elapsedMs": 56765
+          },
+          "profile": {
+            "status": "observed"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "reviewAllow": {
+            "status": "mismatch",
+            "reason": "deny",
+            "elapsedMs": 12266
+          },
+          "reviewDeny": {
+            "status": "observed",
+            "reason": "deny",
+            "elapsedMs": 17275
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    },
+    {
+      "run": "guardian-02",
+      "observation": {
+        "stage": "MC-02",
+        "source": "live_guardian_dry_run",
+        "capturedAt": "2026-11-17T11:23:18.904Z",
+        "runtime": {
+          "realSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+          "hostSha256": "0846f8c3a62ad54dca945c0e4ffe21f702f59cbb194ed1b08430e593e0eec8ff",
+          "node": "v24.22.1"
+        },
+        "requestedReviewer": "auto_review",
+        "maxTurns": 0,
+        "turnsSent": 0,
+        "reviewsSent": 2,
+        "reviewFilesUnchanged": true,
+        "processExited": true,
+        "childStopConfirmed": true,
+        "checks": {
+          "account": {
+            "status": "authenticated",
+            "elapsedMs": 370
+          },
+          "reviewer": {
+            "status": "observed",
+            "elapsedMs": 7076
+          },
+          "profile": {
+            "status": "observed"
+          },
+          "modelTurn": {
+            "status": "not_run"
+          },
+          "historyRead": {
+            "status": "not_run"
+          },
+          "historyTurns": {
+            "status": "not_run"
+          },
+          "historyResume": {
+            "status": "not_run"
+          },
+          "autoReviewDecision": {
+            "status": "not_run"
+          },
+          "reviewAllow": {
+            "status": "observed",
+            "reason": "allow",
+            "threadId": "fixture-id-02",
+            "callId": "mc02-allow-review",
+            "elapsedMs": 11608
+          },
+          "reviewDeny": {
+            "status": "observed",
+            "reason": "deny",
+            "threadId": "fixture-id-03",
+            "callId": "mc02-deny-review",
+            "elapsedMs": 16093
+          },
+          "uiAnswers": {
+            "status": "not_run"
+          }
+        }
+      }
+    }
+  ],
+  "ui": {
+    "preparation": {
+      "runtimeVersion": "0.169.0-alpha.11.1",
+      "requestedModel": "gpt-6-luna",
+      "runtimeSha256": "a473edef0d52c4ffa067060ddd48a3d85720a3256cbd0510aab71d406f3af744",
+      "source": "live_ui_preparation",
+      "maxForms": 3,
+      "configHashBefore": "f886dc83cdff11ecc343ddddf6d98d4832d7abb7337cf2cc59ee32f9a2695697",
+      "configHashConfigured": "5deead85185ef78a3f56ffc5bd814a82c250944eee2bbdd20ef6496e278c4607",
+      "preparedAt": "2026-11-17T11:23:55.8009698Z",
+      "requestedEffort": "low",
+      "maxUiModelTurns": 1
+    },
+    "response": {
+      "source": "live",
+      "state": "response_received",
+      "toolRequestId": 2,
+      "client": {
+        "name": "codex-mcp-client",
+        "title": "Codex",
+        "version": "0.169.0-alpha.11.1"
+      },
+      "formGeneration": "fixture-id-04",
+      "payloadHash": "74c8fef4c4804e447ee1b42dc66fc2259a73bff39c4f5df3956eebed9e138d2d",
+      "requestedAt": "2026-11-17T11:25:30.557Z",
+      "action": "accept",
+      "format": "JSON",
+      "freeTextPresent": true,
+      "expectedTestText": true,
+      "answerHash": "d60476bedbd2b35d181cd24c2519d05b353c4cce24a3b48bfe9d133e6efcf9f1",
+      "receivedAt": "2026-11-17T11:26:11.624Z"
+    },
+    "correlation": {
+      "threadId": "fixture-id-05",
+      "turns": [
+        {
+          "turnId": "fixture-id-06",
+          "model": "gpt-6-luna",
+          "effort": "low"
+        }
+      ],
+      "toolCalls": [
+        {
+          "callId": "call_43bce0f8b8f14644830a12c91f0d8bb8",
+          "name": "mcp__mc02_questions__mc02_questions"
+        }
+      ],
+      "toolResponses": [
+        {
+          "callId": "call_6a8ff664fd924d8a85c0e0df9221ca17",
+          "generationMatched": true
+        }
+      ],
+      "completed": [
+        {
+          "turnId": "fixture-id-06"
+        }
+      ],
+      "transport": "functions.exec yielded cell -> functions.wait -> original MCP callback"
+    },
+    "cleanup": {
+      "strictStopRunner": "unknown_new_global_process_detected",
+      "configRestored": true,
+      "recordedRootAbsent": true,
+      "windowNormalClose": "observed",
+      "capturedHandlesExited": true,
+      "verifiedAt": "2026-11-17T11:29:50.1127807Z",
+      "independentProfileIdle": true,
+      "originalHashMatches": true
+    },
+    "humanReportedSent": true
+  },
+  "schemaHashes": {
+    "ToolRequestUserInputParams.ts": "0e3063b70a99b815e170b3c157416924315308a1c8af201dcc2f3fb459e4144a",
+    "McpServerElicitationRequestParams.ts": "16ab3fb70ebd4b68522432f718cc49a6e43cd78e03ee7734e2bdb7c2a101df4c",
+    "ThreadGuardianReviewParams.ts": "c8e29724c3f07ffe5a5283b03b0776c4165a2ebe3fd4bdc45bcf8a64aee81eb0",
+    "ThreadGuardianReviewResponse.ts": "3b725a34434ce9ac0c1fa233dbecb559580539497693b8ca8f70239b93401323",
+    "ItemGuardianApprovalReviewCompletedNotification.ts": "2010fd12652c8b0ee44326e70e71e3a28c7a369048da8c3b6de2513e8b9a8264"
+  },
+  "limitations": [
+    "Explicit thread/guardianReview assessments do not execute reviewed commands or establish the normal execution approval gate.",
+    "Cancellation, closure and delayed responses remain fixture observations.",
+    "Previous live history/resume observation was on the earlier PC and within one app-server.",
+    "Strict window-stop runner returned unknown for a newly detected global process; all captured handles exited, and separate OS inventory confirmed the dedicated root absent and profile idle."
+  ],
+  "completion": {
+    "executionApprovalGate": "not_run",
+    "independentReview": "no_required_fixes",
+    "status": "completed_compatibility_scope",
+    "automatedValidation": {
+      "controlTests": {
+        "passed": 244,
+        "failed": 0
+      },
+      "nativeBuild": "passed",
+      "typecheck": "passed",
+      "totalPassed": 300,
+      "build": "passed",
+      "standardVerify": "failed_native_lock_and_two_intermittent_existing_root_tests",
+      "serialRootTests": {
+        "passed": 42,
+        "failed": 0
+      },
+      "terminalTests": {
+        "passed": 14,
+        "failed": 0
+      }
+    }
+  }
+}

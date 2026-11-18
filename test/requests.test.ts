@@ -1,12 +1,183 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { WorkerRequests } from '../src/requests.js';
-import { mkdtempSync, mkdirSync, renameSync, symlinkSync } from 'node:fs';
+import { decisionForm, elicitDecision } from '../src/requests.js';
+import type { Decision } from '../src/contracts.js';
+import { mkdtempSync, mkdirSync, renameSync, symlinkSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createMcpServer } from '../src/mcp.js';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 const worker = { ownerId: 'owner', ownerEpoch: 'epoch', threadId: 'thread', workerId: 'A', attemptId: 'attempt' };
+
+test('auto_review_denial_is_not_parent_overridable', () => {
+  for (const before of [true, false]) {
+    const inbox = new WorkerRequests(worker, process.cwd());
+    const message = { id: 'approval', method: 'mcpServer/elicitation/request', params: { threadId: 'thread', turnId: 'turn', itemId: 'item', serverName: 'meristem', mode: 'form', requestedSchema: { type: 'object', properties: {} }, _meta: { codex_approval_kind: 'mcp_tool_call', tool_name: 'report' } } };
+    const deny = () => (inbox as any).autoReviewCompleted({ threadId: 'thread', turnId: 'turn', targetItemId: 'item', review: { status: 'denied' } });
+    if (before) deny();
+    const item = inbox.add(message, 'turn');
+    if (!before) deny();
+    assert.equal(inbox.list()[0].state, 'unsupported');
+    let sent = false;
+    assert.throws(() => inbox.answer(item, 'accept', () => { sent = true; })); assert.equal(sent, false);
+  }
+});
+
+test('human_only_consent_stays_human_only', () => {
+  const inbox = new WorkerRequests(worker, process.cwd());
+  const item = inbox.add({ id: 'consent', method: 'mcpServer/elicitation/request', params: { threadId: 'thread', turnId: 'turn', itemId: 'consent', mode: 'openai/userVerification' } }, 'turn');
+  assert.equal(item.kind, 'authentication'); assert.equal(item.state, 'unsupported');
+  assert.throws(() => inbox.answer(item, 'accept', () => assert.fail('must not send consent')));
+});
+
+test('auto_review_denial_blocks_real_MCP_forms_without_item_id_and_null_targets', () => {
+  for (const before of [true, false]) for (const targetItemId of ['tool-call', null]) {
+    const inbox = new WorkerRequests(worker, process.cwd());
+    const form = { id: 'real-mcp', method: 'mcpServer/elicitation/request', params: { threadId: 'thread', turnId: 'turn', serverName: 'meristem', mode: 'form', requestedSchema: { type: 'object', properties: {} }, _meta: { codex_approval_kind: 'mcp_tool_call', tool_name: 'report' } } };
+    const deny = () => inbox.autoReviewCompleted({ threadId: 'thread', turnId: 'turn', targetItemId, review: { status: 'denied' }, action: { type: 'mcpToolCall', server: 'meristem', toolName: 'report', connectorId: null, connectorName: null, toolTitle: null } });
+    if (before) deny();
+    const item = inbox.add(form, 'turn');
+    if (!before) deny();
+    assert.equal(inbox.list()[0].state, 'unsupported');
+    assert.throws(() => inbox.answer(item, 'accept', () => assert.fail('must not override denial')));
+  }
+});
 const request = () => ({ id: 7, method: 'mcpServer/elicitation/request', params: { threadId: 'thread', turnId: 'turn', serverName: 'meristem', mode: 'form', message: 'Report approval', requestedSchema: { type: 'object', properties: {} }, _meta: { codex_approval_kind: 'mcp_tool_call', connector_id: 'meristem', tool_name: 'report', tool_params: { report: { summary: 'A token' } } } } });
-const question = () => ({ id: 'question-7', method: 'item/tool/requestUserInput', params: { threadId: 'thread', turnId: 'turn', itemId: 'item', questions: [{ id: 'choice', header: 'Choice', question: 'Which format?', isSecret: false, options: [{ label: 'JSON', description: 'Structured' }] }] } });
+const question = () => ({ id: 'question-7', method: 'item/tool/requestUserInput', params: { threadId: 'thread', turnId: 'turn', itemId: 'item', isBlocking: true, autoResolutionMs: null, questions: [{ id: 'choice', header: 'Choice', question: 'Which format?', isOther: true, isSecret: false, options: [{ label: 'JSON', description: 'Structured' }] }] } });
+
+const consultation: Decision = { id: 'consultation', runId: 'run', taskIds: ['A'], blockingTaskIds: [], kind: 'consultation', recipient: 'human', planHash: 'a'.repeat(64), proposalHash: 'b'.repeat(64), state: 'pending', question: '形式を選択', options: [{ id: 'json', label: 'JSON', description: '互換性を維持' }, { id: 'text', label: 'Text', description: '読みやすい形式' }], allowFreeText: true };
+
+test('consultation_form_preserves_choices_and_explains_revision_semantics', () => {
+  const build = decisionForm;
+  const form = build(consultation);
+  assert.equal(form.mode, 'form');
+  assert.match(form.message, /形式を選択/); assert.match(form.message, /JSON.*互換性/);
+  assert.deepEqual((form.requestedSchema.properties.optionId as { enum: string[] }).enum, ['json', 'text']);
+  assert.match(form.requestedSchema.properties.text.title ?? '', /修正案/);
+  assert.match(form.message, /未承認/);
+  assert.deepEqual(form.requestedSchema.required, []);
+  const fixed = build({ ...consultation, allowFreeText: false });
+  assert.equal(fixed.requestedSchema.properties.text, undefined);
+  assert.deepEqual(fixed.requestedSchema.required, ['optionId']);
+  const open = build({ ...consultation, options: [] });
+  assert.equal(open.requestedSchema.properties.optionId, undefined);
+  assert.match(open.requestedSchema.properties.text.title ?? '', /回答/);
+  assert.deepEqual(open.requestedSchema.required, ['text']);
+  for (const change of [{ recipient: 'coordinator' as const }, { state: 'resolved' as const }, { options: [], allowFreeText: false }]) assert.throws(() => build({ ...consultation, ...change }));
+});
+
+test('consultation_form_validates_answers_without_formal_approval_fields', async () => {
+  const elicit = elicitDecision;
+  assert.deepEqual(await elicit(consultation, async () => ({ action: 'accept', content: { optionId: 'json', text: '' } })), { optionId: 'json' });
+  assert.deepEqual(await elicit(consultation, async () => ({ action: 'accept', content: { text: ' 修正案 ' } })), { text: '修正案' });
+  const empty: Array<Record<string, string>> = [{}, { text: '  ' }];
+  for (const content of empty) assert.equal(await elicit(consultation, async () => ({ action: 'accept', content })), undefined);
+  const invalid: Array<Record<string, string | boolean | number>> = [{ optionId: 'missing' }, { optionId: 'json', humanApproved: true }, { text: 'x'.repeat(4097) }, { text: 42 }];
+  for (const content of invalid) await assert.rejects(elicit(consultation, async () => ({ action: 'accept', content })));
+  await assert.rejects(elicit({ ...consultation, allowFreeText: false }, async () => ({ action: 'accept', content: { optionId: 'json', text: 'override' } })));
+});
+
+test('multiple_questions_preserve_options_and_free_text_but_do_not_prove_human_origin', () => {
+  const message = question();
+  message.params.questions.push({ ...message.params.questions[0], id: 'reason', header: 'Reason', question: 'Why?' });
+  const inbox = new WorkerRequests(worker, 'fixture'), item = inbox.add(message, 'turn');
+  assert.deepEqual(JSON.parse(item.detail).questions, message.params.questions);
+  const answers = { choice: { answers: ['JSON'] }, reason: { answers: ['既存APIとの互換性を維持するため'] } };
+  assert.throws(() => inbox.answerQuestion(item.key, { choice: answers.choice }, () => assert.fail('partial response')));
+  inbox.answerQuestion(item.key, answers, (id, result) => assert.deepEqual({ id, result }, { id: 'question-7', result: { answers } }));
+  // This is the coordinator-answerable route, never a human-consent adapter.
+  assert.equal(item.kind, 'question'); assert.equal(inbox.list()[0].state, 'replied');
+});
+
+test('consultation_tool_consent_is_scoped_local_call_consent_and_not_a_consultation_answer', () => {
+  for (const tool of ['propose_decision', 'get_decisions']) {
+    const message = request(); message.params._meta.tool_name = tool;
+    const inbox = new WorkerRequests(worker, 'fixture'), item = inbox.add(message, 'turn');
+    assert.equal(item.state, 'pending');
+    assert.match(item.detail, tool === 'propose_decision' ? /相談を記録/ : /相談.*読み取/);
+    const replies: unknown[] = [];
+    inbox.answer(item, 'accept', (_id, response) => replies.push(response));
+    assert.deepEqual(replies, [{ action: 'accept', content: {}, _meta: null }]);
+    assert.equal(inbox.blocking, true, 'only source RPC resolution ends this call consent');
+    const external = request(); external.params._meta.tool_name = tool; external.params.serverName = 'other';
+    assert.equal(new WorkerRequests(worker, 'fixture').add(external, 'turn').state, 'unsupported');
+  }
+});
+
+test('nonblocking_question_resolution_invalidates_late_answer_without_granting_permission', () => {
+  const message = question(); message.params.isBlocking = false;
+  const inbox = new WorkerRequests(worker, 'fixture'), item = inbox.add(message, 'turn');
+  // MC-02 characterizes the current conservative behavior; isBlocking support is not assumed.
+  assert.equal(inbox.blocking, true);
+  inbox.resolved('thread', message.id);
+  assert.throws(() => inbox.answerQuestion(item.key, { choice: { answers: ['JSON'] } }, () => assert.fail('late reply')));
+});
+
+test('structured_elicitation_and_human_verification_stay_unsupported_without_trusted_adapter', () => {
+  for (const mode of ['form', 'openai/form', 'openaiForm', 'openai/userVerification', 'url']) {
+    const message: any = request(); message.params.mode = mode; message.params._meta = null;
+    message.params.requestedSchema = { type: 'object', properties: { choice: { type: 'string', enum: ['JSON', 'Text'] }, reason: { type: 'string' } }, required: ['choice'] };
+    const inbox = new WorkerRequests(worker, 'fixture'), item = inbox.add(message, 'turn');
+    assert.equal(item.state, 'unsupported', mode); assert.equal(inbox.blocking, true);
+    assert.throws(() => inbox.answer(item, 'accept', () => assert.fail('unsupported consent')));
+    assert.throws(() => inbox.answerQuestion(item.key, { choice: { answers: ['JSON'] } }, () => assert.fail('model consent')));
+  }
+});
+
+test('formal_callback_cancel_decline_close_and_delayed_generation_never_become_acceptance', { timeout: 10000 }, async () => {
+  for (const scenario of ['cancel', 'decline', 'close', 'stale'] as const) {
+    const inbox = new WorkerRequests(worker, 'fixture'), item = inbox.add(request(), 'turn');
+    const sent: unknown[] = [];
+    let displayed!: () => void, respond!: (value: any) => void;
+    const shown = new Promise<void>(resolve => displayed = resolve), response = new Promise<any>(resolve => respond = resolve);
+    const server = createMcpServer(async () => ({ state: 'waiting_approval', humanForm: item }), async (ref, action) => {
+      inbox.answer(ref, action, (_id, result) => sent.push(result)); return { state: 'response_sent' };
+    });
+    const client = new Client({ name: 'mc02-simulated-UI', version: '0' }, { capabilities: { elicitation: { form: {} } } });
+    client.setRequestHandler(ElicitRequestSchema, async () => { displayed(); return response; });
+    const [a, b] = InMemoryTransport.createLinkedPair();
+    try {
+      await Promise.all([server.connect(b), client.connect(a)]);
+      const pending = client.callTool({ name: 'answer_request', arguments: { runId: 'run', operationId: 'op', expectedRevision: 0, requestKey: item.key } }).catch(() => undefined);
+      await shown; assert.equal(sent.length, 0); assert.equal(inbox.list()[0].state, 'pending');
+      if (scenario === 'close') await client.close();
+      if (scenario === 'stale') inbox.present(item.key);
+      respond({ action: scenario === 'stale' ? 'accept' : scenario === 'decline' ? 'decline' : 'cancel' });
+      await pending;
+      if (scenario === 'cancel' || scenario === 'decline') assert.deepEqual(sent, [{ action: scenario, content: null, _meta: null }]);
+      else { assert.deepEqual(sent, []); assert.equal(inbox.list()[0].state, 'pending'); }
+      assert.equal(inbox.blocking, true, 'only source resolution releases a request');
+    } finally { respond({ action: 'cancel' }); await client.close(); await server.close(); }
+  }
+});
+
+test('live_UI_probe_binds_structured_callback_and_records_no_free_text_body', { timeout: 10000 }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'mc02-ui-'));
+  const client = new Client({ name: 'fixture-ui', version: '0' }, { capabilities: { elicitation: { form: {} } } });
+  client.setRequestHandler(ElicitRequestSchema, async request => {
+    assert.equal(request.params.mode, 'form');
+    if (request.params.mode !== 'form') throw new Error('wrong mode');
+    assert.deepEqual(Object.keys(request.params.requestedSchema.properties), ['format', 'reason']);
+    return { action: 'accept', content: { format: 'JSON', reason: 'private-free-text' } };
+  });
+  try {
+    await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.resolve('dist/test/live/approval-roundtrip.js'), 'ui-probe', '--fixture', '--root', root], stderr: 'pipe' }));
+    const result = await client.callTool({ name: 'mc02_questions', arguments: {} });
+    assert.equal(result.isError, undefined);
+    const evidence = JSON.parse(readFileSync(path.join(root, 'ui-request-1.json'), 'utf8'));
+    assert.equal(evidence.source, 'fixture'); assert.equal(evidence.state, 'response_received');
+    assert.equal(evidence.action, 'accept'); assert.equal(evidence.format, 'JSON');
+    assert.equal(evidence.freeTextPresent, true); assert.match(evidence.payloadHash, /^[a-f0-9]{64}$/);
+    assert.equal(typeof evidence.formGeneration, 'string');
+    assert.equal(typeof evidence.toolRequestId, 'number');
+    assert.deepEqual(evidence.client, { name: 'fixture-ui', version: '0' });
+    assert.doesNotMatch(JSON.stringify(evidence), /private-free-text/);
+  } finally { await client.close(); }
+});
 
 function gitApproval(kind: 'command' | 'permissions') {
   const cwd = mkdtempSync(path.join(tmpdir(), 'cc06-approval-')), root = path.join(cwd, 'git-metadata'); mkdirSync(root);

@@ -1,0 +1,32 @@
+{
+  "testId": "MC-06-N-way-local-bare",
+  "capturedAt": "2026-11-17T14:57:28.595Z",
+  "result": "passed",
+  "evidence_kind": "fixture",
+  "requestedMaximum": 4,
+  "approvedMaximum": 4,
+  "simultaneousWorkers": 4,
+  "candidateShas": [
+    "f8af13794a5c6e26dc03d0d8093f7a7be90dbfd8",
+    "a6153c64a4f7497071bff12c26fe94f562c59c67",
+    "ecfb6afb50cc4cf65e1636f2753c22557d2dfe0a",
+    "28a2e53572921167e9965267587aa6d679e5e72c",
+    "b6777c52e99e1e868b86245d7784158c9cfd2865"
+  ],
+  "integrationShas": [
+    "b079dd28679622b19c4cdb5d5eb3bd2da70523f5",
+    "b6777c52e99e1e868b86245d7784158c9cfd2865"
+  ],
+  "elapsedMs": 88121,
+  "assertions": {
+    "fourCandidatesPinned": true,
+    "previousChecksRequiredAtLaterFinalSha": true,
+    "finalFilesChecked": true,
+    "attemptsCompleted": true
+  },
+  "limitations": [
+    "Trusted UI response is simulated, not a real human observation.",
+    "Local bare remote and deterministic runtime; no model or UI acceptance.",
+    "Timing is a local fixture observation, not a production capacity guarantee."
+  ]
+}
