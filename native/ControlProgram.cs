@@ -129,17 +129,22 @@ internal sealed class ControlProgram {
                     string line=ReadPeerFrame(server);if(line==null)continue;
                     var request=Program.Parse(line);string method=Program.Text(request,"method");
                     if(method!="mcp"&&broker.Contains(peer.Handle)){writer.WriteLine("{\"ok\":false,\"error\":\"worker_peer_denied\"}");continue;}
-                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="preview_parent_start"&&method!="start_parent"&&method!="status"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
+                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="preview_parent_start"&&method!="start_parent"&&method!="resume_parent"&&method!="status"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
                         &&method!="history_targets"&&method!="worker_history"&&method!="resume_worker_history"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
                     if (method == "lease") {
                         using (var terminal = Program.Text(request, "sessionKind") == "cli" ? OpenTerminalSession(request, peer) : null) {
                             int port = terminal == null ? 0 : McpPeer.TerminalPort(terminal);
                             if (terminal != null && port < 1) throw new IOException("expected an interactive remote TUI");
+                            int serverPid = 0;
+                            if (terminal != null) {
+                                var proof = Program.Parse(Call(request, peer, "terminal_server"));
+                                if (!Object.Equals(proof["ok"], true)) throw new IOException("terminal session owner rejected");
+                                serverPid = Convert.ToInt32(proof["sessionServerPid"]);
+                                if (!ConnectedToServer(terminal, serverPid, port)) throw new IOException("TUI is not connected to this App Server");
+                            }
                             string leaseReply = Call(request, peer);
                             if (Object.Equals(Program.Parse(leaseReply)["ok"], true)) {
                                 try {
-                                    int serverPid = terminal == null ? 0 : Convert.ToInt32(Program.Parse(leaseReply)["sessionServerPid"]);
-                                    if (terminal != null && !ConnectedToServer(terminal, serverPid, port)) throw new IOException("TUI is not connected to this App Server");
                                     writer.WriteLine(leaseReply); HoldLease(server, terminal, serverPid, port);
                                 }
                                 finally { try { Call(request, peer, "lease_lost"); } catch { broker.CloseJob(); } }

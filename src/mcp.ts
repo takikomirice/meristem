@@ -170,6 +170,21 @@ export class McpController {
     });
   }
 
+  async resumeFromControl(operationId: string, scopeHash: string) {
+    const preview = this.startPreview();
+    const saved = this.store.binding(this.runId);
+    if (!this.parentSessionId || !saved || !preview.scope.targetHash || preview.scopeHash !== scopeHash ||
+      JSON.parse(saved.scope).targetHash !== preview.scope.targetHash || JSON.parse(saved.parent).threadId !== this.parent.threadId) throw new Error('saved start scope changed');
+    const state = this.store.run(this.runId).state;
+    if (state === 'active') return this.startFromControl(operationId, scopeHash);
+    if (state !== 'needs_reconcile' && state !== 'stopped') throw new Error('run cannot resume');
+    if (saved.scope_hash !== scopeHash || saved.state !== 'consumed') {
+      this.store.replaceBinding(randomUUID(), this.runId, operationId, this.parent, scopeHash, preview.scope, true);
+    }
+    await this.broker.resumeRun(this.runId);
+    return { runId: this.runId, bindingId: this.store.binding(this.runId).id, state: this.store.run(this.runId).state };
+  }
+
   authorize(bindingId: string, displayedScopeHash?: string): void {
     const binding = this.store.binding(this.runId);
     if (!binding || binding.id !== bindingId || binding.scope_hash !== this.scopeHash() || !sameActor(JSON.parse(binding.parent), this.parent)) throw new Error('binding scope mismatch');

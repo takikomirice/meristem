@@ -283,14 +283,16 @@ export class Store {
   requestBinding(id: string, runId: string, operationId: string, parent: unknown, scopeHash: string, scope: unknown): void {
     this.db.prepare("INSERT INTO run_bindings VALUES(?,?,?,?,?,?,'pending',NULL)").run(id, runId, operationId, JSON.stringify(parent), scopeHash, JSON.stringify(scope));
   }
-  replaceBinding(id: string, runId: string, operationId: string, parent: unknown, scopeHash: string, scope: unknown): void {
+  replaceBinding(id: string, runId: string, operationId: string, parent: unknown, scopeHash: string, scope: unknown, humanResume = false): void {
     if (this.wakeUnknown(runId)) throw new Error('wake needs reconciliation');
     this.transaction(() => {
       const previous = this.binding(runId);
-      if (this.run(runId).state !== 'needs_reconcile' || this.attempts(runId).some(row => !['completed', 'stopped'].includes(row.state)) || this.operationUnknown(runId)) throw new Error('binding needs reconciliation');
+      const state = this.run(runId).state;
+      if ((state !== 'needs_reconcile' && !(humanResume && state === 'stopped')) || this.attempts(runId).some(row => !['completed', 'stopped'].includes(row.state)) || this.operationUnknown(runId)) throw new Error('binding needs reconciliation');
       this.db.prepare('INSERT INTO binding_history VALUES(?,?)').run(previous.id, JSON.stringify(previous));
       this.db.prepare('DELETE FROM run_bindings WHERE run_id=?').run(runId);
       this.requestBinding(id, runId, operationId, parent, scopeHash, scope);
+      if (humanResume) this.commitHumanStart(id, 'control_input');
     });
   }
   confirmBinding(id: string): void {

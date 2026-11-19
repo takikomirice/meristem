@@ -65,16 +65,29 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
     return { socket: lease, id: accepted.leaseId };
   }
   if (mode === 'terminal-exit') {
-    async function connectedTui() {
-      const { port } = await ui('fixture/terminal-listener', {});
+    async function openTui(port: number) {
       const tui = spawn(realExe, ['--remote', 'ws://127.0.0.1:' + port, '--remote-auth-token-env', 'TEST_ONLY'], { cwd: root, stdio: 'pipe', windowsHide: true });
       t.after(() => { if (tui.exitCode === null) tui.kill(); });
       await once(tui.stdout, 'data');
       const pid = tui.pid!;
       const birth = spawnSync('powershell.exe', ['-NoProfile', '-Command', "(Get-Process -Id " + pid + ").StartTime.ToUniversalTime().ToFileTimeUtc()"], { encoding: 'utf8', windowsHide: true });
       assert.equal(birth.status, 0);
-      return { tui, lease: await acquireLease({ pid, created: birth.stdout.trim() }) };
+      return { tui, identity: {pid, created: birth.stdout.trim()} };
     }
+    async function connectedTui() {
+      const { port } = await ui('fixture/terminal-listener', {});
+      const { tui, identity } = await openTui(port);
+      return { tui, lease: await acquireLease(identity) };
+    }
+    const unrelated = net.createServer(socket => socket.resume()).listen(0, '127.0.0.1');
+    t.after(() => unrelated.close());
+    await once(unrelated, 'listening');
+    const address = unrelated.address(); assert(address && typeof address !== 'string');
+    const wrong = await openTui(address.port);
+    const rejected = await request('lease', { sessionKind: 'cli', terminal: wrong.identity }).catch(() => ({ok: false}));
+    assert.equal(rejected.ok, false);
+    wrong.tui.stdin.end();
+    assert.equal(((await request('status')).run as any).state, 'active', 'a rejected connection never acquired or lost the lease');
     const first = await connectedTui();
     first.tui.stdin.end();
     for (let i = 0; i < 60 && ((await request('status')).run as any).state === 'active'; i++) await delay(50);
@@ -112,6 +125,14 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
     for (let i=0; i<50 && ((await request('status')).run as any).state==='active'; i++) await delay(50);
     assert.notEqual(((await request('status')).run as any).state, 'active');
     assert.equal((await request('start_parent', start)).ok, false);
+    const renewed = await acquireLease();
+    const reconnect = { parent, leaseId: renewed.id };
+    const displayed = await request('preview_parent_start', reconnect);
+    assert.equal(displayed.state, 'needs_reconcile');
+    const resume = { ...reconnect, scopeHash: displayed.scopeHash, operationId: 'resume', stopGeneration: displayed.stopGeneration };
+    assert.equal((await request('resume_parent', { ...resume, scopeHash: start.scopeHash })).ok, false);
+    assert.equal((await request('resume_parent', { ...resume, stopGeneration: -1 })).ok, false);
+    assert.equal((await request('resume_parent', resume)).state, 'active');
     return;
   }
   const turn = await ui('turn/start', { threadId: 'P', input: [{ type: 'text', text: 'parent' }] });

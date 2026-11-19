@@ -156,25 +156,29 @@ export async function serve(configPath: string): Promise<void> {
       if (leasedPeer === peerKey) { leasedPeer = undefined; leaseId = undefined; await broker.leaseLost(config.runId); }
       return { ok: true };
     }
-    if (dynamic && config.mcp && ['lease', 'stop', 'preview_parent_start', 'start_parent'].includes(request.method)) {
+    if (dynamic && config.mcp && ['lease', 'stop', 'preview_parent_start', 'start_parent', 'resume_parent'].includes(request.method)) {
       const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('human control peer required');
       if (request.method !== 'stop' && ownership.launcher !== true) throw new Error('start must come from the UI that owns the relay');
     }
-    if (dynamic && config.mcp && ['preview_parent_start', 'start_parent'].includes(request.method)) {
+    if (dynamic && config.mcp && ['preview_parent_start', 'start_parent', 'resume_parent'].includes(request.method)) {
       const actor = Actor.parse(request.parent);
       const status = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status');
-      if (leasedPeer !== peerKey || !leaseId || request.leaseId !== leaseId || request.windowBindingId !== discovery.windowBindingId || !broker.canWake(config.runId)
+      if (leasedPeer !== peerKey || !leaseId || request.leaseId !== leaseId || request.windowBindingId !== discovery.windowBindingId
         || !status.managementEnabled || status.ownerId !== actor.ownerId || status.ownerEpoch !== actor.ownerEpoch
         || !Array.isArray(status.observedThreads) || !status.observedThreads.includes(actor.threadId)) throw new Error('start needs a current owned conversation and control lease');
       const candidate = controllerFor(actor);
-      if (request.method === 'preview_parent_start') return { ok: true, ...candidate.startPreview() };
-      const result = candidate.startFromControl(Id.parse(request.operationId), Hash.parse(request.scopeHash));
+      const run = store.run(config.runId);
+      if (request.method === 'preview_parent_start') return { ok: true, ...candidate.startPreview(), state: run.state, stopGeneration: run.stop_generation };
+      const operation = Id.parse(request.operationId), scopeHash = Hash.parse(request.scopeHash);
+      if (request.method === 'resume_parent' && request.stopGeneration !== run.stop_generation) throw new Error('stop generation changed');
+      const result = request.method === 'resume_parent' ? await candidate.resumeFromControl(operation, scopeHash) : candidate.startFromControl(operation, scopeHash);
       mcp = candidate; boundActor = actor; controllerLease = leaseId;
       return { ok: true, ...result };
     }
     if (request.method === 'lease') {
       if (relayConfig && 'mode' in relayConfig && request.sessionKind !== (relayConfig.sessionKind ?? 'vscode')) throw new Error('wrong control session');
+      if (envelope.internalMethod === 'terminal_server') return dynamic && request.sessionKind === 'cli' ? { ok: true, sessionServerPid } : { ok: false };
       if (request.windowBindingId !== discovery.windowBindingId || leasedPeer) return { ok: false, error: 'window_already_bound' };
       leasedPeer = peerKey;
       leaseId = randomUUID();
@@ -183,7 +187,7 @@ export async function serve(configPath: string): Promise<void> {
         try { await broker.resumeRun(config.runId); }
         catch (error) { leasedPeer = undefined; leaseId = undefined; throw error; }
       }
-      return dynamic ? { ok: true, leaseId, ...(request.sessionKind === 'cli' ? { sessionServerPid } : {}) } : { ok: true };
+      return dynamic ? { ok: true, leaseId } : { ok: true };
     }
     if (request.method === 'status' && request.pendingDecisions === true) {
       const afterId = Id.optional().parse(request.afterDecisionId);
