@@ -191,7 +191,8 @@ internal sealed class WorkerHost : IDisposable
             }
             using(var writer=new StreamWriter(pipe,new UTF8Encoding(false),4096,true)) {
                 writer.AutoFlush=true;
-                string line; while(!stopping && (line=ReadControlFrame(pipe))!=null) {
+                foreach(string line in ReadControlFrames(pipe)) {
+                    if(stopping) break;
                     Dictionary<string,object> request;
                     try { request=Parse(line); } catch { writer.WriteLine("{\"ok\":false,\"error\":\"invalid_request\"}"); continue; }
                     var reply=Handle(request);
@@ -212,15 +213,24 @@ internal sealed class WorkerHost : IDisposable
             }
         }
     }
-    private static string ReadControlFrame(Stream stream) {
+    private static IEnumerable<string> ReadControlFrames(Stream stream) {
+        var bytes=new byte[4096];
+        var utf8=new UTF8Encoding(false,true);
         using(var frame=new MemoryStream()) {
-            int value;
-            while((value=stream.ReadByte())!=-1) {
-                if(value==10) return new UTF8Encoding(false,true).GetString(frame.ToArray());
-                if(frame.Length>=65536) throw new InvalidDataException("control frame too large");
-                frame.WriteByte((byte)value);
+            int count;
+            while((count=stream.Read(bytes,0,bytes.Length))>0) {
+                int start=0;
+                while(start<count) {
+                    int newline=Array.IndexOf(bytes,(byte)10,start,count-start);
+                    int size=(newline<0 ? count : newline)-start;
+                    if(frame.Length+size>65536) throw new InvalidDataException("control frame too large");
+                    frame.Write(bytes,start,size);
+                    if(newline<0) break;
+                    yield return utf8.GetString(frame.GetBuffer(),0,(int)frame.Length);
+                    frame.SetLength(0);
+                    start=newline+1;
+                }
             }
-            return null;
         }
     }
     private void ServeLoop(NamedPipeServerStream server) {
