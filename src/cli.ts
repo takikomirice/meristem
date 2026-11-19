@@ -7,11 +7,11 @@ import { Store } from './store.js';
 import { Broker } from './broker.js';
 import { HistorySelection, readSavedWorkerHistory, WorkerRuntime, type RuntimeConfig } from './workers.js';
 import { pipeRequest, relayRequest } from './protocol.js';
-import { callerMetadata, resolveCallerIdentity, type VerifiedPeer } from './actors.js';
+import { Actor, callerMetadata, resolveCallerIdentity, sameActor, type ActorRef, type VerifiedPeer } from './actors.js';
 import { HistoryResume, McpController, type FixtureScope } from './mcp.js';
 import { createInterface } from 'node:readline/promises';
 import { setTimeout as delay } from 'node:timers/promises';
-import { Binding, Hash, Id, sameWorker, ExecutionLimits, type Registration, type ControlEvent } from './contracts.js';
+import { Binding, Hash, Id, ParentRelay, sameWorker, ExecutionLimits, type Registration, type ControlEvent } from './contracts.js';
 import { displayEvent, terminalText } from './terminal-events.js';
 import { z } from 'zod';
 import { Worker } from './contracts.js';
@@ -21,7 +21,7 @@ import { parseArgs } from 'node:util';
 import { exportRoutingSummary, loadPlanRoutingSummary } from './routing-summary.js';
 import { fileHash, readPlan } from './plan.js';
 
-type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: { pipeName: string; threadId: string }; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
+type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
 type Discovery = { pipeName: string; token: string; ownerId: string; ownerEpoch: string; windowBindingId: string; runId: string };
 function tokenMatches(left: unknown, right: string): boolean { return typeof left === 'string' && Buffer.byteLength(left) === Buffer.byteLength(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right)); }
 export async function serve(configPath: string): Promise<void> {
@@ -30,6 +30,9 @@ export async function serve(configPath: string): Promise<void> {
   const legacyWake = ExecutionLimits.parse({ maxWakeTurns: config.mcp?.wake?.maxTurns }).maxWakeTurns;
   if (legacyWake !== null) limits.maxWakeTurns = limits.maxWakeTurns === null ? legacyWake : Math.min(limits.maxWakeTurns, legacyWake);
   Id.parse(config.runId);
+  const relayConfig = config.mcp && ParentRelay.parse(config.mcp.parentRelay);
+  const dynamic = !!relayConfig && 'mode' in relayConfig;
+  const fixedThread = relayConfig && 'threadId' in relayConfig ? relayConfig.threadId : undefined;
   const scope = config.mcp?.scope;
   const routingHistory = scope?.modelRoutingSummary === undefined ? undefined : (() => {
     if (!scope.plan) throw new Error('routing summary requires a bound plan');
@@ -56,23 +59,39 @@ export async function serve(configPath: string): Promise<void> {
     }
     if (kind === 'unknown') void broker.stopRun(config.runId, 'worker_exit');
   }, item => store.saveRequest(config.runId, item));
-  broker = new Broker(store, runtime, config.mcp?.wake ? async blocked => {
-    await relayRequest(config.mcp!.parentRelay.pipeName, blocked ? 'relay/wake-block' : 'relay/wake-resume', { threadId: config.mcp!.parentRelay.threadId });
+  broker = new Broker(store, runtime, config.mcp?.wake && fixedThread ? async blocked => {
+    await relayRequest(config.mcp!.parentRelay.pipeName, blocked ? 'relay/wake-block' : 'relay/wake-resume', { threadId: fixedThread });
   } : undefined, limits);
   let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId); }
   let mcp: McpController | undefined;
+  let relayOwner: Pick<ActorRef, 'ownerId' | 'ownerEpoch'> | undefined;
+  let boundActor: ActorRef | undefined;
+  let leasedPeer: string | undefined, leaseId: string | undefined, controllerLease: string | undefined;
+  function controllerFor(actor: ActorRef) {
+    if (!config.mcp || !relayOwner || actor.ownerId !== relayOwner.ownerId || actor.ownerEpoch !== relayOwner.ownerEpoch) throw new Error('parent owner changed');
+    if (boundActor && !sameActor(boundActor, actor)) throw new Error('another conversation owns this run');
+    const saved = store.binding(config.runId);
+    if (dynamic && saved && Actor.parse(JSON.parse(saved.parent)).threadId !== actor.threadId) throw new Error('saved parent thread mismatch');
+    if (dynamic && !leaseId) throw new Error('session control lease required');
+    if (mcp && (!dynamic || controllerLease === leaseId)) return mcp;
+    return new McpController(store, broker, runtime, config.runId, actor, {
+      ...config.mcp.scope, windowBindingId: discovery.windowBindingId,
+      ...(relayConfig && 'mode' in relayConfig ? { parentSessionKind: relayConfig.sessionKind ?? 'vscode' } : {}),
+      ...(routingHistory ? { modelRoutingSummary: routingHistory.reference } : {})
+    }, routingHistory, dynamic ? leaseId : undefined);
+  }
   if (config.mcp) {
-    let parent: any;
+    let parent;
     for (let i = 0; i < 30; i++) { try { parent = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status'); break; } catch { await delay(100); } }
     if (!parent?.managementEnabled) throw new Error('verified parent owner unavailable');
-    mcp = new McpController(store, broker, runtime, config.runId, { ownerId: parent.ownerId, ownerEpoch: parent.ownerEpoch, threadId: config.mcp.parentRelay.threadId }, {
-      ...config.mcp.scope, windowBindingId: discovery.windowBindingId,
-      ...(routingHistory ? { modelRoutingSummary: routingHistory.reference } : {})
-    }, routingHistory);
-    if (config.mcp.wake) {
-      const actor = { ownerId: parent.ownerId, ownerEpoch: parent.ownerEpoch, threadId: config.mcp.parentRelay.threadId };
-      const relay = (method: string, params: Record<string, unknown>) => relayRequest(config.mcp!.parentRelay.pipeName, method, params);
-      wake = new WakeCoordinator(store, actor, config.mcp.wake, relay, (runId, reason) => broker.stopRun(runId, reason), runId => broker.executionLimits(runId).maxWakeTurns, runId => broker.canWake(runId));
+    relayOwner = { ownerId: Id.parse(parent.ownerId), ownerEpoch: Id.parse(parent.ownerEpoch) };
+    if (fixedThread) {
+      boundActor = { ...relayOwner, threadId: fixedThread };
+      mcp = controllerFor(boundActor);
+      if (config.mcp.wake) {
+        const relay = (method: string, params: Record<string, unknown>) => relayRequest(config.mcp!.parentRelay.pipeName, method, params);
+        wake = new WakeCoordinator(store, boundActor, config.mcp.wake, relay, (runId, reason) => broker.stopRun(runId, reason), runId => broker.executionLimits(runId).maxWakeTurns, runId => broker.canWake(runId));
+      }
     }
   }
   if (!existing && !config.mcp) {
@@ -103,30 +122,61 @@ export async function serve(configPath: string): Promise<void> {
     }
   }
   writeFileSync(path.join(config.stateDirectory, 'discovery.json'), JSON.stringify(discovery), { mode: 0o600 });
-  let leasedPeer: string | undefined;
   if (wake) wakeTimer = setInterval(() => {
     if (leasedPeer && store.binding(config.runId)?.state === 'consumed') void wake!.monitor(config.runId).catch(() => { void broker.stopRun(config.runId, 'wake_monitor_failed'); });
   }, 500);
   const snapshot = (offset = 0, attemptId?: string, registrationOnly = false) => store.terminalSnapshot(config.runId, offset, attemptId, { registrationOnly, telemetry: worker => runtime.terminalTelemetry(worker) });
   async function handle(envelope: any): Promise<unknown> {
-    if (envelope.internalMethod === 'parent_stop') return { ok: true, results: await broker.stopRun(config.runId, 'parent_ui_stop') };
+    if (envelope.internalMethod === 'parent_stop' && (!dynamic || boundActor && envelope.request?.threadId === boundActor.threadId)) return { ok: true, results: await broker.stopRun(config.runId, 'parent_ui_stop') };
     const request = envelope.request;
-    if (['mcp', 'mcp_human_response'].includes(request?.method) && mcp && config.mcp) {
+    if (['mcp', 'mcp_human_response'].includes(request?.method) && config.mcp) {
+      const observedLease = leaseId;
       const metadata = request.metadata, { threadId, turnId } = callerMetadata(metadata);
       const peer: VerifiedPeer = { pid: envelope.peer?.pid, created: envelope.peer?.created };
       const proof = envelope.peer?.inBrokerJob === true ? await runtime.resolvePeer(peer, threadId, turnId) : await relayRequest(config.mcp.parentRelay.pipeName, 'relay/verify-peer', { peerPid: peer.pid, peerCreated: peer.created, threadId, turnId });
       const identity = resolveCallerIdentity(metadata, peer, proof);
+      if (dynamic && envelope.peer?.inBrokerJob !== true && observedLease !== leaseId) throw new Error('control session changed');
+      if (dynamic && request.method === 'mcp' && request.name === 'start_run') {
+        if (envelope.peer?.inBrokerJob !== false) throw new Error('worker cannot start a run');
+        const candidate = controllerFor(identity.actor);
+        const value = await candidate.call('start_run', request.args, identity);
+        mcp = candidate; boundActor = identity.actor; controllerLease = leaseId;
+        return { ok: true, value };
+      }
+      if (!mcp) throw new Error('parent has not started this run');
+      if (dynamic && envelope.peer?.inBrokerJob !== true && (!leaseId || controllerLease !== leaseId)
+        && !['get_status', 'stop_run'].includes(request.name)) throw new Error('session must be rebound');
       return { ok: true, value: request.method === 'mcp_human_response' ? await mcp.humanResponse(request.args, identity) : await mcp.call(request.name, request.args, identity) };
     }
     if (!request || request.runId !== config.runId || request.ownerId !== discovery.ownerId || request.ownerEpoch !== discovery.ownerEpoch || !tokenMatches(request.token, discovery.token) || envelope.peer?.inBrokerJob !== false) return { ok: false, error: 'binding_rejected' };
     const peerKey = `${envelope.peer.pid}:${envelope.peer.created}`;
     if (envelope.internalMethod === 'lease_lost') {
-      if (leasedPeer === peerKey) { leasedPeer = undefined; await broker.leaseLost(config.runId); }
+      if (leasedPeer === peerKey) { leasedPeer = undefined; leaseId = undefined; await broker.leaseLost(config.runId); }
       return { ok: true };
     }
+    if (dynamic && config.mcp && ['lease', 'stop', 'preview_parent_start', 'start_parent'].includes(request.method)) {
+      const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
+      if (ownership.verified !== true || ownership.owned !== false) throw new Error('human control peer required');
+      if (request.method !== 'stop' && ownership.launcher !== true) throw new Error('start must come from the UI that owns the relay');
+    }
+    if (dynamic && config.mcp && ['preview_parent_start', 'start_parent'].includes(request.method)) {
+      const actor = Actor.parse(request.parent);
+      const status = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status');
+      if (leasedPeer !== peerKey || !leaseId || request.leaseId !== leaseId || request.windowBindingId !== discovery.windowBindingId || !broker.canWake(config.runId)
+        || !status.managementEnabled || status.ownerId !== actor.ownerId || status.ownerEpoch !== actor.ownerEpoch
+        || !Array.isArray(status.observedThreads) || !status.observedThreads.includes(actor.threadId)) throw new Error('start needs a current owned conversation and control lease');
+      const candidate = controllerFor(actor);
+      if (request.method === 'preview_parent_start') return { ok: true, ...candidate.startPreview() };
+      const result = candidate.startFromControl(Id.parse(request.operationId), Hash.parse(request.scopeHash));
+      mcp = candidate; boundActor = actor; controllerLease = leaseId;
+      return { ok: true, ...result };
+    }
     if (request.method === 'lease') {
+      if (relayConfig && 'mode' in relayConfig && request.sessionKind !== (relayConfig.sessionKind ?? 'vscode')) throw new Error('wrong control session');
       if (request.windowBindingId !== discovery.windowBindingId || leasedPeer) return { ok: false, error: 'window_already_bound' };
-      leasedPeer = peerKey; return { ok: true };
+      leasedPeer = peerKey;
+      leaseId = randomUUID();
+      return dynamic ? { ok: true, leaseId } : { ok: true };
     }
     if (request.method === 'status' && request.pendingDecisions === true) {
       const afterId = Id.optional().parse(request.afterDecisionId);
@@ -177,6 +227,8 @@ export async function serve(configPath: string): Promise<void> {
     if (request.method === 'authorize' && mcp && config.mcp) {
       const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('parent cannot confirm human permit');
+      if (dynamic && (ownership.launcher !== true || leasedPeer !== peerKey || !leaseId || controllerLease !== leaseId
+        || request.leaseId !== leaseId || request.windowBindingId !== discovery.windowBindingId)) throw new Error('current session lease required');
       mcp.authorize(Id.parse(request.bindingId), Hash.optional().parse(request.scopeHash)); return { ok: true, bindingId: request.bindingId };
     }
     if (request.method === 'stop') return { results: await broker.stopRun(config.runId), ...snapshot(0, undefined, true) };
@@ -271,10 +323,10 @@ export async function main(args: string[]): Promise<void> {
       const binding = snapshot.binding as any;
       if (!snapshot.ok || !binding || binding.id !== bindingId || binding.state !== 'pending') throw new Error('pending binding unavailable');
       const scope = JSON.parse(binding.scope);
-      const scopeHash = scope.modelRouting ? Hash.parse(binding.scope_hash) : undefined;
+      const scopeHash = Hash.parse(binding.scope_hash);
       console.error(JSON.stringify({ bindingId, parent: JSON.parse(binding.parent), scope, ...(scopeHash ? { scopeHash } : {}) }, null, 2));
       const readline = createInterface({ input: process.stdin, output: process.stderr });
-      const prompt = scopeHash ? '親・計画と許可するモデル候補・対象・最大切り替え回数・集計hashを確認し、許可するbinding IDを入力: '
+      const prompt = scope.modelRouting ? '親・計画と許可するモデル候補・対象・最大切り替え回数・集計hashを確認し、許可するbinding IDを入力: '
         : '上記の親・計画hash・repo・branch・作業場所を確認し、許可するbinding IDを入力: ';
       try { if ((await readline.question(prompt)).trim() !== bindingId) throw new Error('authorization declined'); }
       finally { readline.close(); }

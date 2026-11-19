@@ -1,3 +1,4 @@
+import { ParentRelay } from './contracts.js';
 import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -18,13 +19,13 @@ const absolute = z.string().max(4096).refine(p => path.isAbsolute(p) && !/[\x00-
   && (process.platform !== 'win32' || path.parse(p).root.length > 1 && !/^[\\/]{2}[?.][\\/]/.test(p)));
 const Agent = z.object({ model: ModelId, effort: Id }).strict();
 const Prepare = z.object({
-  environmentRoot: absolute, stateDirectory: absolute, parentThreadId: Id, planPath: absolute, repositoryPath: absolute,
+  environmentRoot: absolute, stateDirectory: absolute, parentThreadId: Id.optional(), parentSessionKind: z.enum(['vscode', 'cli']).optional(), planPath: absolute, repositoryPath: absolute,
   repositoryId: Id, branchScope: z.array(z.string().max(180).regex(/^[a-zA-Z0-9][a-zA-Z0-9/_-]*$/)
     .refine(branch => !['main', 'master'].includes(branch.toLowerCase()) && !branch.endsWith('/'))).min(1).max(128)
     .refine(branches => new Set(branches).size === branches.length),
   coordinator: Agent, permissionPermit: RunPermissionPermit.optional(), executionLimits: ExecutionLimits.optional(),
   modelRoutingSummary: RoutingSummaryReference.optional()
-}).strict();
+}).strict().refine(value => !value.parentThreadId || !value.parentSessionKind, 'choose a fixed thread or a session kind');
 const Spec = z.object({ implementationRoot: absolute, realExe: absolute, nodeExe: absolute, helperExtension: absolute, settings: absolute, sourceSettings: absolute.optional(), codexConfig: absolute, controlConfig: absolute, installDirectory: absolute, parentCwd: absolute,
   prepare: Prepare.optional(), controlSha256: Hash.optional() }).strict();
 export type InstallationSpec = z.infer<typeof Spec>;
@@ -79,7 +80,7 @@ export function inspectEnvironment(input: Partial<InstallationSpec>, environment
 
 type ControlBinding = {
   runId: string; pipeName: string; stateDirectory: string; nodeSha256: string; realSha256: string;
-  parentRelay: { pipeName: string; threadId: string }; scope: Omit<FixtureScope, 'windowBindingId'>;
+  parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>;
   wake?: z.infer<typeof Agent> & { maxTurns?: number }; executionLimits?: ExecutionLimits;
 };
 
@@ -164,7 +165,7 @@ export function prepareInstallation(input: InstallationSpec, report: Environment
     loadPlanRoutingSummary(binding.modelRoutingSummary, plan, runId, path.dirname(s.codexConfig)).reference;
   const config: Control = {
     ...buildInstallationControl(s, { runId, stateDirectory: binding.stateDirectory, pipeName: `meristem-cc01-control-${runId}`,
-      nodeSha256: node.sha256, realSha256: codex.sha256, parentRelay: { pipeName: `meristem-cc00-${randomUUID()}`, threadId: binding.parentThreadId },
+      nodeSha256: node.sha256, realSha256: codex.sha256, parentRelay: { pipeName: `meristem-cc00-${randomUUID()}`, ...(binding.parentThreadId ? { threadId: binding.parentThreadId } : { mode: 'verified-start' as const, ...(binding.parentSessionKind && { sessionKind: binding.parentSessionKind }) }) },
       scope: { fixture: true, plan: true, planPath: plan.path, repositoryId: binding.repositoryId, repositoryPath: pin.repository,
         branchScope: binding.branchScope, permissionPermit: permit, assignments: [],
         ...(routingSummary ? { modelRoutingSummary: routingSummary } : {}) },
@@ -253,8 +254,8 @@ function version(executable: string) {
 }
 function validateInstallationControl(s: InstallationSpec, config: Control) {
   const runtime = config.runtime, mcp = config.mcp;
-  if (mcp?.scope?.plan !== true || !mcp.parentRelay?.threadId || config.assignments?.length || mcp.scope.assignments?.length) throw new Error('explicit plan and parent binding required');
-  Id.parse(config.runId); Id.parse(mcp.parentRelay.threadId);
+  if (mcp?.scope?.plan !== true || !ParentRelay.safeParse(mcp.parentRelay).success || config.assignments?.length || mcp.scope.assignments?.length) throw new Error('explicit plan and parent binding required');
+  Id.parse(config.runId);
   if (!/^meristem-cc01-control-[a-zA-Z0-9-]{1,90}$/.test(config.pipeName) || !/^meristem-cc00-[a-zA-Z0-9-]{1,90}$/.test(mcp.parentRelay.pipeName)) throw new Error('invalid pipe binding');
   localPath(absolute.parse(mcp.scope.planPath));
   const plan = readPlan(mcp.scope.planPath);
@@ -314,7 +315,7 @@ export function install(input: unknown) {
   const control = path.join(s.installDirectory, 'control.json');
   writeFileSync(control, JSON.stringify(config, null, 2)); copyFileSync(path.join(build, 'CodexRelay.exe'), relay);
   const controlExe = path.join(build, 'MeristemControl.exe');
-  writeFileSync(relay + '.json', JSON.stringify({ realExecutable: s.realExe, realSha256: runtime.realSha256, pipeName: mcp.parentRelay.pipeName, allowedCwds: [parentCwd], testProfile: 'CC-00R-managed', controlHost: { executable: controlExe, sha256: fileHash(readFileSync(controlExe)), configPath: control, configSha256: fileHash(readFileSync(control)), parentThreadId: mcp.parentRelay.threadId } }, null, 2));
+  writeFileSync(relay + '.json', JSON.stringify({ realExecutable: s.realExe, realSha256: runtime.realSha256, pipeName: mcp.parentRelay.pipeName, allowedCwds: [parentCwd], testProfile: 'CC-00R-managed', controlHost: { executable: controlExe, sha256: fileHash(readFileSync(controlExe)), configPath: control, configSha256: fileHash(readFileSync(control)), ...('threadId' in mcp.parentRelay ? { parentThreadId: mcp.parentRelay.threadId } : { parentMode: mcp.parentRelay.mode }) } }, null, 2));
   for (const file of [s.realExe, s.nodeExe, relay, relay + '.json', control, controlExe, runtime.hostExe, config.entryPoint, mcp.entryPoint, helperMain]) manifest.artifacts[file] = fileHash(readFileSync(file));
   writeFileSync(receipt, JSON.stringify(manifest, null, 2), { flag: 'wx' });
   if (s.sourceSettings) { mkdirSync(path.dirname(s.settings), { recursive: true }); writeFileSync(s.settings, before, { flag: 'wx' }); }

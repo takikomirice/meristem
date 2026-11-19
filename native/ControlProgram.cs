@@ -16,7 +16,30 @@ internal sealed class ControlProgram {
     private readonly Dictionary<string,Pending> pending=new Dictionary<string,Pending>();
     private sealed class Pending { internal ManualResetEvent Done=new ManualResetEvent(false); internal string Reply; }
     private volatile bool stopped;
-    private string pipeName;
+    private string pipeName, sessionExecutable, sessionSha256;
+    private Process OpenTerminalSession(Dictionary<string,object> request, Process peer) {
+        var identity = Program.Map(request, "terminal");
+        if (identity == null || !identity.ContainsKey("pid")) throw new IOException("terminal identity missing");
+        var terminal = Process.GetProcessById(Convert.ToInt32(identity["pid"]));
+        try {
+            var handle = terminal.Handle;
+            if (LocalPipe.Created(terminal) != Program.Text(identity, "created") || !McpPeer.IsDirectParent(peer, terminal)
+                || !String.Equals(terminal.MainModule.FileName, sessionExecutable, StringComparison.OrdinalIgnoreCase)
+                || !String.Equals(Program.Hash(sessionExecutable), sessionSha256, StringComparison.OrdinalIgnoreCase)) throw new IOException("terminal identity mismatch");
+            return terminal;
+        } catch { terminal.Dispose(); throw; }
+    }
+
+    private static void HoldLease(NamedPipeServerStream pipe, Process terminal) {
+        if (terminal == null) { while (pipe.ReadByte() != -1) {} return; }
+        var exited = new System.Threading.Tasks.TaskCompletionSource<bool>();
+        terminal.Exited += delegate { exited.TrySetResult(true); };
+        terminal.EnableRaisingEvents = true;
+        if (terminal.HasExited) return;
+        var disconnected = pipe.ReadAsync(new byte[1], 0, 1);
+        System.Threading.Tasks.Task.WaitAny(exited.Task, disconnected);
+        disconnected.ContinueWith(task => { var ignored = task.Exception; }, System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+    }
     private static string ReadFrame(Stream stream) {
         using(var bytes=new MemoryStream()) { int b; while((b=stream.ReadByte())!=-1) {if(b==10)return new UTF8Encoding(false,true).GetString(bytes.ToArray());if(bytes.Length>=262144)throw new IOException("frame limit");bytes.WriteByte((byte)b);}return null; }
     }
@@ -72,13 +95,18 @@ internal sealed class ControlProgram {
                     string line=ReadPeerFrame(server);if(line==null)continue;
                     var request=Program.Parse(line);string method=Program.Text(request,"method");
                     if(method!="mcp"&&broker.Contains(peer.Handle)){writer.WriteLine("{\"ok\":false,\"error\":\"worker_peer_denied\"}");continue;}
-                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="status"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
+                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="preview_parent_start"&&method!="start_parent"&&method!="status"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
                         &&method!="history_targets"&&method!="worker_history"&&method!="resume_worker_history"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
-                    string reply=Call(request,peer);writer.WriteLine(reply);
-                    if(method=="lease" && Object.Equals(Program.Parse(reply)["ok"],true)) {
-                        try { while(server.ReadByte()!=-1) {} }
-                        finally {try{Call(request,peer,"lease_lost");}catch{broker.CloseJob();}}
+                    if (method == "lease") {
+                        using (var terminal = Program.Text(request, "sessionKind") == "cli" ? OpenTerminalSession(request, peer) : null) {
+                            string leaseReply = Call(request, peer);
+                            if (Object.Equals(Program.Parse(leaseReply)["ok"], true)) {
+                                try { writer.WriteLine(leaseReply); HoldLease(server, terminal); }
+                                finally { try { Call(request, peer, "lease_lost"); } catch { broker.CloseJob(); } }
+                            } else writer.WriteLine(leaseReply);
+                        }
                     } else {
+                        writer.WriteLine(Call(request, peer));
                         // DisconnectNamedPipe discards unread replies. Let the client consume
                         // the response and close first, with a bounded wait for stalled clients.
                         // ReadAsync owns its completion resources. Closing an APM wait
@@ -104,6 +132,8 @@ internal sealed class ControlProgram {
         string state=Program.Text(config,"stateDirectory"),repo=Program.Text(config,"repository"),node=Program.Text(config,"nodeExecutable"),entry=Program.Text(config,"entryPoint");
         if(!Path.IsPathRooted(state??"")||!Path.IsPathRooted(repo??"")||!Path.IsPathRooted(node??"")||!Path.IsPathRooted(entry??""))throw new InvalidOperationException("explicit absolute paths required");
         if(!String.Equals(Program.Hash(node),Program.Text(config,"nodeSha256"),StringComparison.OrdinalIgnoreCase)||!String.Equals(Program.Hash(entry),Program.Text(config,"entrySha256"),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("broker executable identity mismatch");
+        var runtime = Program.Map(config, "runtime");
+        sessionExecutable = Program.Text(runtime, "realExe"); sessionSha256 = Program.Text(runtime, "realSha256");
         ProtectDirectory(state,repo);
         pipeName=Program.Text(config,"pipeName");if(!System.Text.RegularExpressions.Regex.IsMatch(pipeName??"","^meristem-cc01-control-[a-zA-Z0-9-]{1,90}$"))throw new InvalidOperationException("invalid control pipe");
         var servers=new List<NamedPipeServerStream>();

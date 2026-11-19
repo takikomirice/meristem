@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { resolveCallerIdentity, resolveCallContext } from '../src/actors.js';
 
+import { ParentRelay } from '../src/contracts.js';
+
+test('parent registration requires a pinned thread or an explicit verified-start configuration', () => {
+  const pipeName = 'meristem-cc00-parent';
+  for (const sessionKind of ['cli', 'vscode']) assert(ParentRelay.safeParse({ pipeName, mode: 'verified-start', sessionKind }).success);
+  assert(ParentRelay.safeParse({ pipeName, threadId: 'legacy' }).success);
+  for (const invalid of [{ pipeName }, { pipeName, threadId: '' }, { pipeName, mode: 'verified-start', threadId: 'other' }]) {
+    assert.equal(ParentRelay.safeParse(invalid).success, false);
+  }
+});
 const actor = { ownerId: 'owner', ownerEpoch: 'epoch', threadId: 'parent' };
 const peer = { pid: 123, created: '456' };
 const proof = { actor, peer, turnId: 'turn' };

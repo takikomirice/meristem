@@ -296,6 +296,12 @@ export class Store {
   confirmBinding(id: string): void {
     if (this.db.prepare("UPDATE run_bindings SET state='confirmed',confirmed_at=? WHERE id=? AND state='pending'").run(new Date().toISOString(), id).changes !== 1) throw new Error('permit is not pending');
   }
+  commitHumanStart(id: string, source: 'control_input' | 'permit_confirmation'): void {
+    const changed = this.db.prepare(
+      "UPDATE run_bindings SET state='consumed', confirmed_at=?, scope=json_set(scope,'$.startSource',?) WHERE id=? AND state='pending'"
+    ).run(new Date().toISOString(), source, id);
+    if (changed.changes !== 1) throw new Error('start permit is not pending');
+  }
   consumeBinding(id: string): void {
     if (this.db.prepare("UPDATE run_bindings SET state='consumed' WHERE id=? AND state='confirmed'").run(id).changes !== 1) throw new Error('permit already used or missing');
   }

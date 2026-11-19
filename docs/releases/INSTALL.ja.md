@@ -77,6 +77,7 @@ MC-11bを含むビルドまたはZIPで利用できます。公開済みv0.1.0�
 }
 ```
 
+- 上の `prepare.parentThreadId` を指定すると、従来どおり指定した会話が親になります。v0.3.0 開発版の制御接続に対応した入口では、この項目を省略できます。その場合は、`prepare.parentSessionKind` は既定で `vscode` です。`cli` を指定した入口では、所有する公式 TUI の PID・生成時刻・実行ファイルも照合し、TUI の終了を検出します。relay を起動したプロセスが制御接続を保持し、確認した会話・工程表・Git・権限範囲で開始します。開始元をツール呼出しだけで確認できない場合は、その範囲を表示して人の許可を受けます。接続が切れた場合は同じ会話で許可を照合し、明示的に再開します。下書きの安全を確認できるまでは、このモードの自動 wake は保留されます。
 - `planPath` は `schema_version: 2` の工程表を指定します。工程表のrepoと統合ブランチは `repositoryPath` と `branchScope` に一致させます。導入時に工程表、生成設定、準備時に選んだ導入先を照合します。導入後の工程表改訂には既存の合意手順を使います。
 - `prepare.permissionPermit` は既定で `workspace`、工程表の `worktrees_root`、`user` です。選定済みの環境で `auto_review` を使う場合は、`allowedProfileIds: ["workspace"]`、`writableRoots: ["<worktrees_rootの絶対パス>"]`、`allowedReviewers: ["auto_review"]` を明示します。各ワーカーへの書込みは割り当てたworktreeに絞られます。
 - `prepare.executionLimits` の `maxWakeTurns` と `maxCorrectionsPerTask` には正整数または `null` を指定できます。省略と `null` は無制限です。工程表の `run.execution_limits` に有限上限があれば、実行時に両方の有限上限のうち厳しい方を適用します。開発runnerの有限の試験予算は従来どおりです。

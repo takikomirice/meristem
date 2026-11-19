@@ -45,7 +45,7 @@ internal static class Program
                             // Optional explicitly bound CC-01 owner. Failure never kills the parent App Server.
                             try {
                                 string exe=Text(binding,"executable"),file=Text(binding,"configPath"),parentThread=Text(binding,"parentThreadId");
-                                if(!Path.IsPathRooted(exe??"")||!Path.IsPathRooted(file??"")||String.IsNullOrEmpty(parentThread)||Hash(exe)!=Text(binding,"sha256")||Hash(file)!=Text(binding,"configSha256"))throw new InvalidOperationException("control binding identity mismatch");
+                                if(!Path.IsPathRooted(exe??"")||!Path.IsPathRooted(file??"")||(String.IsNullOrEmpty(parentThread)&&Text(binding,"parentMode")!="verified-start")||Hash(exe)!=Text(binding,"sha256")||Hash(file)!=Text(binding,"configSha256"))throw new InvalidOperationException("control binding identity mismatch");
                                 control=new ProcessTree(exe,new[]{"--config",file});control.Resume();
                                 var owned=control;
                                 relay.ControlStatus=delegate{return new {pid=owned.Pid,exited=owned.IsExited,exitCode=owned.IsExited?(int?)owned.Wait():null};};
@@ -53,7 +53,7 @@ internal static class Program
                                 relay.VerifyWakePeer=delegate(System.Diagnostics.Process peer){return McpPeer.Verify(owned,peer.Id,LocalPipe.Created(peer),brokerConfig,new[]{Text(brokerConfig,"nodeExecutable"),Text(brokerConfig,"entryPoint"),"serve","--config",file});};
                                 Background(delegate{try{var buffer=new byte[8192];while(owned.Output.Read(buffer,0,buffer.Length)>0){}}catch{}});
                                 Background(delegate{try{var buffer=new byte[8192];while(owned.Error.Read(buffer,0,buffer.Length)>0){}}catch{}});
-                                relay.ParentStop=delegate(string thread){if(thread!=parentThread)return;try{byte[] data=Encoding.UTF8.GetBytes("{\"method\":\"parent_stop\"}\n");lock(owned){owned.Input.Write(data,0,data.Length);owned.Input.Flush();}}catch{owned.CloseJob();}};
+                                relay.ParentStop=delegate(string thread){if(parentThread!=null&&thread!=parentThread)return;try{byte[] data=Encoding.UTF8.GetBytes(Encode(new {method="parent_stop",threadId=thread})+"\n");lock(owned){owned.Input.Write(data,0,data.Length);owned.Input.Flush();}}catch{owned.CloseJob();}};
                             }catch{if(control!=null){control.Dispose();control=null;}Console.Error.WriteLine("control binding unavailable; parent UI remains available");}
                         }
                         using (var pipe=new LocalPipe(Text(config,"pipeName"), relay)) {

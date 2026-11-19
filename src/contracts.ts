@@ -1,5 +1,11 @@
 import { z } from 'zod';
 export const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/);
+// A missing thread is accepted only in the explicitly selected registration mode.
+export const ParentRelay = z.union([
+  z.object({ pipeName: z.string().min(1), threadId: Id }).strict(),
+  z.object({ pipeName: z.string().min(1), mode: z.literal('verified-start'), sessionKind: z.enum(['vscode', 'cli']).optional() }).strict(),
+]);
+export type ParentRelay = z.infer<typeof ParentRelay>;
 export const ModelId = z.string().regex(/^[a-zA-Z0-9_-][a-zA-Z0-9_.-]{0,127}$/);
 export const Hash = z.string().regex(/^[a-f0-9]{64}$/);
 export const DisplayName = z.string().refine(value => !/[\x00-\x1f\x7f-\x9f]/.test(value), 'control characters rejected').pipe(z.string().trim().min(1).max(128));

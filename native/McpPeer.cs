@@ -16,6 +16,19 @@ internal static class McpPeer {
     [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr memory);
     private static bool Same(string a,string b) { return String.Equals(a,b,StringComparison.OrdinalIgnoreCase); }
     private static bool Pinned(string file,string hash) { return Path.IsPathRooted(file??"") && !String.IsNullOrEmpty(hash) && Same(Program.Hash(file),hash); }
+    internal static bool IsDirectParent(Process parent, Process child) {
+        int size = Marshal.SizeOf(typeof(BasicInfo)), returned;
+        IntPtr data = Marshal.AllocHGlobal(size);
+        try {
+            if (NtQueryInformationProcess(child.Handle, 0, data, size, out returned) != 0 || returned < size) return false;
+            var basic = (BasicInfo)Marshal.PtrToStructure(data, typeof(BasicInfo));
+            return basic.ParentPid.ToInt64() == parent.Id && parent.StartTime.ToUniversalTime() <= child.StartTime.ToUniversalTime() && !parent.HasExited && !child.HasExited;
+        } finally { Marshal.FreeHGlobal(data); }
+    }
+
+    internal static bool IsLauncher(Process peer) {
+        using (var relay = Process.GetCurrentProcess()) return IsDirectParent(peer, relay);
+    }
     internal static bool Verify(ProcessTree parent,int pid,string created,Dictionary<string,object> pins,string[] arguments=null) {
         try {
             if(pins==null || parent.IsExited) return false;

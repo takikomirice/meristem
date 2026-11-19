@@ -147,15 +147,15 @@ internal sealed class StdioRelay
         lock (gate) {
             if(method=="relay/wake-state") {
                 string thread=Program.Text(p,"threadId");
-                bool supported=enabled&&!closed&&initialized&&thread!=null&&registered.Contains(thread)&&!wakeBlocked.Contains(thread)&&!wakeUnsupported.Contains(thread)&&Program.Text(p,"ownerId")==owner&&Program.Text(p,"ownerEpoch")==epoch;
+                bool supported=Program.Text(Program.Map(config,"controlHost"),"parentMode")!="verified-start"&&enabled&&!closed&&initialized&&thread!=null&&registered.Contains(thread)&&!wakeBlocked.Contains(thread)&&!wakeUnsupported.Contains(thread)&&Program.Text(p,"ownerId")==owner&&Program.Text(p,"ownerEpoch")==epoch;
                 return new {id=id,result=new {ownerId=owner,ownerEpoch=epoch,threadId=thread,stateSeq=stateSeq,supported=supported,idle=supported&&!uiPartial&&!active.ContainsKey(thread)&&pending.Count==0&&uiCalls.Count==0}};
             }
             if(method=="relay/verify-peer"||method=="relay/owns-peer") {
                 var control=Program.Map(config,"controlHost"); string thread=Program.Text(p,"threadId"),turn=Program.Text(p,"turnId");
-                bool owned=false,verified=false;
-                try { using(var peer=Process.GetProcessById(Convert.ToInt32(p["peerPid"]))) {var handle=peer.Handle;verified=LocalPipe.Created(peer)==Program.Text(p,"peerCreated");owned=verified&&child.Contains(handle);} } catch {}
-                if(method=="relay/owns-peer") return new {id=id,result=new {owned=owned,verified=verified}};
-                if(!enabled||closed||!owned||!McpPeer.Verify(child,Convert.ToInt32(p["peerPid"]),Program.Text(p,"peerCreated"),mcpPins)||control==null||thread!=Program.Text(control,"parentThreadId")||!active.ContainsKey(thread)||active[thread]!=turn)return Error(id,"caller identity not verified");
+                bool owned=false,verified=false,launcher=false;
+                try { using(var peer=Process.GetProcessById(Convert.ToInt32(p["peerPid"]))) {var handle=peer.Handle;verified=LocalPipe.Created(peer)==Program.Text(p,"peerCreated");owned=verified&&child.Contains(handle);launcher=verified&&!owned&&method=="relay/owns-peer"&&McpPeer.IsLauncher(peer);} } catch {}
+                if(method=="relay/owns-peer") return new {id=id,result=new {owned=owned,verified=verified,launcher=launcher}};
+                if(!enabled||closed||!owned||!McpPeer.Verify(child,Convert.ToInt32(p["peerPid"]),Program.Text(p,"peerCreated"),mcpPins)||control==null||(Program.Text(control,"parentMode")=="verified-start" ? thread==null||!observed.Contains(thread) : thread!=Program.Text(control,"parentThreadId"))||turn=="ui-pending"||!active.ContainsKey(thread)||active[thread]!=turn)return Error(id,"caller identity not verified");
                 return new {id=id,result=new {actor=new {ownerId=owner,ownerEpoch=epoch,threadId=thread},turnId=turn,peer=new {pid=p["peerPid"],created=p["peerCreated"]}}};
             }
             if (method == "relay/status") return new { id=id, result=new {
@@ -184,7 +184,7 @@ internal sealed class StdioRelay
                 if (uiPartial) return Error(id,"UI frame incomplete; management not sent");
                 if(wake) {
                     string thread=Program.Text(p,"threadId");
-                    if(thread==null||Program.Text(p,"ownerId")!=owner||Program.Text(p,"ownerEpoch")!=epoch||!p.ContainsKey("stateSeq")||Convert.ToInt64(p["stateSeq"])!=stateSeq||wakeBlocked.Contains(thread)||wakeUnsupported.Contains(thread)||active.ContainsKey(thread)||pending.Count!=0||uiCalls.Count!=0||!enabled||closed)
+                    if(Program.Text(Program.Map(config,"controlHost"),"parentMode")=="verified-start"||thread==null||Program.Text(p,"ownerId")!=owner||Program.Text(p,"ownerEpoch")!=epoch||!p.ContainsKey("stateSeq")||Convert.ToInt64(p["stateSeq"])!=stateSeq||wakeBlocked.Contains(thread)||wakeUnsupported.Contains(thread)||active.ContainsKey(thread)||pending.Count!=0||uiCalls.Count!=0||!enabled||closed)
                         return new {id=id,result=new {state="deferred"}};
                     string run=Program.Text(p,"runId"),operation=Program.Text(p,"operationId");
                     if(!System.Text.RegularExpressions.Regex.IsMatch(run??"","^[a-zA-Z0-9_-]{1,128}$")||!System.Text.RegularExpressions.Regex.IsMatch(operation??"","^[a-zA-Z0-9_-]{1,128}$"))return Error(id,"invalid wake identity");
