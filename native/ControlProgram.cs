@@ -18,13 +18,16 @@ internal sealed class ControlProgram {
     private sealed class Pending { internal ManualResetEvent Done=new ManualResetEvent(false); internal string Reply; }
     private volatile bool stopped;
     private string pipeName, sessionExecutable, sessionSha256;
+    private bool ideTerminal;
     private Process OpenTerminalSession(Dictionary<string,object> request, Process peer) {
         var identity = Program.Map(request, "terminal");
         if (identity == null || !identity.ContainsKey("pid")) throw new IOException("terminal identity missing");
         var terminal = Process.GetProcessById(Convert.ToInt32(identity["pid"]));
         try {
             var handle = terminal.Handle;
-            if (LocalPipe.Created(terminal) != Program.Text(identity, "created") || !McpPeer.IsDirectParent(peer, terminal)
+            // VS Code launches the terminal through its PTY host. The verified extension
+            // host owns the opposite TCP endpoint and obtained this PID from Terminal.processId.
+            if ((!ideTerminal && (LocalPipe.Created(terminal) != Program.Text(identity, "created") || !McpPeer.IsDirectParent(peer, terminal)))
                 || !String.Equals(terminal.MainModule.FileName, sessionExecutable, StringComparison.OrdinalIgnoreCase)
                 || !String.Equals(Program.Hash(sessionExecutable), sessionSha256, StringComparison.OrdinalIgnoreCase)) throw new IOException("terminal identity mismatch");
             return terminal;
@@ -132,7 +135,7 @@ internal sealed class ControlProgram {
                     if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="preview_parent_start"&&method!="start_parent"&&method!="resume_parent"&&method!="status"&&method!="usage"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
                         &&method!="history_targets"&&method!="worker_history"&&method!="resume_worker_history"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
                     if (method == "lease") {
-                        using (var terminal = Program.Text(request, "sessionKind") == "cli" ? OpenTerminalSession(request, peer) : null) {
+                        using (var terminal = ideTerminal || Program.Text(request, "sessionKind") == "cli" ? OpenTerminalSession(request, peer) : null) {
                             int port = terminal == null ? 0 : McpPeer.TerminalPort(terminal);
                             if (terminal != null && port < 1) throw new IOException("expected an interactive remote TUI");
                             int serverPid = 0;
@@ -178,6 +181,7 @@ internal sealed class ControlProgram {
         if(!Path.IsPathRooted(state??"")||!Path.IsPathRooted(repo??"")||!Path.IsPathRooted(node??"")||!Path.IsPathRooted(entry??""))throw new InvalidOperationException("explicit absolute paths required");
         if(!String.Equals(Program.Hash(node),Program.Text(config,"nodeSha256"),StringComparison.OrdinalIgnoreCase)||!String.Equals(Program.Hash(entry),Program.Text(config,"entrySha256"),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("broker executable identity mismatch");
         var runtime = Program.Map(config, "runtime");
+        ideTerminal = config.ContainsKey("ideTerminal") && Object.Equals(config["ideTerminal"],true);
         sessionExecutable = Program.Text(runtime, "realExe"); sessionSha256 = Program.Text(runtime, "realSha256");
         ProtectDirectory(state,repo);
         pipeName=Program.Text(config,"pipeName");if(!System.Text.RegularExpressions.Regex.IsMatch(pipeName??"","^meristem-cc01-control-[a-zA-Z0-9-]{1,90}$"))throw new InvalidOperationException("invalid control pipe");

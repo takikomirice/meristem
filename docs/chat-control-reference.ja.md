@@ -4,6 +4,12 @@
 
 旧READMEの詳細手順と工程別の説明を保持しています。本文の「親／親チャット」はコーディネーター、「子／子チャット／子CLI」はワーカーを指します。ワーカーは独立したCodex CLIチャットで、内部サブエージェントとは区別します。以下のコマンドはリポジトリのルートから実行します。工程ごとの記述はその時点の確認範囲を示します。最新の総合受入は [CC-07継続受入記録](validation/chat-control/CC-07-continuation.md)を参照してください。
 
+### v0.3.0 開発版で新しい親チャットを開く
+
+Windows x64 の VS Code に公式 Codex 拡張と Meristem の VSIX を入れ、Codex に ChatGPT アカウントでログインします。信頼済みの Git フォルダーを開き、エクスプローラーで版2の工程表を右クリックして「Meristem: このウィンドウで新しい Codex 親チャットを開く」を選びます。複数のフォルダーがある場合は、工程表の対象リポジトリを選びます。拡張はログイン、工程表と Git の対応、ワーカーの隔離を確認します。
+
+普段の作業中は Meristem を読み込みません。新しい実行を選ぶと、画面下に「Meristem 親チャット」が開きます。開始画面の「この範囲で開始」は、表示された工程をこの会話から担当者に依頼する許可です。実際に担当者へ渡す指示は親チャットに入力します。「Meristem 進捗」でワーカー、承認要求、利用枠、停止を確認できます。閉じた開始画面も進捗から開けます。配布物に実行環境を含み、実行ごとの接続情報は拡張のユーザー用領域に保存します。既存サイドバーを使う試験方式と対応状況は [P4 の記録](superpowers/plans/2026-11-19-meristem-v030.md#p4通常-vs-code-で使う) に記載しています。
+
 Windows版VS Codeの通常Codex拡張を親に残し、専用子CLIを統合ターミナルで表示・停止する接続実証です。CC-02で明示した試験用Git範囲に限る親／子MCPを接続し、CC-03で報告から親を再開して次の子へ進む主要経路を確認しました。CC-05の工程表と直列Git受入に加え、CC-06で2担当の並列配送と候補を固定したGit統合を追加しています。CC-07の導入・復元・ローカル配布手順は下記を参照してください。通常profileへの導入は実証結果の確認後、別途明示操作で行います。
 
 **CC-02は専用fixtureの範囲で実機受入を完了しました。** 実親PからA/Bへ指示し、人のMCP承認後の報告保存、正常完了Aの同履歴・新attemptでの再開と想起、親による最終確認を実証しました。その受入ではCC-04の限定承認入口を先行実装しました。現在の質問・承認経路は下記CC-04の説明を参照してください。過去の起動・切断失敗の原因は未特定で、安定性保証や通常導入の完了を意味しません。[CC-02の結果・範囲・制約](validation/chat-control/CC-02.md)を参照してください。
@@ -34,6 +40,9 @@ VS Code 1.90以上、Windows x64、Node 24.22.1以上を必要とします。`np
 
 ```powershell
 npm run verify
+# この node.exe のバージョンに対応する公式配布ファイルを指定
+$env:MERISTEM_NODE_LICENSE = '<Node LICENSE の絶対パス>'
+$env:MERISTEM_NODE_CHECKSUMS = '<Node SHASUMS256.txt の絶対パス>'
 npm run package:extension
 # 再packageは既存成果を上書きせず新しい出力先へ
 powershell.exe -NoProfile -File scripts/package-extension.ps1 -OutputPath '<新規VSIXパス>'
@@ -41,7 +50,7 @@ powershell.exe -NoProfile -File scripts/package-extension.ps1 -OutputPath '<新�
 & '<VS Codeのbin/code.cmd>' --user-data-dir '<試験profile>' --extensions-dir '<試験extensions>' --install-extension '<VSIXパス>'
 ```
 
-VSIXは標準ZIPと.NET APIで作り、manifest・実行用JavaScript・MITライセンス本文・第三者ライセンスの案内を含めます。`node_modules`や個人の設定・ログ・検証用状態は含めません。Marketplaceへ公開しません。ローカルVSIX導入は[VS Codeの公式CLI手順](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_install-from-a-vsix)に従います。補助拡張IDは互換性のため `meristem-local.meristem-chat-control-fixture` のままです。
+開発版の VSIX は拡張と同じファイルに Windows x64 用の Node、制御プログラム、SQL、依存パッケージとライセンスを同梱します。作成時に公式のチェックサムと Node の実体を照合します。出力先は `MERISTEM_VSIX_OUTPUT` で指定できます。既存会話を使う開発版の試験には、対象ウィンドウの制御接続を先に用意します。補助拡張 ID は `meristem-local.meristem-chat-control-fixture` です。[ローカル VSIX の導入手順](https://code.visualstudio.com/docs/configure/extensions/extension-marketplace#_install-from-a-vsix)
 
 `scripts/install.ps1 -NodeExe '<固定node.exe>' -ConfigPath '<install-request.json>'` は、次のJSONを読みます。全パスは絶対パスです。まず専用profileで実証し、通常profileの `settings.json` を指定する操作は、その結果を示した後の明示操作に限定します。
 

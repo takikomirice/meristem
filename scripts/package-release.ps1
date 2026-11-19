@@ -2,7 +2,8 @@ param(
     [Parameter(Mandatory=$true)][string]$OutputDirectory,
     [Parameter(Mandatory=$true)][string]$NodeExe,
     [Parameter(Mandatory=$true)][string]$NodeLicensePath,
-    [Parameter(Mandatory=$true)][string]$NodeChecksumsPath
+    [Parameter(Mandatory=$true)][string]$NodeChecksumsPath,
+    [string]$VsixPath
 )
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -27,11 +28,12 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 foreach ($relative in @('', 'package.json', 'package-lock.json', 'extension/package.json', 'dist/src', 'extension/dist/src', '.local/chat-control-build', 'migrations', 'docs/releases', 'node_modules')) {
     Assert-PlainPath (Join-Path $repoRoot $relative)
 }
-$package = Get-Content -LiteralPath (Join-Path $repoRoot 'package.json') -Raw | ConvertFrom-Json
-$helper = Get-Content -LiteralPath (Join-Path $repoRoot 'extension/package.json') -Raw | ConvertFrom-Json
+$package = Get-Content -Encoding UTF8 -LiteralPath (Join-Path $repoRoot 'package.json') -Raw | ConvertFrom-Json
+$helper = Get-Content -Encoding UTF8 -LiteralPath (Join-Path $repoRoot 'extension/package.json') -Raw | ConvertFrom-Json
 if ($package.version -notmatch '^\d+\.\d+\.\d+$' -or $package.version -ne $helper.version) { throw 'Release versions must match' }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 Assert-PlainPath $output
+if ($VsixPath) { Assert-PlainPath $VsixPath }
 if (Test-Path -LiteralPath $output) { throw 'Use a new release output directory' }
 foreach ($recursiveInput in @('node_modules', 'migrations')) {
     $inputRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot $recursiveInput))
@@ -51,7 +53,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Dependency lock could not be read' }
 $lock = $lockText | ConvertFrom-Json
 if ($package.version -ne $lock.version -or $package.version -ne $lock.rootVersion) { throw 'Release versions must match the lockfile' }
 $nodeHash = Get-Sha256 $NodeExe
-$nodeRecords = @(Get-Content -LiteralPath $NodeChecksumsPath | Where-Object { $_ -match '^[a-f0-9]{64}\s+win-x64/node\.exe$' })
+$nodeRecords = @(Get-Content -Encoding UTF8 -LiteralPath $NodeChecksumsPath | Where-Object { $_ -match '^[a-f0-9]{64}\s+win-x64/node\.exe$' })
 if ($nodeRecords.Count -ne 1 -or $nodeRecords[0].Substring(0,64) -ne $nodeHash) { throw 'Node executable differs from the supplied official checksum' }
 $name = 'meristem-v' + $package.version + '-windows-x64'
 $payloadRoot = Join-Path $output ('payload/' + $name)
@@ -91,9 +93,14 @@ foreach ($relative in @('dist/src', 'extension/dist/src')) {
 }
 Copy-PayloadTree (Join-Path $repoRoot 'migrations') 'migrations'
 # Only these compiled files enter .local; never copy developer state, fixtures or credentials.
+$native = Join-Path $repoRoot '.local/chat-control-build'
+if ($VsixPath) {
+    $native = Join-Path $output 'native'
+    & (Join-Path $PSScriptRoot 'build-native.ps1') -OutputDirectory $native | Out-Null
+}
 foreach ($exe in @('CodexRelay.exe', 'CodexWorkerHost.exe', 'MeristemControl.exe')) {
     $relative = '.local/chat-control-build/' + $exe
-    Copy-PayloadFile (Join-Path $repoRoot $relative) $relative
+    Copy-PayloadFile (Join-Path $native $exe) $relative
 }
 $dependencyRoots = @()
 foreach ($entry in $lock.packages | Sort-Object path) {
@@ -101,7 +108,7 @@ foreach ($entry in $lock.packages | Sort-Object path) {
     $source = [IO.Path]::GetFullPath((Join-Path $repoRoot $relative))
     $modulesRoot = [IO.Path]::GetFullPath((Join-Path $repoRoot 'node_modules'))
     if (-not $source.StartsWith($modulesRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Dependency path escapes node_modules' }
-    $installed = Get-Content -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
+    $installed = Get-Content -Encoding UTF8 -LiteralPath (Join-Path $source 'package.json') -Raw | ConvertFrom-Json
     if ($installed.version -ne $entry.version) { throw "Dependency version drift: $relative" }
     if (-not @(Get-ChildItem -LiteralPath $source -File | Where-Object { $_.Name -match '^(LICENSE|LICENCE|COPYING)(\.|$)' }).Count) { throw "Dependency license missing: $relative" }
     if (@($dependencyRoots | Where-Object { $relative.StartsWith($_ + '/', [StringComparison]::Ordinal) }).Count) { continue }
@@ -109,8 +116,9 @@ foreach ($entry in $lock.packages | Sort-Object path) {
     $dependencyRoots += $relative
 }
 $vsix = Join-Path $output ('meristem-chat-control-' + $package.version + '.vsix')
-$vsixResult = & powershell.exe -NoProfile -File (Join-Path $repoRoot 'scripts/package-extension.ps1') -OutputPath $vsix
-if ($LASTEXITCODE -ne 0) { throw 'Helper extension packaging failed' }
+if ($VsixPath) { $vsix = $VsixPath }
+& (Join-Path $PSScriptRoot 'write-extension-archive.ps1') -OutputPath $vsix -PayloadRoot $payloadRoot
+if ($VsixPath) { Write-Output $vsix; return }
 Copy-PayloadFile $vsix ([IO.Path]::GetFileName($vsix))
 $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Source commit unavailable' }

@@ -14,19 +14,21 @@
     "build:native": "powershell.exe -NoProfile -File scripts/build-native.ps1 -OutputDirectory .local/chat-control-build -WithFixtures",
     "typecheck:extension": "tsc -p extension/tsconfig.json --noEmit",
     "build:extension": "tsc -p extension/tsconfig.json",
-    "package:extension": "npm run build:extension && powershell.exe -NoProfile -File scripts/package-extension.ps1",
+    "package:extension": "npm run build && powershell.exe -NoProfile -File scripts/package-extension.ps1",
     "package:release": "powershell.exe -NoProfile -File scripts/package-release.ps1",
     "test:terminal": "node --test extension/dist/test/terminal.test.js",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
+    "ws": "8.23.0",
     "yaml": "2.8.2",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
     "@types/vscode": "^1.95.0",
+    "@types/ws": "^8.18.2",
     "typescript": "^5.9.3"
   }
 }

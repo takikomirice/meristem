@@ -301,9 +301,9 @@ test('retire_current_worker_and_stop_run_are_distinct_commands_and_keep_logs', a
   const connection = { async readEvents() { return { events: [], lastSeq: 0 }; }, async getStatus() { return worker; },
     async stop() { stops++; return { ok: true, state: 'stopped' }; },
     async retire(target: unknown) { assert.equal(target, binding); retires++; return { ok: true, state: 'stopped' }; }, dispose() {} };
-  const session = { terminals: [{ binding, connection }], async refresh() {}, async stopRun() { allStops++; return { results: [{ state: 'stopped' }] }; }, dispose() {} };
+  const session = { terminals: [{ binding, connection }], async refresh() {}, async stopRun() { allStops++; return { run: {state: 'stopped'}, results: [{ state: 'stopped' }] }; }, dispose() {} };
   const api = { Uri: class {}, workspace: extensionWorkspace, commands: { registerCommand(name: string, handler: () => Promise<void>) { commands.set(name, handler); return { dispose() {} }; } },
-    window: { activeTerminal: terminal, async showOpenDialog() { return [{ fsPath: 'discovery' }]; }, createTerminal() { return terminal; }, onDidCloseTerminal() { return { dispose() {} }; }, async showErrorMessage() { assert.fail('unexpected error'); } } };
+    window: { activeTerminal: terminal, async showOpenDialog() { return [{ fsPath: 'discovery' }]; }, createTerminal() { return terminal; }, onDidCloseTerminal() { return { dispose() {} }; }, async showInformationMessage(message: string) { assert.equal(message, '実行を停止しました。'); }, async showErrorMessage() { assert.fail('unexpected error'); } } };
   t.mock.method(loader, '_load', function(name: string, ...args: unknown[]) { return name === 'vscode' ? api : original.call(loader, name, ...args); });
   t.mock.method(managedClient, 'connectManaged', async () => session as any);
   delete require.cache[require.resolve('../src/extension')]; const extension = require('../src/extension'), subscriptions: { dispose(): void }[] = [];
@@ -513,4 +513,81 @@ test('confirmed_stop_and_published_events_update_the_remaining_terminal',async t
   assert.ok(output.some(v=>v.includes('停止済み')),'confirmed stop must update the visible state even after the host pipe closes');
   assert.ok(output.some(v=>v==='safe event\r\n'),'published events need their own line');
   pty!.close?.();await extension.deactivate();
+});
+test('the run entry, usage and progress are available from VS Code', () => {
+  const manifest = require('../../package.json');
+  assert.ok(!(manifest.activationEvents ?? []).some((event: string) => event === '*' || event === 'onStartupFinished' || event.startsWith('workspaceContains:')), 'ordinary windows should not activate Meristem');
+  const commands = manifest.contributes.commands.map((item: { command: string }) => item.command);
+  for (const name of ['startRun', 'newTerminalRun', 'usage', 'progress', 'stopRun']) assert.ok(commands.includes('meristem.chatControl.' + name), name);
+});
+test('start stays in the selected window and skips discovery for missing or cancelled folders', async t => {
+  const loader = require('node:module'), original = loader._load, commands = new Map<string, () => Promise<void>>();
+  const messages: string[] = [];
+  const workspace = { ...extensionWorkspace, isTrusted: true, workspaceFolders: [] as { name: string; uri: { scheme: string; fsPath: string } }[],
+    getConfiguration() { assert.fail('a folder must be selected before looking for its relay'); } };
+  let picked = 0;
+  const api = { workspace, commands: { registerCommand(id: string, handler: () => Promise<void>) { commands.set(id, handler); return { dispose() {} }; } },
+    window: { onDidCloseTerminal() { return { dispose() {} }; }, showWarningMessage(message: string) { messages.push(message); },
+      showQuickPick(items: {label: string}[]) { picked++; assert.deepEqual(items.map(i => i.label), ['A','B']); return undefined; } } };
+  t.mock.method(loader, '_load', function(name: string, ...args: unknown[]) { return name === 'vscode' ? api : original.call(loader, name, ...args); });
+  delete require.cache[require.resolve('../src/extension')];
+  const extension = require('../src/extension'); extension.activate({ subscriptions: [] });
+  t.after(async () => { await extension.deactivate(); delete require.cache[require.resolve('../src/extension')]; });
+  const start = commands.get('meristem.chatControl.startRun')!;
+  await start(); assert.match(messages[0], /フォルダー/);
+  workspace.workspaceFolders = ['A','B'].map(name => ({ name, uri: { scheme: 'file', fsPath: name } }));
+  await start(); assert.equal(picked, 1);
+});
+
+test('start confirmation shows the bound scope and only submits a current approved preview', async () => {
+  const { confirmStart, usageText } = await import('../src/run-window');
+  const preview = { runId: 'run', parent: {threadId:'conversation',ownerId:'o',ownerEpoch:'epoch'}, scopeHash:'digest',
+    tasks: { count: 3, names: ['資料の確認','変更内容の確認','結果の報告'] },
+    scope: {repositoryPath:'repository', planPath:'plan.md', branchScope:['integration'], permissionPermit:{allowedProfileIds:['read-only'], allowedReviewers:['user'], writableRoots:['trees']},
+      planScope:{planVersion:2,integrationBranch:'integration',gitDestination:'destination',worktreesRoot:'trees',requestedMaximum:4,approvedMaximum:2}} };
+  for (const [clicked, current] of [[false,true],[true,false],[true,true]]) {
+    let submissions = 0;
+    const api = { window: { showInformationMessage(_message: string, options?: {detail:string}, button?: string) {
+      if (options) {
+        assert.match(_message, /repository/);
+        for (const detail of ['plan.md','資料の確認','最大2人','読み取り','報告']) assert.ok(options.detail.includes(detail), detail);
+        assert.doesNotMatch(options.detail, /conversation|allowedProfileIds|コミット|push/);
+        assert.equal(button, 'この範囲で開始');
+        return clicked ? button : undefined;
+      }
+    } } } as unknown as typeof import('vscode');
+    await confirmStart(api, { start: async (value: unknown) => { assert.equal(value, preview); submissions++; } } as managedClient.ManagedSession,
+      preview, () => current);
+    assert.equal(submissions, clicked && current ? 1 : 0);
+  }
+  let page = 0;
+  const editing = {...preview, scope:{...preview.scope, permissionPermit:{allowedProfileIds:['workspace'], allowedReviewers:['user'], writableRoots:['trees']}, planScope:{...preview.scope.planScope, scopedGitSave:true,
+    gitDestination:'https://name:private-token@example.com/destination.git?key=private-key#private-fragment'}}};
+  const detailsApi = {window:{showInformationMessage(title:string, options:{detail:string}, first:string, second?:string) {
+    page++;
+    assert.doesNotMatch(options.detail, /private-|name:/);
+    if (page === 1) {
+      assert.match(options.detail, /編集/);
+      assert.match(options.detail, /コミット/);
+      assert.match(options.detail, /destination/);
+      return second;
+    }
+    if (page === 2) {
+      for (const item of ['trees','destination','conversation','integration']) assert.ok(options.detail.includes(item),item);
+      return first;
+    }
+    return undefined;
+  }}} as unknown as typeof import('vscode');
+  await confirmStart(detailsApi, {start: async()=>assert.fail('viewing details cannot authorize')} as unknown as managedClient.ManagedSession, editing, ()=>true);
+  assert.equal(page,3);
+  const zero = {...preview, tasks:{count:1, names:['資料\u202e\u2028の確認']}, scope:{...preview.scope,maxInstructions:0}};
+  await confirmStart({window:{showInformationMessage(_title:string, options:{detail:string}){
+    assert.match(options.detail,/接続と確認のみ/);
+    assert.match(options.detail,/指示は0回/);
+    assert.doesNotMatch(options.detail,/[\u202e\u2028]/);
+  }}} as unknown as typeof import('vscode'), {} as managedClient.ManagedSession, zero, ()=>true);
+  const capacity = { windows:[{usedPercent:80,remainingPercent:20,resetsAt:null,windowDurationMins:null}], fetchedAt:null,
+    requestedMaximum:128,approvedMaximum:2,effectiveMaximum:1,quotaMaximum:1,activeWorkers:0,reason:'low_remaining',usageStatus:'ok' };
+  assert.match(usageText(capacity, true), /使用 80%　残り 20%　リセット 不明/);
+  assert.doesNotMatch(usageText(capacity, false), /128/);
 });

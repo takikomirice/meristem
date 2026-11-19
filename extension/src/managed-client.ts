@@ -14,7 +14,22 @@ type HistoryRead = HistoryUnavailable | { state: 'history_read'; history: Histor
 type HistoryResume = HistoryUnavailable | { state: 'history_handoff_ready'; taskId: string; sourceThreadId: string; head: string };
 type PendingDecision = { id: string; kind: 'consultation' | 'plan_change' | 'parallelism'; recipient: 'coordinator' | 'human'; taskIds: string[]; question: string };
 export type HumanRequest = { kind: string; key: string; payloadHash: string; formGeneration: string; worker: RegisteredWorker; cwd: string; turnId: string | null; requestId: string | number; state: string; detail: string };
+export type UsageCapacity = {
+  requestedMaximum: number; approvedMaximum: number; activeWorkers: number; effectiveMaximum: number; quotaMaximum: number | null;
+  reason: string; usageStatus: string; fetchedAt: number | null;
+  windows: { usedPercent: number; remainingPercent: number; windowDurationMins: number | null; resetsAt: number | null }[];
+};
+export type StartPreview = { runId: string; parent: { threadId: string; ownerId: string; ownerEpoch: string }; scopeHash: string;
+  tasks?: { count: number; names: string[] };
+  scope: { repositoryPath: string; planPath: string; branchScope: string[]; maxInstructions?: number;
+    permissionPermit?: { allowedProfileIds: string[]; writableRoots: string[]; allowedReviewers: string[] };
+    modelRouting?: { mode: string; candidates: {model: string; effort: string}[]; maxAutomaticChangesPerTask: number;
+      tasks: {taskId:string; agent:{model:string; effort:string}}[]; planHash: string; summarySha256?: string };
+    planScope: { planVersion: number; integrationBranch: string; gitDestination: string; worktreesRoot: string; requestedMaximum: number; approvedMaximum: number;
+      usagePolicy?: {enabled: boolean; threshold: number; lowMaximum: number}; scopedGitSave?: boolean } } };
 export type ManagedSession = { terminals: { connection: ControlConnection; binding: TerminalBinding }[]; refresh(): Promise<boolean>; stopRun(): Promise<{ results: { state: string }[]; run: { state: string } }>; requests(): Promise<HumanRequest[]>; answer(item: HumanRequest, action: 'accept' | 'decline' | 'cancel'): Promise<void>;
+  readonly pendingStart?: string; readonly approvalKeys: string[]; readonly runState?: string; readonly started: boolean; readonly closed: boolean;
+  preview(): Promise<StartPreview>; start(preview: StartPreview): Promise<void>; usage(): Promise<UsageCapacity>;
   historyTargets(offset?: number): Promise<{ targets: HistoryTarget[]; nextOffset: number | null; revision: number }>;
   history(target: RegisteredWorker, cursor?: string): Promise<HistoryRead>;
   prepareHistoryResume(target: RegisteredWorker, expectedRevision: number): Promise<HistoryResume>;
@@ -32,9 +47,10 @@ async function availablePipe(pipeName: string): Promise<Socket> {
   }
   throw new Error('managed control connection unavailable');
 }
-export async function connectManaged(discoveryFile: string): Promise<ManagedSession> {
+export async function connectManaged(discoveryFile: string, expected?: { runId: string; pipeName: string; terminalPid?: number }): Promise<ManagedSession> {
   const discovery = JSON.parse(readFileSync(discoveryFile, 'utf8')) as Discovery;
   if (!/^meristem-cc01-control-[a-zA-Z0-9-]{1,90}$/.test(discovery.pipeName) || !discovery.ownerId || !discovery.ownerEpoch || !discovery.token || !discovery.windowBindingId) throw new Error('explicit managed discovery required');
+  if (expected && (discovery.runId !== expected.runId || discovery.pipeName !== expected.pipeName)) throw new Error('discovery does not match the window target');
   const sockets = new Set<Socket>(); let disposed = false;
   async function request(method: string, params: Record<string, unknown> = {}, lease = false): Promise<any> {
     if (disposed) return Promise.reject(new Error('management connection closed'));
@@ -44,7 +60,7 @@ export async function connectManaged(discoveryFile: string): Promise<ManagedSess
       sockets.add(socket);
       let buffer = Buffer.alloc(0), settled = false;
       const fail = () => { if (!settled) { settled = true; reject(new Error('managed control unavailable')); } socket.destroy(); };
-      socket.setTimeout(['worker_history', 'resume_worker_history'].includes(method) ? 20000 : 12000, fail); socket.once('error', fail); socket.once('end', fail);
+      socket.setTimeout(method === 'usage' ? 50000 : ['worker_history', 'resume_worker_history'].includes(method) ? 20000 : 12000, fail); socket.once('error', fail); socket.once('end', fail);
       socket.once('close', () => { sockets.delete(socket); if (!settled) fail(); if (lease) dispose(); });
       socket.on('data', chunk => {
         if (settled) return;
@@ -61,15 +77,28 @@ export async function connectManaged(discoveryFile: string): Promise<ManagedSess
   }
   function dispose() { if (disposed) return; disposed = true; for (const socket of sockets) socket.destroy(); sockets.clear(); }
   try {
-    await request('lease', {}, true);
+    const lease = await request('lease', { sessionKind: 'vscode', ...(expected?.terminalPid && {terminal:{pid:expected.terminalPid}}) }, true);
+    if (expected && !lease.leaseId) throw new Error('verified VS Code lease required');
+    let pending: { id: string; parent: string } | undefined, runState: string | undefined, started = false, approvalKeys: string[] = [];
     const terminals: ManagedSession['terminals'] = [], known = new Set<string>();
-    let lastRevision: number | undefined;
+    let lastRevision: number | undefined, terminalProbeAt = 0;
     async function refresh(): Promise<boolean> {
       let offset: number | null = 0;
       let revision: number | undefined;
       do {
-      const status = await request('status', { attemptOffset: offset, registrationOnly: true });
-      if (offset === 0) revision = status.run?.revision;
+      const probeTerminal = !!expected?.terminalPid && offset === 0 && !started && !pending && Date.now() >= terminalProbeAt;
+      if (probeTerminal) terminalProbeAt = Date.now() + 2500;
+      const status = await request('status', { attemptOffset: offset, registrationOnly: true, ...(probeTerminal && {terminalParent:true, leaseId:lease.leaseId}) });
+      if (offset === 0) {
+        revision = status.run?.revision;
+        runState = status.run?.state;
+        started = status.binding?.state === 'consumed';
+        if (!lease.leaseId || runState !== 'active' || started) pending = undefined;
+        else if (status.binding?.state === 'pending') pending = status.binding;
+        else if (expected?.terminalPid && status.terminalParent) pending = {id: status.terminalParent.threadId, parent: JSON.stringify(status.terminalParent)};
+        else if (!expected?.terminalPid) pending = undefined;
+        approvalKeys = status.pendingApprovalKeys ?? [];
+      }
       for (const attempt of status.attempts as ManagedAttempt[]) {
       const registration = attempt.registration;
       if (known.has(registration.worker.attemptId) || registration.worker.threadId === 'pending' || registration.binding.windowBindingId !== discovery.windowBindingId) continue;
@@ -119,6 +148,17 @@ export async function connectManaged(discoveryFile: string): Promise<ManagedSess
     }
     await refresh();
     return { terminals, refresh, dispose,
+      get pendingStart() { return pending?.id; }, get approvalKeys() { return approvalKeys; },
+      get runState() { return runState; }, get started() { return started; }, get closed() { return disposed; },
+      async preview() {
+        if (!pending) throw new Error('verified start request required');
+        return request('preview_parent_start', { leaseId: lease.leaseId, parent: JSON.parse(pending.parent) });
+      },
+      async start(preview) {
+        if (!pending || preview.runId !== discovery.runId || JSON.parse(pending.parent).threadId !== preview.parent.threadId) throw new Error('start request changed');
+        await request('start_parent', { leaseId: lease.leaseId, parent: preview.parent, scopeHash: preview.scopeHash, operationId: randomUUID() });
+      },
+      async usage() { return (await request('usage')).capacity; },
       async stopRun() { return request('stop'); },
       async historyTargets(offset = 0) { return request('history_targets', { offset }); },
       async history(target, cursor) { return (await request('worker_history', { selection: { target, cursor } })).result; },

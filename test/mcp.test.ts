@@ -446,7 +446,8 @@ test('human_endpoint_checks_parent_hash_generation_scope_and_once_only', async t
   const runtime = { ...f.runtime, pendingRequests: () => inbox.list(), presentRequest: (_w: WorkerRef, key: string) => inbox.present(key), async answerRequest(_w: WorkerRef, ref: any, action: any, current: () => boolean) { assert(current()); inbox.answer(ref, action, () => sent++); } };
   const controller = new McpController(f.store, new Broker(f.store, runtime), runtime, 'run', f.parent.actor, f.scope);
   const pendingReport = { ...f.ref('approved-report'), taskId: 'A', report: { summary: 'approved original report' } };
-  const result = await controller.call('answer_request', { ...f.ref('review'), requestKey: item.key }, f.parent);
+  const result = await controller.call('answer_request', { ...f.ref('review'), requestKey: item.key, answer: {action: {answers: ['accept']}} }, f.parent);
+  assert.equal(sent, 0, 'a model-suggested approval only opens the real human form');
   assert(result.humanForm); assert.doesNotMatch(f.store.operation('review').result!, /humanForm|formGeneration/);
   assert.deepEqual(audit, [{ phase: 'presentation_prepared', route: 'parent_mcp', action: undefined }]);
   const response = { worker, key: item.key, payloadHash: item.payloadHash, formGeneration: result.humanForm.formGeneration, action: 'accept' };

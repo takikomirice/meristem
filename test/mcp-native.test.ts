@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import net from 'node:net';
 import { once } from 'node:events';
+import { createRequire } from 'node:module';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -12,7 +13,7 @@ import { pipeRequest, relayRequest } from '../src/protocol.js';
 import { gitScope } from './fixtures/git-scope.js';
 import { serialFixture } from './fixtures/serial-git.js';
 
-for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'terminal-exit']) test(mode === 'terminal-exit' ? 'terminal_exit_fences_live_launcher_lease' : mode === 'control-start' ? 'owned_control_lease_starts_only_displayed_parent_and_scope' : mode === 'verified-start' ? 'verified_first_caller_and_single_human_start' : mode === 'adaptive' ? 'native_authorize_displays_and_confirms_the_bound_model_policy'
+for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'terminal-exit', 'sidebar']) test(mode === 'sidebar' ? 'sidebar_client_accepts_only_the_verified_pending_start' : mode === 'terminal-exit' ? 'terminal_exit_fences_live_launcher_lease' : mode === 'control-start' ? 'owned_control_lease_starts_only_displayed_parent_and_scope' : mode === 'verified-start' ? 'verified_first_caller_and_single_human_start' : mode === 'adaptive' ? 'native_authorize_displays_and_confirms_the_bound_model_policy'
   : 'native_owned_parent_MCP_permit_worker_report_and_unknown_peer_boundary', { timeout: 75000 }, async t => {
   const adaptive = mode === 'adaptive', dynamic = !['adaptive', 'legacy'].includes(mode);
   const root = mkdtempSync(path.join(tmpdir(), 'cc02-native-')), state = path.join(root, 'state');
@@ -22,7 +23,7 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
   const pipeName = `meristem-cc01-control-${randomUUID()}`, parentPipe = `meristem-cc00-${randomUUID()}`, configPath = path.join(root, 'config.json'), entryPoint = path.resolve('dist/src/cli.js'), mcpEntry = path.resolve('dist/src/mcp.js'), planPath = path.join(root, 'plan.md');
   const choices = [{ model: 'mock', effort: 'low' }, { model: 'mock', effort: 'high' }];
   let scopeGit;
-  if (adaptive) {
+  if (adaptive || mode === 'sidebar') {
     const f = serialFixture(root);
     f.plan.schema_version = 2;
     Object.assign(f.plan.run, { worker_model_policy: { mode: 'rules', candidates: choices } });
@@ -102,7 +103,10 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
     second.tui.stdin.end();
     return;
   }
-  const acceptedLease = dynamic ? await acquireLease() : undefined;
+  const { connectManaged } = createRequire(import.meta.url)(path.resolve('extension/dist/src/managed-client.js'));
+  const sidebar = mode === 'sidebar' ? await connectManaged(path.join(state, 'discovery.json'), { pipeName, runId: 'run' }) : undefined;
+  if (sidebar) t.after(() => sidebar.dispose());
+  const acceptedLease = dynamic && !sidebar ? await acquireLease() : undefined;
   if (mode === 'control-start') {
     const owner = await relayRequest(parentPipe, 'relay/status');
     const parent = { ownerId: owner.ownerId, ownerEpoch: owner.ownerEpoch, threadId: 'P' };
@@ -149,7 +153,29 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
   await ui('fixture/mcp', { executable: process.execPath, helper: path.resolve('dist/test/fixtures/native-mcp-client.js'), file: spoofFile });
   assert.equal(JSON.parse(readFileSync(spoofOutput, 'utf8')).ok, false, 'arbitrary App Server helper cannot claim the root MCP identity');
   assert.equal((await call('start_run', { planPath, operationId: 'descendant' }, metadata, true)).isError, true, 'same pinned argv launched by an arbitrary descendant cannot claim MCP identity');
-  const pending = await call('start_run', { planPath, operationId: 'start' }); assert.equal(pending.structuredContent.state, 'awaiting_authorization');
+  if (mode === 'sidebar') {
+    assert.equal((await call('start_run', { planPath: configPath, operationId: 'wrong-plan' })).isError, true);
+    const alternateDriveCase = planPath[0] === planPath[0].toUpperCase() ? planPath[0].toLowerCase() : planPath[0].toUpperCase();
+    const first = await call('start_run', { planPath: alternateDriveCase + planPath.slice(1), operationId: 'start' });
+    assert.equal(first.structuredContent.state, 'awaiting_authorization');
+  }
+  const pending = await call('start_run', { ...(mode !== 'sidebar' && {planPath}), operationId: 'start' }); assert.equal(pending.structuredContent.state, 'awaiting_authorization');
+  if (sidebar) {
+    await sidebar.refresh();
+    assert.equal(sidebar.pendingStart, pending.structuredContent.bindingId);
+    const preview = await sidebar.preview();
+    assert.equal(preview.parent.threadId, 'P');
+    assert.equal(preview.scope.planScope.planVersion, 2);
+    assert.ok(preview.tasks.count >= 1 && preview.tasks.names.length <= 3);
+    await assert.rejects(sidebar.start({ ...preview, scopeHash: '0'.repeat(64) }));
+    await sidebar.start(preview);
+    await sidebar.refresh();
+    assert.equal(sidebar.pendingStart, undefined);
+    assert.equal(sidebar.started, true);
+    assert.equal((await sidebar.usage()).requestedMaximum, 1);
+    assert.equal((await sidebar.stopRun()).run.state, 'stopped');
+    return;
+  }
   const selfAuthorize = path.join(root, 'self-authorize.json'), selfOutput = selfAuthorize + '.result';
   writeFileSync(selfAuthorize, JSON.stringify({ pipeName, direct: { ...discovery, method: 'authorize', bindingId: pending.structuredContent.bindingId }, output: selfOutput }));
   await ui('fixture/mcp', { executable: process.execPath, helper: path.resolve('dist/test/fixtures/native-mcp-client.js'), file: selfAuthorize });
@@ -230,7 +256,7 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
   await call('send_instruction', { operationId: 'send-B', runId: 'run', expectedRevision: await revision(), taskId: 'B', target: b, agent: { model: 'mock', effort: 'low' }, text: 'fixture-human-approval' });
   const waiting = (await call('get_status', { runId: 'run' })).structuredContent.requests[0]; assert(waiting);
   assert.equal((await pipeRequest(pipeName, { method: 'mcp_human_response', metadata, args: { worker: b, key: waiting.key, payloadHash: waiting.payloadHash, formGeneration: waiting.formGeneration, action: 'accept' } })).ok, false, 'an external process cannot impersonate the parent elicitation callback');
-  const answered = await call('answer_request', { operationId: 'review-B', runId: 'run', expectedRevision: await revision(), requestKey: waiting.key }, metadata, false, 'accept');
+  const answered = await call('answer_request', { operationId: 'review-B', runId: 'run', expectedRevision: await revision(), requestKey: waiting.key, answer: { action: { answers: ['decline'] } } }, metadata, false, 'accept');
   assert.equal(answered.structuredContent.state, 'response_sent', 'formal elicitation must traverse the real native gateway');
   assert.equal(JSON.parse(readFileSync(path.join(assignments[1].cwd, 'approval-response.json'), 'utf8')).result.action, 'accept');
   assert.equal((await call('get_status', { runId: 'run' })).structuredContent.requests.length, 0);

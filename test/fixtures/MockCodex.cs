@@ -129,8 +129,20 @@ internal static class MockCodex {
                 }
             }
             switch ((string)m["method"]) {
+                case "config/read": {
+                    var features=new Dictionary<string,bool>();
+                    for(int i=0;i+1<args.Length;i++) if(args[i]=="--disable") features[args[++i]]=false;
+                    var profileConfig=new Dictionary<string,object> {
+                        {"features",features},{"forced_login_method",Array.IndexOf(args,"forced_login_method=\"chatgpt\"")>=0?"chatgpt":null},
+                        {"model_provider",Array.IndexOf(args,"model_provider=\"openai\"")>=0?"openai":null},
+                        {"chatgpt_base_url",Array.IndexOf(args,"chatgpt_base_url=\"https://chatgpt.com/backend-api/\"")>=0?"https://chatgpt.com/backend-api/":null},
+                        {"notify",Array.IndexOf(args,"notify=[]")>=0?new string[0]:null},{"mcp_servers",new Dictionary<string,object>()}
+                    };
+                    if(File.Exists("ordinary-profile.json")) foreach(var kv in Json.Deserialize<Dictionary<string,object>>(File.ReadAllText("ordinary-profile.json"))) profileConfig[kv.Key]=kv.Value;
+                    result=new {config=profileConfig};break;
+                }
                 case "account/read":
-                    result=new {account=new {type="chatgpt",email="fixture@example.invalid",workspaceName="fixture"},userId="fixture-user"};break;
+                    result=new {account=new {type=File.Exists("ordinary-api-key")?"apiKey":"chatgpt",email="fixture@example.invalid",workspaceName="fixture"},userId="fixture-user"};break;
                 case "account/rateLimits/read":
                     result=new {accountId="fixture-billing",ordinaryUsageAllowed=true,rateLimits=new {limitId="codex",primary=new {usedPercent=80,windowDurationMins=300,resetsAt=(object)null},secondary=(object)null}};break;
                 case "initialize":
@@ -188,6 +200,7 @@ internal static class MockCodex {
                     result=new { payload="management-private-payload"+new string('x',8*1024*1024+17) }; break;
                 case "thread/start":
                     threadConfig=p.ContainsKey("config")?(Dictionary<string,object>)p["config"]:null;
+                    if(File.Exists("ordinary-profile.json")) File.WriteAllText("observed-worker-config.json",Json.Serialize(threadConfig));
                     bool readOnly=Object.Equals(p.ContainsKey("permissions")?p["permissions"]:null,"meristem-read-only");
                     if(readOnly) {
                         var profile=threadConfig==null||!threadConfig.ContainsKey("permissions.meristem-read-only")?null:threadConfig["permissions.meristem-read-only"] as Dictionary<string,object>;
@@ -200,7 +213,7 @@ internal static class MockCodex {
                             if(!threadConfig.ContainsKey("features."+feature)||!Object.Equals(threadConfig["features."+feature],false)) throw new Exception("read-only feature must be disabled");
                     }
                     var settings=new Dictionary<string,object> {
-                        {"thread",new { id=Guid.NewGuid().ToString(), parentThreadId=(string)null, environments=new[]{new{environmentId="local",cwd=p["cwd"]}}, cwd=p["cwd"], modelProvider="mock", status=new { type="idle" } }},
+                        {"thread",new { id=Guid.NewGuid().ToString(), parentThreadId=(string)null, environments=new[]{new{environmentId="local",cwd=p["cwd"]}}, cwd=p["cwd"], modelProvider=p.ContainsKey("modelProvider")?p["modelProvider"]:"mock", status=new { type="idle" } }},
                         {"cwd",p["cwd"]},{"runtimeWorkspaceRoots",p.ContainsKey("runtimeWorkspaceRoots")?p["runtimeWorkspaceRoots"]:new object[]{p["cwd"]}},{"model",p.ContainsKey("model")?p["model"]:"mock"},
                         {"reasoningEffort",threadConfig!=null&&threadConfig.ContainsKey("model_reasoning_effort")?threadConfig["model_reasoning_effort"]:"low"},
                         {"approvalsReviewer",p.ContainsKey("approvalsReviewer")?p["approvalsReviewer"]:"user"},

@@ -17,7 +17,7 @@ import type { AppliedTaskSettings } from './contracts.js';
 import { TerminalActivity, terminalText } from './terminal-events.js';
 import type { Store } from './store.js';
 
-export type RuntimeConfig = { stateDirectory: string; hostExe: string; hostSha256: string; realExe: string; realSha256: string; authHome: string; fixture: boolean; windowsSandbox?: 'elevated' | 'mxc'; mcp?: { pipeName: string; entryPoint: string; entrySha256: string } };
+export type RuntimeConfig = { stateDirectory: string; hostExe: string; hostSha256: string; realExe: string; realSha256: string; authHome: string; fixture: boolean; managedProfile?: boolean; windowsSandbox?: 'elevated' | 'mxc'; mcp?: { pipeName: string; entryPoint: string; entrySha256: string } };
 function sandboxOverrides(config: RuntimeConfig): Record<string, string> {
   if (config.windowsSandbox === undefined) return {};
   if (!['elevated', 'mxc'].includes(config.windowsSandbox)) throw new Error('unsupported Windows sandbox');
@@ -35,21 +35,45 @@ const readOnlyFeatures = {
   'features.request_permissions_tool': false, 'features.exec_permission_approvals': false,
   'features.plugins': false, 'features.apps': false, 'features.hooks': false, 'features.skill_mcp_dependency_install': false,
 };
-async function verifyReadOnlyMcp(rpc: Rpc, threadId: string, meristemConfigured: boolean, startingThread = false) {
+async function verifyOnlyMeristemMcp(rpc: Rpc, threadId: string, serverName: string | undefined, startingThread = false, disabled: string[] = []) {
   // Query the entire thread inventory. A serverName filter would hide unrelated write-capable tools.
   const deadline = Date.now() + 5000;
   do {
-    const inventory = await rpc.call('mcpServerStatus/list', { threadId, limit: 2 }, Math.max(1, deadline - Date.now()));
-    if (inventory.nextCursor !== null || !Array.isArray(inventory.data) || inventory.data.length !== (meristemConfigured ? 1 : 0)) break;
-    if (!meristemConfigured) return;
-    const server = inventory.data[0];
-    if (server?.name !== 'meristem' || server.httpOrigin !== null || server.pluginId !== null ||
+    const inventory = await rpc.call('mcpServerStatus/list', { threadId, limit: disabled.length + 2 }, Math.max(1, deadline - Date.now()));
+    if (inventory.nextCursor !== null || !Array.isArray(inventory.data)) break;
+    const active = inventory.data.filter((server: {name:string;runtimeStatus:string;tools?:object}) =>
+      !(disabled.includes(server?.name) && server.runtimeStatus === 'disabled' && Object.keys(server.tools ?? {}).length === 0));
+    if (active.length !== (serverName ? 1 : 0)) break;
+    if (!serverName) return;
+    const server = active[0];
+    if (server?.name !== serverName || server.httpOrigin !== null || server.pluginId !== null ||
         server.toolsError !== null || !server.tools?.start_run || !server.tools?.report) break;
     if (server.runtimeStatus === 'connected') return;
     if (!startingThread || server.runtimeStatus !== 'starting') break;
     await delay(250);
   } while (Date.now() < deadline);
-  throw new Error('read-only MCP inventory not confirmed');
+  throw new Error('managed MCP inventory not confirmed');
+}
+
+// Read effective settings for the actual worktree. The ordinary profile can contain
+// unrelated MCP servers. Disable them for this thread without changing the profile.
+const isolatedFeatures = ['plugins', 'apps', 'hooks', 'skill_mcp_dependency_install', 'multi_agent', 'multi_agent_v2'];
+async function managedProfileOverrides(rpc: Rpc, cwd: string) {
+  const { config } = await rpc.call('config/read', { cwd, includeLayers: false });
+  if (config?.model_provider !== 'openai' || config.forced_login_method !== 'chatgpt' ||
+      config.chatgpt_base_url !== 'https://chatgpt.com/backend-api/' || config.openai_base_url != null ||
+      config.model_providers?.openai || !Array.isArray(config.notify) || config.notify.length ||
+      !isolatedFeatures.every(feature => config.features?.[feature] === false)) throw new Error('通常プロファイルの認証先またはツールの隔離を確認できません。');
+  if (!config.mcp_servers || typeof config.mcp_servers !== 'object' || Array.isArray(config.mcp_servers)) throw new Error('MCP 設定を確認できません。');
+  const servers = Object.keys(config.mcp_servers);
+  if (servers.some(key => !/^[a-zA-Z0-9_-]+$/.test(key))) throw new Error('通常プロファイルの MCP サーバー名を照合できません。');
+  let serverName = 'meristem';
+  for (let i = 2; Object.hasOwn(config.mcp_servers, serverName); i++) serverName = 'meristem_' + i;
+  return {serverName, servers, disabled: Object.fromEntries(servers.map(key => ['mcp_servers.' + key + '.enabled', false]))};
+}
+async function verifyChatGptAccount(rpc: Rpc) {
+  const identity = await rpc.call('account/read', { refreshToken: false });
+  if (identity?.account?.type !== 'chatgpt') throw new Error('ChatGPT のサブスクリプション認証を確認できません。');
 }
 const inside = (root: string, child: string) => { const relative = path.relative(root.toLowerCase(), child.toLowerCase()); return !relative || !relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative); };
 const pathsOverlap = (a: string, b: string) => inside(a, b) || inside(b, a);
@@ -81,7 +105,7 @@ export function verifyIsolation(config: RuntimeConfig, cwd: string, taskProfile:
 export type HistorySource = { threadId: string; modelProvider: string };
 export type Assignment = { cwd: string; workerId: string; model: string; effort: string; permissionProfileId?: string; permissionPermit?: RunPermissionPermit; identity?: Omit<WorkerRef, 'threadId'>; previous?: WorkerRef; historySource?: HistorySource; gitApprovalRoots?: string[]; initialFallback?: AgentChoice };
 type Identity = { pipeName: string; hostPid: number; hostCreated: string; childPid: number; childCreated: string; jobId: string };
-type Live = { worker: WorkerRef; child: ChildProcessWithoutNullStreams; rpc: Rpc; identity: Identity; assignment: Assignment; settings: AppliedTaskSettings; activity: TerminalActivity; provider: string; turnId?: string; turnRequested?: boolean; complete: boolean; sending: boolean; lastCompletion?: { id: string; complete: boolean }; pendingRequest: boolean; requests: WorkerRequests; stopping?: Promise<StopResult>; result?: StopResult };
+type Live = { worker: WorkerRef; child: ChildProcessWithoutNullStreams; rpc: Rpc; identity: Identity; assignment: Assignment; settings: AppliedTaskSettings; activity: TerminalActivity; provider: string; mcpServer?: string; disabledServers?: string[]; turnId?: string; turnRequested?: boolean; complete: boolean; sending: boolean; lastCompletion?: { id: string; complete: boolean }; pendingRequest: boolean; requests: WorkerRequests; stopping?: Promise<StopResult>; result?: StopResult };
 const historyPageSize = 8;
 const historyCursor = z.string().min(1).max(8192);
 export const HistorySelection = z.object({ target: Worker, cursor: historyCursor.optional() }).strict();
@@ -177,6 +201,9 @@ export class WorkerRuntime {
   private appServerEnv(): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env, CODEX_HOME: this.config.authHome };
     for (const key of Object.keys(env)) if (/API_KEY|ACCESS_TOKEN|AUTH_TOKEN|SECRET|BEARER|CODEX_THREAD_ID|CODEX_TURN_ID/i.test(key)) delete env[key];
+    if (this.config.managedProfile) for (const key of Object.keys(env)) {
+      if (/^(OPENAI_|AZURE_OPENAI_|CHATGPT_|CODEX_)/i.test(key) && key.toUpperCase() !== 'CODEX_HOME') delete env[key];
+    }
     return env;
   }
   async start(assignment: Assignment): Promise<WorkerRef> {
@@ -211,7 +238,7 @@ export class WorkerRuntime {
     Worker.parse({ ...base, threadId: 'pending' });
     if (base.workerId !== assignment.workerId) throw new Error('assignment identity mismatch');
     const pipeName = `meristem-cc01-worker-${randomUUID()}`, configPath = path.join(state, base.attemptId + '.json');
-    writeFileSync(configPath, JSON.stringify({ ...base, brokerPid: process.pid, brokerCreated: this.brokerCreated, realExecutable: this.config.realExe, realSha256: this.config.realSha256, cwd, model: assignment.model, effort: assignment.effort, ...(this.config.mcp ? { mcp: { ...this.config.mcp, nodeExecutable: process.execPath, nodeSha256: createHash('sha256').update(readFileSync(process.execPath)).digest('hex') } } : {}) }), { flag: 'wx' });
+    writeFileSync(configPath, JSON.stringify({ ...base, brokerPid: process.pid, brokerCreated: this.brokerCreated, realExecutable: this.config.realExe, realSha256: this.config.realSha256, cwd, model: assignment.model, effort: assignment.effort, ...(this.config.managedProfile && {managedProfile:true}), ...(this.config.mcp ? { mcp: { ...this.config.mcp, nodeExecutable: process.execPath, nodeSha256: createHash('sha256').update(readFileSync(process.execPath)).digest('hex') } } : {}) }), { flag: 'wx' });
     const child = spawn(this.config.hostExe, ['--mode', 'codex-managed', '--pipe', pipeName, '--exe', this.config.realExe, '--cwd', cwd, '--config', configPath, '--broker-stdin', 'true'], { cwd, env: this.appServerEnv(), windowsHide: true, stdio: 'pipe' });
     let entry: Live | undefined;
     const rpc = new Rpc(child, message => {
@@ -259,15 +286,18 @@ export class WorkerRuntime {
     });
     try {
       await rpc.call('initialize', { clientInfo: { name: 'meristem-cc01', version: '0.0.0' }, capabilities: { experimentalApi: true } }); rpc.notify('initialized');
+      const ordinaryProfile = this.config.managedProfile ? await managedProfileOverrides(rpc, cwd) : undefined;
+      const mcpServer = this.config.mcp && (ordinaryProfile?.serverName ?? 'meristem');
+      if (this.config.managedProfile) await verifyChatGptAccount(rpc);
       const fallback = await catalogChoice(rpc, assignment, assignment.initialFallback);
       if (fallback) {
         assignment = { ...assignment, ...fallback, initialFallback: undefined };
         Object.assign(agent, fallback);
       }
-      const overrides = { ...sandboxOverrides(this.config), ...managedOverrides, model_reasoning_effort: assignment.effort, ...(readOnly ? readOnlyFeatures : approvalRoots.length ? { 'features.request_permissions_tool': true, 'features.exec_permission_approvals': true } : {}), ...(this.config.mcp ? { 'mcp_servers.meristem': { command: process.execPath, args: [this.config.mcp.entryPoint, '--pipe', this.config.mcp.pipeName] } } : {}) };
+      const overrides = { ...sandboxOverrides(this.config), ...managedOverrides, ...ordinaryProfile?.disabled, model_reasoning_effort: assignment.effort, ...(readOnly ? readOnlyFeatures : approvalRoots.length ? { 'features.request_permissions_tool': true, 'features.exec_permission_approvals': true } : {}), ...(mcpServer && this.config.mcp ? { ['mcp_servers.' + mcpServer]: { command: process.execPath, args: [this.config.mcp.entryPoint, '--pipe', this.config.mcp.pipeName] } } : {}) };
       // This target has no verified grant-reset API. Never resume persisted grants.
       // Keep the verified Git worktree and source reference; start an independent thread.
-      const thread = await rpc.call('thread/start', { cwd, ephemeral: false, runtimeWorkspaceRoots: [cwd], model: assignment.model, allowProviderModelFallback: false, permissions: permissions.permissionProfileId, approvalsReviewer: permissions.approvalsReviewer, approvalPolicy, config: overrides,
+      const thread = await rpc.call('thread/start', { cwd, ephemeral: false, runtimeWorkspaceRoots: [cwd], model: assignment.model, ...(this.config.managedProfile && {modelProvider:'openai'}), allowProviderModelFallback: false, permissions: permissions.permissionProfileId, approvalsReviewer: permissions.approvalsReviewer, approvalPolicy, config: overrides,
         ...(historySource ? { developerInstructions: `Continue the assigned task in this verified Git worktree. Previous task thread reference: ${historySource.threadId}. Conversation and permission grants have not been resumed. Use the new task instruction and committed files; consult the coordinator for missing context.` } : {}) });
       if (thread.activePermissionProfile?.id !== permissions.permissionProfileId || thread.activePermissionProfile.extends !== (readOnly ? ':read-only' : ':workspace')) throw new Error('managed permission profile not confirmed');
       if (readOnly && !isDeepStrictEqual(thread.sandbox, { type: 'readOnly', networkAccess: false })) throw new Error('read-only sandbox not confirmed');
@@ -275,9 +305,10 @@ export class WorkerRuntime {
       if (!Array.isArray(thread.runtimeWorkspaceRoots) || thread.runtimeWorkspaceRoots.length !== 1 || typeof thread.runtimeWorkspaceRoots[0] !== 'string' || realpathSync(thread.runtimeWorkspaceRoots[0]).toLowerCase() !== cwd.toLowerCase()) throw new Error('requested workspace roots not confirmed');
       if (!thread.thread?.id || thread.thread.parentThreadId || thread.thread.cwd?.toLowerCase() !== cwd.toLowerCase() || (historySource && (thread.thread.id === historySource.threadId || thread.thread.modelProvider !== historySource.modelProvider))) throw new Error('root thread identity or provider mismatch');
       if (thread.model !== assignment.model || !ModelId.safeParse(thread.thread.modelProvider).success) throw new Error('requested model or provider not confirmed');
+      if (this.config.managedProfile && thread.thread.modelProvider !== 'openai') throw new Error('公式モデルプロバイダーを確認できません。');
       const environments = thread.thread.environments;
       const environmentId = Array.isArray(environments) && environments.length === 1 && environments[0].environmentId === 'local' && typeof environments[0].cwd === 'string' && realpathSync(environments[0].cwd).toLowerCase() === cwd.toLowerCase() ? 'local' : null;
-      if (readOnly) await verifyReadOnlyMcp(rpc, thread.thread.id, !!this.config.mcp, true);
+      if (readOnly || this.config.managedProfile) await verifyOnlyMeristemMcp(rpc, thread.thread.id, mcpServer, true, ordinaryProfile?.servers);
       else if (this.config.mcp) {
         const status = await rpc.call('mcpServerStatus/list', { threadId: thread.thread.id, serverName: 'meristem' });
         const server = status.data?.find((server: any) => server.name === 'meristem');
@@ -288,7 +319,7 @@ export class WorkerRuntime {
       for (let i = 0; i < 40; i++) { try { status = await pipeRequest(pipeName, { method: 'status', ...base }); if (status.ok) break; } catch {} await delay(50); }
       if (!status?.ok || !status.jobAssigned || status.hostPid !== child.pid) throw new Error('worker identity unavailable');
       const identity = { pipeName, hostPid: Number(status.hostPid), hostCreated: String(status.hostCreated), childPid: Number(status.pid), childCreated: String(status.childCreated), jobId: String(status.jobId) };
-      entry = { worker, child, rpc, identity, assignment: { ...assignment, cwd }, settings: { agent, permissions, history: historySource ? 'fresh_handoff' : 'new', ...(historySource ? { sourceThreadId: historySource.threadId } : {}), ...(fallback ? { initialFallback: 'agent_not_in_catalog' } : {}) }, activity: new TerminalActivity({ model: agent.model, effort: agent.effort }), provider: thread.thread.modelProvider, complete: false, sending: false, pendingRequest: false, requests: new WorkerRequests(worker, cwd, this.onRequest, approvalRoots, environmentId) };
+      entry = { worker, child, rpc, identity, mcpServer, disabledServers:ordinaryProfile?.servers, assignment: { ...assignment, cwd }, settings: { agent, permissions, history: historySource ? 'fresh_handoff' : 'new', ...(historySource ? { sourceThreadId: historySource.threadId } : {}), ...(fallback ? { initialFallback: 'agent_not_in_catalog' } : {}) }, activity: new TerminalActivity({ model: agent.model, effort: agent.effort }), provider: thread.thread.modelProvider, complete: false, sending: false, pendingRequest: false, requests: new WorkerRequests(worker, cwd, this.onRequest, approvalRoots, environmentId) };
       child.once('close', () => { if (entry && !entry.stopping && !entry.result) this.onState(entry.worker, 'unknown'); });
       this.live.set(worker.attemptId, entry); return { ...worker };
     } catch (error) {
@@ -353,12 +384,15 @@ export class WorkerRuntime {
     const executableHash = createHash('sha256');
     for await (const chunk of createReadStream(realExe)) executableHash.update(chunk);
     if (executableHash.digest('hex') !== realSha256) throw new Error('executable identity mismatch');
-    const child = spawn(realExe, ['app-server'], { cwd: stateDirectory, env: this.appServerEnv(), windowsHide: true, stdio: 'pipe' });
+    const args = this.config.managedProfile ? ['-c','forced_login_method="chatgpt"','-c','model_provider="openai"',
+      '-c','chatgpt_base_url="https://chatgpt.com/backend-api/"','-c','notify=[]', ...isolatedFeatures.flatMap(feature=>['--disable',feature]), 'app-server'] : ['app-server'];
+    const child = spawn(realExe, args, { cwd: stateDirectory, env: this.appServerEnv(), windowsHide: true, stdio: 'pipe' });
     const closed = new Promise<boolean>(resolve => child.once('close', () => resolve(true)));
     const rpc = new Rpc(child, () => {});
     try {
       await rpc.call('initialize', { clientInfo: { name, version: '0.0.0' }, capabilities: { experimentalApi: true } }, 4000);
       rpc.notify('initialized');
+      if (this.config.managedProfile) await managedProfileOverrides(rpc, stateDirectory);
       return await read(rpc);
     } finally {
       rpc.close();
@@ -429,7 +463,8 @@ export class WorkerRuntime {
       const fallback = await catalogChoice(entry.rpc, choice,
         !entry.turnRequested && sameAgentChoice(choice, entry.settings.agent) ? entry.assignment.initialFallback : undefined);
       if (fallback) choice = fallback;
-      if (entry.settings.permissions.permissionProfileId === READ_ONLY_PROFILE) await verifyReadOnlyMcp(entry.rpc, worker.threadId, !!this.config.mcp);
+      if (entry.settings.permissions.permissionProfileId === READ_ONLY_PROFILE || this.config.managedProfile) await verifyOnlyMeristemMcp(entry.rpc, worker.threadId, entry.mcpServer, false, entry.disabledServers);
+      if (this.config.managedProfile) await verifyChatGptAccount(entry.rpc);
       if (entry.stopping) throw new Error('worker stopping');
       turnSent = true;
       entry.turnRequested = true;

@@ -1,9 +1,12 @@
 import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { connect, OwnerRef, WorkerRef } from './control-client';
 import { openWorkerTerminal, refreshWorkerTerminal, showWorkerTerminalDetails, stopWorkerTerminal, workerTerminalFinished } from './terminal';
 import type {ControlConnection, TerminalBinding} from './control-client';
 import { connectManaged, type HistoryTarget, type ManagedSession } from './managed-client';
+import { sidebarTarget, confirmStart, usageText } from './run-window';
+import { openManagedTerminal } from './managed-tui';
 import { reviewWorkerRequest } from './approval';
 
 const fixtures=new Map<vscode.Terminal,{connection:ControlConnection,binding:TerminalBinding}>();
@@ -145,21 +148,64 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!managed) { await vscode.window.showInformationMessage('先に実行管理へ接続してください。ローカルCLIのstopも使用できます。'); return; }
     try {
       const result = await managed.stopRun();
-      if (result.results.some(item => item.state !== 'stopped')) await vscode.window.showErrorMessage('終了を確認できないワーカーがあります。停止状態を確認してください。');
+      if (result.run.state !== 'stopped' || result.results.some(item => item.state !== 'stopped')) await vscode.window.showErrorMessage('実行の停止を確認できません。進捗から現在の状態を確認してください。');
+      else {
+        terminalOwner?.dispose();
+        terminalOwner = undefined;
+        await vscode.window.showInformationMessage('実行を停止しました。');
+      }
     } catch { await vscode.window.showErrorMessage('全体停止を確認できません。ローカルCLIで停止状態を確認してください。'); }
   }));
-  context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.openManaged', async (discoveryUri?: vscode.Uri) => {
-    if (managed) { await vscode.window.showInformationMessage('このウィンドウは実行管理に接続済みです。'); return; }
-    const files = discoveryUri instanceof vscode.Uri && discoveryUri.scheme === 'file' ? [discoveryUri] : await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: '実行管理に接続', filters: { '管理接続情報': ['json'] } });
-    if (!files?.[0]) return;
+  let connecting = false, preparingTerminal = false, reviewingStart = false;
+  let selectedRepository: string | undefined;
+  let terminalOwner: vscode.Disposable | undefined;
+  const progress = vscode.window.createStatusBarItem?.();
+  if (progress) { progress.command = 'meristem.chatControl.progress'; progress.tooltip = '進捗と承認要求を確認'; context.subscriptions.push(progress); }
+  async function reviewStart(session: ManagedSession) {
+    if (reviewingStart) return;
+    reviewingStart = true;
     try {
-      managed = await connectManaged(files[0].fsPath);
+      const preview = await session.preview();
+      const repository = realpathSync.native(preview.scope.repositoryPath).toLowerCase();
+      const stillCurrent = () => managed === session && !session.closed && vscode.workspace.isTrusted
+        && (!selectedRepository || repository === selectedRepository)
+        && !!vscode.workspace.workspaceFolders?.some(folder => folder.uri.scheme === 'file' && realpathSync.native(folder.uri.fsPath).toLowerCase() === repository);
+      if (!stillCurrent()) throw new Error('start workspace changed');
+      await confirmStart(vscode, session, preview, stillCurrent);
+    } catch { await vscode.window.showErrorMessage('開始を確認できません。進捗から現在の状態と開始範囲を確認してください。'); }
+    finally { reviewingStart = false; }
+  }
+  async function attach(file: string, expected?: { runId: string; pipeName: string; repository: string; terminalPid?:number }) {
+    if (managed || connecting) throw new Error('このウィンドウで実行管理に接続中です。');
+    connecting = true;
+    let acquired: ManagedSession | undefined;
+    try {
+      const session = acquired = await connectManaged(file, expected);
+      managed = session;
+      selectedRepository = expected?.repository;
+      let announcedStart: string | undefined, announcedRequests = new Set<string>();
       const opened = new Set<string>(); let refreshing = false;
       const refresh = async () => {
-        if (!managed || refreshing) return; refreshing = true;
+        if (managed !== session || refreshing) return; refreshing = true;
         try {
-          const changed = await managed.refresh();
-          for (const entry of managed.terminals) {
+          const changed = await session.refresh();
+          if (managed !== session) return;
+          if (selectedRepository && session.pendingStart && session.pendingStart !== announcedStart) {
+            announcedStart = session.pendingStart;
+            void reviewStart(session);
+          }
+          const keys = session.approvalKeys ?? [];
+          if (keys.some(key => !announcedRequests.has(key))) {
+            void vscode.window.showInformationMessage('Worker から承認要求が届きました。', '要求を確認').then(choice => {
+              if (choice && managed === session) void vscode.commands.executeCommand('meristem.chatControl.reviewRequest');
+            });
+          }
+          announcedRequests = new Set(keys);
+          if (progress) {
+            progress.text = keys.length ? `$(bell) Meristem 承認待ち ${keys.length}件` : '$(list-tree) Meristem 進捗';
+            progress.show();
+          }
+          for (const entry of session.terminals) {
             if (opened.has(entry.binding.attemptId)) continue;
             opened.add(entry.binding.attemptId);
             const terminal = openWorkerTerminal(vscode, entry.connection, entry.binding);
@@ -174,9 +220,87 @@ export function activate(context: vscode.ExtensionContext): void {
         } finally { refreshing = false; }
       };
       await refresh();
-      const timer = setInterval(() => { void refresh().catch(() => {}); }, 500);
+      const timer = setInterval(() => {
+        if (session.closed) {
+          clearInterval(timer);
+          if (managed === session) { managed = undefined; progress?.hide(); }
+        } else void refresh().catch(() => {});
+      }, 500);
       context.subscriptions.push({ dispose: () => clearInterval(timer) });
-    } catch { await vscode.window.showErrorMessage('実行管理への接続を確認できません。停止状態と接続先を確認してください。'); }
+      return session;
+    } catch (error) {
+      acquired?.dispose();
+      if (managed === acquired) managed = undefined;
+      throw error;
+    } finally { connecting = false; }
+  }
+  context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.openManaged', async (discoveryUri?: vscode.Uri) => {
+    if (managed || connecting || preparingTerminal) { await vscode.window.showInformationMessage('このウィンドウは実行管理に接続済みか、接続中です。'); return; }
+    const files = discoveryUri instanceof vscode.Uri && discoveryUri.scheme === 'file' ? [discoveryUri] : await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: '実行管理に接続', filters: { '管理接続情報': ['json'] } });
+    if (files?.[0]) try { await attach(files[0].fsPath); }
+    catch { await vscode.window.showErrorMessage('実行管理への接続を確認できません。停止状態と接続先を確認してください。'); }
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.startRun', async () => {
+    if (!vscode.workspace.isTrusted) { await vscode.window.showWarningMessage('開始には信頼済みのワークスペースが必要です。'); return; }
+    if (managed) {
+      if (managed.pendingStart) await reviewStart(managed);
+      else await vscode.commands.executeCommand('meristem.chatControl.progress');
+      return;
+    }
+    const roots = vscode.workspace.workspaceFolders?.filter(folder => folder.uri.scheme === 'file');
+    if (!roots?.length) { await vscode.window.showWarningMessage('開始するリポジトリのフォルダーを開いてください。'); return; }
+    const root = roots.length === 1 ? roots[0] : (await vscode.window.showQuickPick(roots.map(folder => ({ label: folder.name, description: folder.uri.fsPath, folder })), { title: '開始するリポジトリを選択' }))?.folder;
+    if (!root || connecting || preparingTerminal || managed) return;
+    const relay = vscode.workspace.getConfiguration('chatgpt').inspect<string>('cliExecutable')?.globalValue;
+    if (!relay) {
+      const open = '新しい親チャットを開く';
+      if (await vscode.window.showWarningMessage('このサイドバーの会話を親として確認できません。同じウィンドウのターミナルで新しい Codex 会話を開始できます。', open) === open)
+        await vscode.commands.executeCommand('meristem.chatControl.newTerminalRun');
+      return;
+    }
+    try {
+      const target = sidebarTarget(relay, root.uri.fsPath);
+      await attach(target.file, target);
+      const session = managed as ManagedSession | undefined;
+      if (session && !session.pendingStart && !session.started) await vscode.window.showInformationMessage('制御接続を確認しました。親にする Codex 会話から Meristem の開始を指示してください。');
+    } catch { await vscode.window.showWarningMessage('このリポジトリと開始元ウィンドウに対応する制御接続を確認できません。'); }
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.newTerminalRun', async (planUri?:vscode.Uri) => {
+    if (!vscode.workspace.isTrusted) { await vscode.window.showWarningMessage('信頼済みのフォルダーを開いてください。'); return; }
+    if (managed || connecting || preparingTerminal) { await vscode.window.showInformationMessage('このウィンドウには接続中の実行があります。'); return; }
+    const roots = vscode.workspace.workspaceFolders?.filter(f=>f.uri.scheme==='file');
+    if (!roots?.length) { await vscode.window.showWarningMessage('作業するフォルダーを開いてください。'); return; }
+    preparingTerminal = true;
+    try {
+      const root = roots.length===1 ? roots[0] : (await vscode.window.showQuickPick(roots.map(folder=>({label:folder.name,description:folder.uri.fsPath,folder})),{title:'作業するフォルダーを選択'}))?.folder;
+      if (!root) return;
+      const files=planUri instanceof vscode.Uri && planUri.scheme==='file' ? [planUri] : await vscode.window.showOpenDialog({defaultUri:root.uri,canSelectMany:false,filters:{'Meristem の工程表':['md','markdown']},openLabel:'この工程表で新しい親チャットを開く'});
+      if (files?.[0]?.scheme!=='file') return;
+      terminalOwner = await vscode.window.withProgress({location:vscode.ProgressLocation.Notification,title:'Codex のログインとワーカーの作業範囲を確認しています'},()=>
+        openManagedTerminal(vscode,context,root.uri.fsPath,files[0].fsPath,target=>attach(target.file,{...target,repository:realpathSync.native(target.repository).toLowerCase()})));
+      if (!(managed as ManagedSession | undefined)?.pendingStart) void vscode.window.showInformationMessage('画面下の「Meristem 親チャット」を開きました。開始画面で工程表と作業内容を確認してください。');
+    } catch (error) { await vscode.window.showErrorMessage(error instanceof Error ? error.message : '新しい親チャットの開始に失敗しました。'); }
+    finally { preparingTerminal=false; }
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.usage', async () => {
+    const session = managed;
+    if (!session) { await vscode.window.showInformationMessage('使用状況を表示するには Meristem の実行に接続してください。'); return; }
+    try {
+      const capacity = await session.usage();
+      if (managed === session) await vscode.window.showInformationMessage('Codex の使用状況', { modal: true, detail: usageText(capacity, session.started || !!session.pendingStart) });
+    } catch { await vscode.window.showWarningMessage('利用枠を取得できません。実行管理への接続を確認してください。'); }
+  }));
+  context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.progress', async () => {
+    const session = managed;
+    if (!session) { await vscode.window.showInformationMessage('このウィンドウで接続中の実行はありません。'); return; }
+    const states: Record<string, string> = { active: session.started ? '実行中' : '開始指示待ち', stopped: '停止済み', needs_reconcile: '停止結果の照合待ち', stopping: '停止中' };
+    const choices = [
+      ...(session.pendingStart ? [{ label: '開始範囲を確認', command: 'startRun' }] : []),
+      { label: 'Worker の承認要求を確認', command: 'reviewRequest' }, { label: 'Worker の一覧', command: 'listWorkers' },
+      { label: '回答待ちの相談', command: 'listPendingDecisions' }, { label: 'Codex の使用状況', command: 'usage' }, { label: '実行を停止', command: 'stopRun' }
+    ];
+    const item = await vscode.window.showQuickPick(choices, { title: `Meristem の進捗　${session.pendingStart ? '開始範囲の確認待ち' : states[session.runState ?? ''] ?? '状態を取得中'}` });
+    if (item && managed === session) await vscode.commands.executeCommand('meristem.chatControl.' + item.command);
   }));
   context.subscriptions.push(vscode.commands.registerCommand('meristem.chatControl.reviewRequest', async () => {
     if (!managed) { await vscode.window.showInformationMessage('先に実行管理へ接続してください。'); return; }

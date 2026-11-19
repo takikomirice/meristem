@@ -22,7 +22,7 @@ import { parseArgs } from 'node:util';
 import { exportRoutingSummary, loadPlanRoutingSummary } from './routing-summary.js';
 import { fileHash, readPlan } from './plan.js';
 
-type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; usagePolicy?: UsagePolicy; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
+type Config = { ideTerminal?: true; stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; usagePolicy?: UsagePolicy; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
 type Discovery = { pipeName: string; token: string; ownerId: string; ownerEpoch: string; windowBindingId: string; runId: string };
 function tokenMatches(left: unknown, right: string): boolean { return typeof left === 'string' && Buffer.byteLength(left) === Buffer.byteLength(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right)); }
 export async function serve(configPath: string): Promise<void> {
@@ -217,10 +217,16 @@ export async function serve(configPath: string): Promise<void> {
       const status = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status');
       if (leasedPeer !== peerKey || !leaseId || request.leaseId !== leaseId || request.windowBindingId !== discovery.windowBindingId
         || !status.managementEnabled || status.ownerId !== actor.ownerId || status.ownerEpoch !== actor.ownerEpoch
+        || (config.ideTerminal && status.terminalThreadId !== actor.threadId)
         || !Array.isArray(status.observedThreads) || !status.observedThreads.includes(actor.threadId)) throw new Error('start needs a current owned conversation and control lease');
       const candidate = controllerFor(actor);
       const run = store.run(config.runId);
-      if (request.method === 'preview_parent_start') return { ok: true, ...candidate.startPreview(), state: run.state, stopGeneration: run.stop_generation };
+      if (request.method === 'preview_parent_start') {
+        const preview = candidate.startPreview();
+        const tasks = store.plan(config.runId)?.snapshot.plan.tasks;
+        return { ok: true, ...preview, state: run.state, stopGeneration: run.stop_generation,
+          ...(tasks && { tasks: { count: tasks.length, names: tasks.slice(0, 3).map(task => ('display_name' in task && task.display_name) || task.id) } }) };
+      }
       const operation = Id.parse(request.operationId), scopeHash = Hash.parse(request.scopeHash);
       if (request.method === 'resume_parent' && request.stopGeneration !== run.stop_generation) throw new Error('stop generation changed');
       const result = request.method === 'resume_parent' ? await candidate.resumeFromControl(operation, scopeHash) : candidate.startFromControl(operation, scopeHash);
@@ -229,7 +235,10 @@ export async function serve(configPath: string): Promise<void> {
     }
     if (request.method === 'lease') {
       if (relayConfig && 'mode' in relayConfig && request.sessionKind !== (relayConfig.sessionKind ?? 'vscode')) throw new Error('wrong control session');
-      if (envelope.internalMethod === 'terminal_server') return dynamic && request.sessionKind === 'cli' ? { ok: true, sessionServerPid } : { ok: false };
+      if (envelope.internalMethod === 'terminal_server') {
+        if (dynamic && config.ideTerminal === true && request.sessionKind === 'vscode') return {ok:true,sessionServerPid:envelope.peer.pid};
+        return dynamic && request.sessionKind === 'cli' ? { ok: true, sessionServerPid } : { ok: false };
+      }
       if (request.windowBindingId !== discovery.windowBindingId || leasedPeer) return { ok: false, error: 'window_already_bound' };
       leasedPeer = peerKey;
       leaseId = randomUUID();
@@ -247,7 +256,20 @@ export async function serve(configPath: string): Promise<void> {
       const decisions = rows.slice(0, 4).map(({ id, kind, recipient, taskIds, question }) => ({ id, kind, recipient, taskIds, question: terminalText(question, 2048) }));
       return { ok: true, decisions, nextAfterId: rows.length > decisions.length ? decisions.at(-1)!.id : null };
     }
-    if (request.method === 'status') return snapshot(request.attemptOffset, request.attemptId, request.registrationOnly === true);
+    if (request.method === 'status') {
+      const status = snapshot(request.attemptOffset, request.attemptId, request.registrationOnly === true);
+      if (request.registrationOnly === true && !request.attemptOffset && leasedPeer === peerKey && request.windowBindingId === discovery.windowBindingId) {
+        const pendingApprovalKeys = runtime.pendingRequests().filter(item => item.state === 'pending' && item.kind !== 'question').slice(0, 32).map(item => item.key);
+        if (config.ideTerminal && request.terminalParent === true && request.leaseId === leaseId && leaseId && !status.binding && config.mcp) {
+          const relay = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status');
+          if (relay.managementEnabled && relay.terminalThreadId && relayOwner?.ownerId === relay.ownerId && relayOwner?.ownerEpoch === relay.ownerEpoch) {
+            return { ...status, pendingApprovalKeys, terminalParent: Actor.parse({...relayOwner, threadId: relay.terminalThreadId}) };
+          }
+        }
+        return { ...status, pendingApprovalKeys };
+      }
+      return status;
+    }
     if (request.method === 'history_targets') {
       return { ok: true, ...store.historyTargets(config.runId, request.offset ?? 0) };
     }

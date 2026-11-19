@@ -41,7 +41,12 @@ internal sealed class WorkerHost : IDisposable
             using(var owner=System.Diagnostics.Process.GetProcessById(Convert.ToInt32(managed["brokerPid"]))) if(LocalPipe.Created(owner)!=Program.Text(managed,"brokerCreated")) throw new InvalidOperationException("broker identity mismatch");
             if(!String.Equals(Program.Hash(executable),Program.Text(managed,"realSha256"),StringComparison.OrdinalIgnoreCase) || !String.Equals(Path.GetFullPath(executable),Program.Text(managed,"realExecutable"),StringComparison.OrdinalIgnoreCase) || !String.Equals(this.cwd,Program.Text(managed,"cwd"),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("managed executable identity mismatch");
             agent=Program.Text(managed,"model")+" / "+Program.Text(managed,"effort");
-            child=new ProcessTree(executable,new[]{"app-server"},this.cwd);
+            bool managedProfile=managed.ContainsKey("managedProfile") && Object.Equals(managed["managedProfile"],true);
+            var workerArgs = managedProfile ? new[]{
+                "-c","forced_login_method=\"chatgpt\"","-c","model_provider=\"openai\"","-c","chatgpt_base_url=\"https://chatgpt.com/backend-api/\"","-c","notify=[]",
+                "--disable","hooks","--disable","apps","--disable","plugins","--disable","skill_mcp_dependency_install","--disable","multi_agent","--disable","multi_agent_v2","app-server"
+            } : new[]{"app-server"};
+            child=new ProcessTree(executable,workerArgs,this.cwd);
         } else if (mode=="fixture") {
             string fixtureExe=Path.GetFullPath(executable), hostDirectory=Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
             if (!String.Equals(Path.GetFileName(fixtureExe),"MockCodex.exe",StringComparison.OrdinalIgnoreCase) || !String.Equals(Path.GetDirectoryName(fixtureExe),hostDirectory,StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("only the adjacent MockCodex fixture is allowed");

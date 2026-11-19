@@ -124,6 +124,14 @@ test('unverified_codex_upgrade_disables_management', { timeout: 20000 }, async t
   assert.match(f.stderr(), /management disabled/);
 });
 
+test('a broken sidebar control configuration preserves ordinary Codex startup', { timeout: 20000 }, async t => {
+  const f = await fixture(t, ['app-server'], { controlHost: { parentMode: 'verified-start', sidebarMcp: 'process', configPath: path.join(root, 'missing.json') } });
+  f.send(10, 'initialize', { clientInfo: { name: 'fixture', version: '0' } });
+  assert.ok((await f.reply(10)).result);
+  await assert.rejects(connect(f.pipe));
+  assert.match(f.stderr(), /ordinary Codex/);
+});
+
 test('workspace_write_requires_explicit_matching_CC00R_profile', { timeout: 20000 }, async t => {
   const normal=await fixture(t), c=await normal.ready();
   assert((await c.call('thread/start',{cwd:normal.dir,permissions:':workspace'})).error);
@@ -133,6 +141,32 @@ test('workspace_write_requires_explicit_matching_CC00R_profile', { timeout: 2000
   assert((await managed.call('permissionProfile/list',{cwd:path.dirname(f.dir)})).error);
   assert((await managed.call('thread/start',{cwd:f.dir,permissions:':workspace'})).result?.thread?.id);
 });
+test('only the first root conversation opened in the terminal can be confirmed', async t => {
+  const terminal = await fixture(t);
+  const control = await terminal.ready();
+  const current = async () => (await control.call('relay/status')).result.terminalThreadId;
+  assert.equal(await current(), null);
+  terminal.send(41, 'thread/start', { cwd: terminal.dir });
+  const parent = (await terminal.reply(41)).result.thread.id;
+  assert.equal(await current(), parent);
+  terminal.send(42, 'thread/start', { cwd: terminal.dir });
+  assert.notEqual((await terminal.reply(42)).result.thread.id, parent);
+  assert.equal(await current(), null);
+});
+
+test('the sidebar can observe the exact extended-length spelling of its registered repo', async t => {
+  const f = await fixture(t), control = await f.ready();
+  const local = '\\\\?\\' + f.dir;
+  const observed = [];
+  for (const [i, cwd] of [local, local + '-other', local + '\\sub\\..', '\\\\.\\' + f.dir].entries()) {
+    f.send(20 + i, 'thread/start', { cwd });
+    const { result } = await f.reply(20 + i);
+    assert.ok(result.thread.id);
+    observed.push((await control.call('relay/status')).result.observedThreads.includes(result.thread.id));
+  }
+  assert.deepEqual(observed, [true, false, false, false]);
+});
+
 test('routes_only_own_rpc_replies', { timeout: 20000 }, async t => {
   const f = await fixture(t), c = await f.ready();
   f.send(1, 'model/list');

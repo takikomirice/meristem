@@ -10,16 +10,25 @@ const sha256 = file => createHash('sha256').update(readFileSync(file)).digest('h
 test('VSIX includes license and notices, excludes private state, and never overwrites an artifact', () => {
   mkdirSync('.local', { recursive: true });
   const output = path.join(mkdtempSync(path.resolve('.local/package-test-')), 'license package.vsix');
-  const args = ['-NoProfile', '-File', 'scripts/package-extension.ps1', '-OutputPath', output];
+  const license = path.join(path.dirname(output), 'license.txt'), sums = path.join(path.dirname(output), 'sums.txt');
+  writeFileSync(license, 'Test-only Node notice');
+  writeFileSync(sums, sha256(process.execPath) + '  win-x64/node.exe\n');
+  const args = ['-NoProfile', '-File', 'scripts/package-extension.ps1', '-OutputPath', output, '-NodeExe', process.execPath, '-NodeLicensePath', license, '-NodeChecksumsPath', sums];
   const packed = spawnSync('powershell.exe', args, { encoding: 'utf8', windowsHide: true });
   assert.equal(packed.status, 0, packed.stderr + packed.stdout);
-  const inspect = spawnSync('powershell.exe', ['-NoProfile', '-Command', `
+  const inspect = spawnSync('powershell.exe', ['-NoProfile', '-Command', String.raw`
     [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false)
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $zip = [IO.Compression.ZipFile]::OpenRead($env:MERISTEM_TEST_VSIX)
     try {
       $files = @{}
       foreach ($entry in $zip.Entries) {
+        if ($entry.FullName.StartsWith('extension/runtime/')) {
+          $relative = $entry.FullName.Substring('extension/runtime/'.Length)
+          if ($relative -notmatch '^(node_modules/|dist/src/[^/]+\.js$|migrations/[^/]+\.sql$|node/(node\.exe|LICENSE\.txt)$|\.local/chat-control-build/(CodexRelay|CodexWorkerHost|MeristemControl)\.exe$|package(-lock)?\.json$|LICENSE$|THIRD_PARTY_NOTICES\.md$)' -or $relative -match '(^|/)(auth\.json|discovery\.json|control\.sqlite|debug\.log|\.git)(/|$)') { throw 'Unexpected runtime entry' }
+          if ($entry.FullName -match '^extension/runtime/(node/node.exe|dist/src/cli.js|migrations/[^/]+|\.local/chat-control-build/[^/]+|node/LICENSE.txt)$') { $files[$entry.FullName] = $entry.Length }
+          continue
+        }
         $reader = New-Object IO.StreamReader($entry.Open())
         try { $files[$entry.FullName] = $reader.ReadToEnd() } finally { $reader.Dispose() }
       }
@@ -37,7 +46,10 @@ test('VSIX includes license and notices, excludes private state, and never overw
   assert.match(files['extension.vsixmanifest'], /Type="Microsoft\.VisualStudio\.Services\.Content\.License" Path="extension\/LICENSE\.txt"/);
   assert.match(files['[Content_Types].xml'], /Extension="txt" ContentType="text\/plain"/);
   assert.match(files['[Content_Types].xml'], /Extension="md" ContentType="text\/markdown"/);
-  for (const entry of Object.keys(files)) {
+  for (const name of ['node/node.exe', 'dist/src/cli.js', '.local/chat-control-build/MeristemControl.exe', 'node/LICENSE.txt']) {
+    assert.ok(files['extension/runtime/' + name] > 0, name);
+  }
+  for (const entry of Object.keys(files).filter(key => !key.startsWith('extension/runtime/'))) {
     assert.match(entry, /^(?:extension\.vsixmanifest|\[Content_Types\]\.xml|extension\/(?:package\.json|LICENSE\.txt|THIRD_PARTY_NOTICES\.md|dist\/src\/[^/]+\.js))$/);
   }
   const bytes = readFileSync(output);

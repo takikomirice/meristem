@@ -12,6 +12,10 @@ Keep the standard Codex extension as the Coordinator and monitor Workers in VS C
 
 ## Features
 
+Meristem loads on demand when you select one of its commands. To use the v0.3.0 development extension, right-click a version 2 Markdown plan in Explorer and select **「Meristem: このウィンドウで新しい Codex 親チャットを開く」** to open a new official Codex Coordinator in the integrated terminal. The confirmation shows the tasks, number of concurrent Workers and file permissions. The Meristem progress item in the status bar opens usage, approval requests and stop controls.
+
+An existing sidebar conversation can serve as Coordinator in a window with a prepared Meristem control connection. In both modes, continue from the Coordinator after reviewing Worker reports. [P4 field results (Japanese)](docs/superpowers/plans/2026-11-19-meristem-v030.md#p4通常-vs-code-で使う)
+
 MC-01 adds database schema 6 and persistence contracts for decisions, task holds, parallelism approvals, and plan revisions. Plan version 2 accepts `run.execution_limits` (`maxWakeTurns`, `maxCorrectionsPerTask`), task `display_name`, and `agent.permissionProfileId`. MC-05 connects execution limits. Omitted/null means unlimited, and positive integers impose finite budgets. Display names contain 1–128 characters after trimming. Version 1 also accepts limits through the dedicated config's `executionLimits`. Human resolution requires a trusted adapter that binds the response to its form and answer. Restart invalidates old forms.
 
 MC-03/04 connect the MCP consultation inbox and human choice forms with task holds, execution-slot reuse after confirmed cleanup, and explicit resume. Saving an answer never starts work: the Coordinator checks the plan, answer, Git and stop evidence before assigning a new Worker. See the [operations reference (Japanese)](docs/chat-control-reference.ja.md) for the contract and validation scope. These integration checks use fixtures; they do not establish new live-model or real-UI acceptance.

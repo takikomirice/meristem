@@ -47,7 +47,7 @@ const schemas = {
   get_worker_history: HistorySelection.extend({ runId: Id }).strict(),
   resume_worker_history: HistoryResume,
   answer_request: Operation.extend({ requestKey: z.string().min(1).max(512), answer: z.record(z.string(), z.object({ answers: z.array(z.string().max(8192)).min(1).max(10) }).strict()).optional() }).strict(),
-  start_run: z.object({ planPath: z.string().min(1).max(4096), operationId: Id }).strict(),
+  start_run: z.object({ planPath: z.string().min(1).max(4096).optional(), operationId: Id }).strict(),
   save_worker_changes: Operation.extend({taskId:Id, target:Worker, expectedHead:Sha, message:z.string().trim().min(1).max(2048)}).strict(),
   create_worker: Operation.extend({ taskId: Id }).strict(),
   send_instruction: Operation.extend({ taskId: Id, target: Worker, agent: z.object({ model: ModelId, effort: Id }).strict(), text: z.string().min(1).max(65536) }).strict(),
@@ -255,7 +255,8 @@ export class McpController {
     Actor.parse(identity.actor); Id.parse(identity.turnId);
     if (name === 'start_run') {
       if (!sameActor(identity.actor, this.parent)) throw new Error('only verified parent can request binding');
-      if (realpathSync(args.planPath) !== realpathSync(this.scope.planPath)) throw new Error('plan outside fixture scope');
+      const requestedPlan = args.planPath ?? (this.parentSessionId && this.scope.planPath);
+      if (!requestedPlan || realpathSync.native(requestedPlan) !== realpathSync.native(this.scope.planPath)) throw new Error('plan outside fixture scope');
       const { scopeHash, scope: scopeRecord } = this.startPreview();
       let binding = this.store.binding(this.runId);
       const routing = scopeRecord.modelRouting;
@@ -434,10 +435,14 @@ export class McpController {
       if (this.scope.maxInstructions !== undefined) this.store.reserveInstruction(ref, this.scope.maxInstructions);
       return this.broker.dispatch({ kind: 'send', ref, worker: args.target, text: args.text, agent: args.agent });
     }
+    const requestToAnswer = name === 'answer_request' ? this.runtime.pendingRequests?.().find(item => item.key === args.requestKey) : undefined;
+    // A suggested response from the model must never become a human decision.
+    // Present the original pending form, without selecting any response for the user.
+    if (requestToAnswer && requestToAnswer.kind !== 'question' && requestToAnswer.state === 'pending' && this.runtime.presentRequest) delete args.answer;
     // Presenting human consent must not invalidate the revision of the suspended tool call.
     const prepared = this.store.prepareOperation(ref, hash({ name, args, actor: identity.actor }), !(name === 'answer_request' && args.answer === undefined));
     if (!prepared.fresh) return prepared.operation.result ? JSON.parse(prepared.operation.result) : { state: prepared.operation.state };
-    const humanRequest = name === 'answer_request' && args.answer === undefined ? this.runtime.pendingRequests?.().find(r => r.key === args.requestKey) : undefined;
+    const humanRequest = args.answer === undefined ? requestToAnswer : undefined;
     if (!['stop_run', 'stop_worker', 'retire_worker', 'resume_run', 'report'].includes(name) && !this.broker.canWake(this.runId) && !(humanRequest && this.broker.canReviewRequest(this.runId, humanRequest))) {
       this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('run is stopped');
     }
@@ -541,7 +546,7 @@ export class McpController {
         await this.broker.stopRun(this.runId, 'creation_failed'); if (started) await this.runtime.stop(started, 'registration_failed'); throw error;
       }
     } else if (name === 'answer_request') {
-      const item = this.runtime.pendingRequests?.().find(r => r.key === args.requestKey);
+      const item = requestToAnswer;
       if (!item) throw new Error('unknown request');
       if (item.kind !== 'question') {
         if (args.answer !== undefined) throw new Error('model cannot supply human approval');
@@ -598,7 +603,8 @@ export class McpController {
 export function createMcpServer(invoke: (name: string, args: unknown, metadata: unknown) => Promise<any>, humanResponse?: (ref: HumanRequest, action: HumanAction, metadata: unknown) => Promise<unknown>, humanDecisionResponse?: (ref: HumanDecisionRef, answer: DecisionAnswer, metadata: unknown) => Promise<unknown>): McpServer {
   const server = new McpServer({ name: 'meristem-chat-control', version: '0.0.0' });
   for (const [name, schema] of Object.entries(schemas)) server.registerTool(name, {
-    description: name === 'save_worker_changes' ? 'Coordinator only. Commit and push the assigned Worker worktree to its approved branch and destination. Use the exact current target and Git HEAD. No shell command or metadata write access is granted.' : name === 'hold_task' ? 'Park a task for a blocking consultation or plan change. Use replacesDecisionId to replace a stale hold reason. Parent only.'
+    description: name === 'start_run' ? 'Start the selected plan. In a managed parent conversation omit planPath to use the plan selected by the user.' : name === 'answer_request' ? 'For a pending Worker approval, call with requestKey and omit answer to show the human a confirmation in this Codex chat. Only a Worker question takes an answer from the Coordinator.'
+      : name === 'save_worker_changes' ? 'Coordinator only. Commit and push the assigned Worker worktree to its approved branch and destination. Use the exact current target and Git HEAD. No shell command or metadata write access is granted.' : name === 'hold_task' ? 'Park a task for a blocking consultation or plan change. Use replacesDecisionId to replace a stale hold reason. Parent only.'
       : name === 'resume_task' ? 'Validate hold resolutions, applied plan changes and Git, then prepare a task for explicit create_worker and send_instruction. Parent only.'
       : name === 'get_worker_history' ? 'Read a page of official Codex history for a saved attempt. Select the exact WorkerRef from get_status. Parent only.'
       : name === 'resume_worker_history' ? 'Reconcile one stopped attempt against Codex, Git and delivery records and prepare a fresh-thread handoff. Afterwards explicitly create_worker and send_instruction. Parent only.'

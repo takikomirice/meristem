@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -134,7 +134,7 @@ test('read-only worker checks the complete MCP inventory at startup and before e
   for (const bad of [mixed, { data: [server], nextCursor: 'more' }, { data: [server] },
     starting, { data: [{ ...server, pluginId: 'other' }], nextCursor: null }]) {
     writeFileSync(inventoryFile, JSON.stringify(bad));
-    await assert.rejects(runtime.start(assignment), /read-only MCP inventory/);
+    await assert.rejects(runtime.start(assignment), /MCP inventory/);
   }
   writeFileSync(inventoryFile, JSON.stringify(starting));
   writeFileSync(nextInventory, JSON.stringify(connected));
@@ -145,6 +145,34 @@ test('read-only worker checks the complete MCP inventory at startup and before e
     await assert.rejects(runtime.send(worker, 'fixture-start-marker'), error => error instanceof RequestFailure && error.delivery === 'not_sent');
   }
   assert.equal(existsSync(path.join(cwd, 'worker.marker')), false);
+});
+
+test('managed workers use the subscription and expose only their own tools alongside ordinary profile servers', { timeout: 30000 }, async t => {
+  const state = mkdtempSync(path.join(tmpdir(), 'managed-profile-')), cwd = mkdtempSync(path.join(tmpdir(),'managed-profile-worker-'));
+  const entryPoint = path.resolve('dist/src/mcp.js');
+  const runtime = new WorkerRuntime({stateDirectory:state, hostExe, hostSha256:sha(hostExe), realExe, realSha256:sha(realExe),
+    managedProfile:true, authHome:state, fixture:true, mcp:{pipeName:'meristem-test',entryPoint,entrySha256:sha(entryPoint)}});
+  const assignment = {cwd,workerId:'A',model:'mock',effort:'low'};
+  const profile = path.join(cwd,'ordinary-profile.json'), inventory = path.join(cwd,'review-mcp-inventory.json');
+  const ordinary = {mcp_servers:{external:{},meristem:{env:{EXAMPLE:'from user settings'}}}};
+  const external = {name:'external',runtimeStatus:'disabled',tools:{}};
+  const local = {name:'meristem_2',runtimeStatus:'connected',httpOrigin:null,pluginId:null,toolsError:null,tools:{start_run:{},report:{}}};
+  writeFileSync(profile,JSON.stringify({...ordinary,openai_base_url:'https://alternate.invalid'}));
+  await assert.rejects(runtime.start(assignment),/認証先/);
+  writeFileSync(profile,JSON.stringify(ordinary));
+  writeFileSync(inventory,JSON.stringify({data:[external,{...external,name:'meristem'},local],nextCursor:null}));
+  const worker = await runtime.start(assignment);
+  t.after(()=>runtime.stop(worker,'test_cleanup'));
+  const effective = JSON.parse(readFileSync(path.join(cwd,'observed-worker-config.json'),'utf8'));
+  assert.equal(effective['mcp_servers.external.enabled'],false);
+  assert.equal(effective['mcp_servers.meristem.enabled'],false);
+  assert.deepEqual(effective['mcp_servers.meristem_2'],{command:process.execPath,args:[entryPoint,'--pipe','meristem-test']});
+  writeFileSync(path.join(cwd,'ordinary-api-key'),'');
+  await assert.rejects(runtime.send(worker,'fixture-start-marker'),error=>error instanceof RequestFailure && error.delivery==='not_sent');
+  unlinkSync(path.join(cwd,'ordinary-api-key'));
+  writeFileSync(inventory,JSON.stringify({data:[{...external,runtimeStatus:'connected'},local],nextCursor:null}));
+  await assert.rejects(runtime.send(worker,'fixture-start-marker'),error=>error instanceof RequestFailure && error.delivery==='not_sent');
+  assert.equal(existsSync(path.join(cwd,'worker.marker')),false);
 });
 
 test('questions from a fifth worker remain visible and answerable', { timeout: 30000 }, async t => {

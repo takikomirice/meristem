@@ -24,6 +24,8 @@ internal sealed class StdioRelay
     private readonly Dictionary<string,Pending> pending=new Dictionary<string,Pending>();
     private readonly Dictionary<string,UiCall> uiCalls=new Dictionary<string,UiCall>();
     private readonly HashSet<string> uiIds=new HashSet<string>();
+    private string terminalThread;
+    private bool terminalThreadChanged;
     private readonly HashSet<string> observed=new HashSet<string>(), registered=new HashSet<string>();
     private readonly Dictionary<string,string> active=new Dictionary<string,string>();
     private readonly Dictionary<string,string> completedTurns=new Dictionary<string,string>();
@@ -73,6 +75,19 @@ internal sealed class StdioRelay
             if (allowed == null) return false;
             foreach (var value in allowed) if (value is string && String.Equals(Path.GetFullPath(cwd).TrimEnd('\\'), Path.GetFullPath((string)value).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return true;
         } catch {}
+        return false;
+    }
+    private bool ObservedCwdAllowed(string cwd) {
+        if (cwd == null || !cwd.StartsWith(@"\\?\", StringComparison.Ordinal)) return CwdAllowed(cwd);
+        // Codex reports persisted local workspaces using the Win32 extended drive path.
+        // Compare the literal path to a configured root before applying any normalization.
+        var roots = config["allowedCwds"] as IEnumerable;
+        if (roots == null) return false;
+        foreach (var value in roots) {
+            var root = value as string;
+            if (root == null || !System.Text.RegularExpressions.Regex.IsMatch(root, @"^[A-Za-z]:[\\/]")) continue;
+            if (String.Equals(cwd.TrimEnd('\\'), (@"\\?\" + Path.GetFullPath(root)).TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) return true;
+        }
         return false;
     }
     private void Validate(string method, Dictionary<string,object> p) {
@@ -128,6 +143,13 @@ internal sealed class StdioRelay
         object id;
         if (call == null || !call.TryGetValue("id", out id) || !(id is string || id is int || id is long)) return Error(null,"scalar id required");
         string method=Program.Text(call,"method");
+        var host=Program.Map(config,"controlHost");
+        if (host!=null && host.ContainsKey("ideTerminal") && Object.Equals(host["ideTerminal"],true)) {
+            bool broker=caller!=null && VerifyWakePeer!=null && VerifyWakePeer(caller);
+            if (!broker || (method!="relay/status" && method!="relay/owns-peer" && method!="relay/verify-peer"
+                && method!="relay/usage-context" && method!="account/read" && method!="account/rateLimits/read"))
+                return Error(id,"managed terminal requires the bound broker");
+        }
         bool usageRead=method=="relay/usage-context"||method=="account/rateLimits/read";
         if(usageRead||(method!=null&&method.StartsWith("relay/wake",StringComparison.Ordinal)&&Program.Map(config,"controlHost")!=null)) {
             bool verified=caller!=null&&VerifyWakePeer!=null&&VerifyWakePeer(caller);
@@ -158,6 +180,7 @@ internal sealed class StdioRelay
                 bool owned=false,verified=false,launcher=false;
                 try { using(var peer=Process.GetProcessById(Convert.ToInt32(p["peerPid"]))) {var handle=peer.Handle;verified=LocalPipe.Created(peer)==Program.Text(p,"peerCreated");owned=verified&&child.Contains(handle);launcher=verified&&!owned&&method=="relay/owns-peer"&&McpPeer.IsLauncher(peer);} } catch {}
                 if(method=="relay/owns-peer") return new {id=id,result=new {owned=owned,verified=verified,launcher=launcher}};
+                if(host!=null && host.ContainsKey("ideTerminal") && Object.Equals(host["ideTerminal"],true) && (terminalThreadChanged || terminalThread!=thread)) return Error(id,"terminal conversation changed");
                 if(!enabled||closed||!owned||!McpPeer.Verify(child,Convert.ToInt32(p["peerPid"]),Program.Text(p,"peerCreated"),mcpPins)||control==null||(Program.Text(control,"parentMode")=="verified-start" ? thread==null||!observed.Contains(thread) : thread!=Program.Text(control,"parentThreadId"))||turn=="ui-pending"||!active.ContainsKey(thread)||active[thread]!=turn)return Error(id,"caller identity not verified");
                 return new {id=id,result=new {actor=new {ownerId=owner,ownerEpoch=epoch,threadId=thread},turnId=turn,peer=new {pid=p["peerPid"],created=p["peerCreated"]}}};
             }
@@ -167,7 +190,7 @@ internal sealed class StdioRelay
                 managementEnabled=enabled && !closed, disabledReason=reason, initialized=initialized,
                 initializeCapabilities=capabilities, jobAssigned=child.Assigned, ownedPid=child.Pid, jobProcessIds=child.ProcessIds(),
                 pipeAcl=Pipe == null ? null : Pipe.ActualAcl,
-                observedThreads=new List<string>(observed), registeredThreads=new List<string>(registered),
+                terminalThreadId=terminalThreadChanged ? null : terminalThread, observedThreads=new List<string>(observed), registeredThreads=new List<string>(registered),
                 controlHost=ControlStatus==null?null:ControlStatus(), wakePeerAccepted=wakePeerAccepted, wakePeerRejected=wakePeerRejected,
                 wakeGate=new {partialUiInput=uiPartial,pendingManagementCount=pending.Count,pendingUiCount=uiCalls.Count,pendingUiMethods=PendingUiMethods(),blockedThreads=new List<string>(wakeBlocked),unsupportedThreads=new List<string>(wakeUnsupported)},
                 activeTurns=new Dictionary<string,string>(active), lastEventSeq=eventSeq, events=events.ToArray()
@@ -272,7 +295,13 @@ internal sealed class StdioRelay
         }
         if (method == "thread/start" || method == "thread/resume" || method == "thread/read") {
             var t=Program.Map(result,"thread"); string id=Program.Text(t,"id"); object parent;
-            if (id != null && CwdAllowed(Program.Text(t,"cwd") ?? Program.Text(result,"cwd")) && (!t.TryGetValue("parentThreadId",out parent) || parent == null)) {
+            if (!managed && (method == "thread/start" || method == "thread/resume") && id != null) {
+                bool valid = ObservedCwdAllowed(Program.Text(t, "cwd") ?? Program.Text(result, "cwd")) &&
+                    (!t.TryGetValue("parentThreadId", out parent) || parent == null);
+                if (!valid || (terminalThread == null && method != "thread/start") || (terminalThread != null && terminalThread != id)) terminalThreadChanged = true;
+                else terminalThread = id;
+            }
+            if (id != null && ObservedCwdAllowed(Program.Text(t,"cwd") ?? Program.Text(result,"cwd")) && (!t.TryGetValue("parentThreadId",out parent) || parent == null)) {
                 observed.Add(id); if (managed && method == "thread/start") registered.Add(id);
                 Event(method,id,null,Program.Text(Program.Map(t,"status"),"type"));
             }
