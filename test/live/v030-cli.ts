@@ -53,13 +53,12 @@ if (values.session) {
     const inspect = spawnSync(shell, ['-NoProfile', '-NonInteractive', '-Command',
       `$helper = @(Get-CimInstance Win32_Process -Filter "ParentProcessId=${process.pid} AND Name='MeristemTerminal.exe'");` +
       'if ($helper.Count -ne 1) { exit 1 };' +
-      '$tui = @(Get-CimInstance Win32_Process -Filter ("ParentProcessId=" + $helper[0].ProcessId));' +
+      '$tui = @(Get-CimInstance Win32_Process -Filter ("ParentProcessId=" + $helper[0].ProcessId) | Where-Object { $_.ExecutablePath -eq $env:MERISTEM_SMOKE_CODEX });' +
       'if ($tui.Count -ne 1) { exit 1 };' +
-      '@{ helper=[int]$helper[0].ProcessId; pid=[int]$tui[0].ProcessId; path=$tui[0].ExecutablePath } | ConvertTo-Json -Compress'
-    ], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
+      '@{ helper=[int]$helper[0].ProcessId; pid=[int]$tui[0].ProcessId } | ConvertTo-Json -Compress'
+    ], { env: { ...process.env, MERISTEM_SMOKE_CODEX: realpathSync(realExe) }, encoding: 'utf8', windowsHide: true, timeout: 10000 });
     assert.equal(inspect.status, 0, '公式TUIの起動元を確認できません。');
     const terminal = JSON.parse(inspect.stdout);
-    assert.equal(path.relative(realExe, terminal.path), '');
     const deadline = Date.now() + 15000;
     do {
       const state = await relayRequest(control.mcp.parentRelay.pipeName, 'relay/status');

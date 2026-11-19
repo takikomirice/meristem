@@ -45,6 +45,17 @@ internal static class Program
             // Windows releases this handle even on forced launcher/relay termination.
             using (var runLock=cli ? new FileStream(self+".lock",FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None) : null)
             using (var child=new ProcessTree(real, serverArgs)) {
+                if (cli) {
+                    System.Diagnostics.Process launcher;
+                    using (var relayProcess=System.Diagnostics.Process.GetCurrentProcess()) launcher=McpPeer.VerifiedParent(relayProcess);
+                    if(launcher==null)throw new InvalidOperationException("CLI launcher unavailable");
+                    Background(delegate {
+                        using(launcher) launcher.WaitForExit();
+                        // Allow the control lease to stop Workers first. A stuck App Server must not
+                        // outlive a force-closed terminal even when its stdio reader is blocked.
+                        Thread.Sleep(20000); child.CloseJob();
+                    });
+                }
                 child.Resume();
                 var stderr=Console.OpenStandardError();
                 var errorThread=Background(delegate { try { child.Error.CopyTo(stderr); stderr.Flush(); } catch (IOException) {} });
