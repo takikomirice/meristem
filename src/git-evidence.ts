@@ -129,7 +129,11 @@ export class GitEvidence {
     };
     check(Sha.parse(expectedHead));
     this.contains(cwd,expectedHead,[assignment.scopeBaseSha,assignment.baseSha]);
-    // Disable repository hook execution for broker-originated writes.
+    const hooks = git(cwd,['rev-parse','--path-format=absolute','--git-path','hooks']);
+    if (['pre-commit','prepare-commit-msg','commit-msg','post-commit','pre-push','post-index-change','reference-transaction']
+        .some(name => existsSync(path.join(hooks,name)))) throw new Error('configured Git hooks require review');
+    if (git(cwd,['config','--type=bool','--default=false','--get','commit.gpgSign']) === 'true') throw new Error('signed commits require review');
+    // Disable hook execution if a worktree hook appears after inspection.
     const options = ['--literal-pathspecs','-c','core.hooksPath=NUL','-c','core.fsmonitor=false'];
     const run = (args: string[], raw = false, input?: string) => git(cwd,[...options,...args],raw,input);
     const range = assignment.scopeBaseSha + '..' + expectedHead;
@@ -179,7 +183,8 @@ export class GitEvidence {
       run(['update-ref',ref,sha,expectedHead]);
     }
     check(sha);
-    const args = ['--no-replace-objects',...options,'-c','push.followTags=false','push','--no-verify','--recurse-submodules=no','--',destination,sha+':'+ref];
+    // Leave the receiving repository's verification settings intact for local pushes.
+    const args = ['--no-replace-objects','-c','push.followTags=false','push','--no-verify','--recurse-submodules=no','--',destination,sha+':'+ref];
     await new Promise<void>((resolve,reject) => execFile('git',args,{cwd,env:gitEnvironment(),windowsHide:true,timeout:30000},error=>error ? reject(new Error('scoped push unconfirmed')) : resolve()));
     check(sha);
     return { candidateSha:sha, branch:target, pushResult:'pushed' };

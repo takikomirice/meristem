@@ -82,7 +82,7 @@ MC-11bを含むビルドまたはZIPで利用できます。公開済みv0.1.0�
 - `prepare.permissionPermit` は既定で `workspace`、工程表の `worktrees_root`、`user` です。選定済みの環境で `auto_review` を使う場合は、`allowedProfileIds: ["workspace"]`、`writableRoots: ["<worktrees_rootの絶対パス>"]`、`allowedReviewers: ["auto_review"]` を明示します。各ワーカーへの書込みは割り当てたworktreeに絞られます。
 - 新しい工程表runでは、`prepare.usagePolicy` に `{ "enabled": true, "threshold": 20, "lowMaximum": 1 }` が既定で入ります。残り20％以下では同時Workerを1人に制限し、0％では新規割当を待ちます。開始前にしきい値（1～99）と人数（正整数）を変更できます。自動制限を無効にしても、公式応答で利用不可と確認した間は待機します。
 - `node dist/src/cli.js usage --run <run ID> --state <状態ディレクトリ>` は親とWorkerの認証先を照合し、モデルターンを使わず最新の窓と実効人数を返します。`status` と親の `get_status` でも確認できます。通常は60秒または次のリセットで再取得します。課金先や残量を確認できない間は、既定で最大1人です。直前の枯渇・利用不可は再確認まで保持します。
-- 通常の保存では、Coordinator が `save_worker_changes` に対象Worker、現在のHEAD、コミットメッセージを指定します。割当範囲の変更をその作業ブランチにコミットし、開始時に確認した送信先へpushします。範囲・ブランチ・送信先を変更する場合は別の許可が必要です。
+- 通常の保存では、Coordinator が `save_worker_changes` に対象Worker、現在のHEAD、コミットメッセージを指定します。割当範囲の変更をその作業ブランチにコミットし、開始時に確認した送信先へpushします。Gitフック・署名・外部フィルターが必要な保存は個別に確認します。範囲・ブランチ・送信先を変更する場合は別の許可が必要です。
 - 状態DBは初回起動で版7に移行します。保存済みの旧runでは従来の人数上限を使います。旧版に戻す場合は、ホスト停止中に保存した移行前の状態ディレクトリを復元してください。
 - `prepare.executionLimits` の `maxWakeTurns` と `maxCorrectionsPerTask` には正整数または `null` を指定できます。省略と `null` は無制限です。工程表の `run.execution_limits` に有限上限があれば、実行時に両方の有限上限のうち厳しい方を適用します。開発runnerの有限の試験予算は従来どおりです。
 - 選定用JSONには `codeExe`、`extensionDirectory`（公式拡張のフォルダー）、`selectedTools` を入れます。`selectedTools` の `codex`、`node`、`code` それぞれに照合済みの `sha256` と `version` を指定します。Codex更新時は対象版の互換性を再検証してから選定を更新します。

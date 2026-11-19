@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { GitEvidence, pinRepository } from '../src/git-evidence.js';
 import { readPlan } from '../src/plan.js';
@@ -55,6 +55,15 @@ test('git_approval_roots_include_only_metadata_and_verified_local_bare_remote', 
   assert.throws(() => evidence.approvalRoots());
 });
 
+test('scoped save respects configured commit and push hooks without executing worktree code', async () => {
+  const f=setup(), a=f.assignment;
+  const hooks=path.join(f.root,'custom-hooks'); mkdirSync(hooks);
+  git(a.cwd,'config','core.hooksPath',hooks);
+  writeFileSync(path.join(hooks,'pre-commit'),'exit 1');
+  writeFileSync(path.join(a.cwd,'a.txt'),'new content');
+  await assert.rejects(f.evidence.saveWorkerChanges(a,f.candidate,'save',()=>{}),/hooks require review/);
+  assert.equal(git(a.cwd,'rev-parse','HEAD'),f.candidate);
+});
 test('scoped push checks intermediate history even after an outside file was removed', async () => {
   const f = setup(), a = f.assignment;
   commitFile(a.cwd,'unassigned.txt','private change');
