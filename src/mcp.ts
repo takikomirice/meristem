@@ -47,7 +47,7 @@ const schemas = {
   get_worker_history: HistorySelection.extend({ runId: Id }).strict(),
   resume_worker_history: HistoryResume,
   answer_request: Operation.extend({ requestKey: z.string().min(1).max(512), answer: z.record(z.string(), z.object({ answers: z.array(z.string().max(8192)).min(1).max(10) }).strict()).optional() }).strict(),
-  start_run: z.object({ planPath: z.string().min(1).max(4096), operationId: Id }).strict(),
+  start_run: z.object({ planPath: z.string().min(1).max(4096).optional(), operationId: Id }).strict(),
   save_worker_changes: Operation.extend({taskId:Id, target:Worker, expectedHead:Sha, message:z.string().trim().min(1).max(2048)}).strict(),
   create_worker: Operation.extend({ taskId: Id }).strict(),
   send_instruction: Operation.extend({ taskId: Id, target: Worker, agent: z.object({ model: ModelId, effort: Id }).strict(), text: z.string().min(1).max(65536) }).strict(),
@@ -76,17 +76,8 @@ export class McpController {
   async humanResponse(input: unknown, identity: CallerIdentity): Promise<unknown> {
     if (input && typeof input === 'object' && Object.hasOwn(input, 'decision')) {
       const args = z.object({ decision: HumanDecisionRef, answer: DecisionAnswer }).strict().parse(input);
-      const binding = this.store.binding(this.runId);
-      if (!sameActor(identity.actor, this.parent) || !this.broker.canWake(this.runId) || binding?.state !== 'consumed' || binding.scope_hash !== this.scopeHash()) throw new Error('human response binding rejected');
-      this.plan?.assertCurrent();
-      // Only this non-tool, native-authenticated callback can mint the opaque
-      // context. Serialized flags and coordinator tool arguments cannot do so.
-      const context = {};
-      let expectedRevision = this.store.run(this.runId).revision;
-      try { expectedRevision = this.store.operation(args.decision.formGeneration).expected_revision; } catch { /* first response */ }
-      const service = new DecisionService(this.store, () => { throw new Error('coordinator endpoint required'); }, verified => verified === context ? { runId: this.runId, operationId: args.decision.formGeneration, expectedRevision } : undefined);
-      const result = service.resolveHuman(args.decision, args.answer, context);
-      return { state: result.state, decisionId: result.id };
+      if (!sameActor(identity.actor, this.parent)) throw new Error('human response binding rejected');
+      return this.resolveControlDecision(args.decision, args.answer);
     }
     const args = z.object({ worker: Worker, key: z.string().max(512), payloadHash: z.string().regex(/^[a-f0-9]{64}$/), formGeneration: Id, action: z.enum(['accept', 'decline', 'cancel']) }).strict().parse(input);
     const item = this.runtime.pendingRequests?.().find(r => r.key === args.key);
@@ -96,6 +87,28 @@ export class McpController {
     this.store.auditHumanRequest(this.runId, { ...item, payloadHash: args.payloadHash, formGeneration: args.formGeneration }, 'response_received', 'parent_mcp', args.action);
     await this.runtime.answerRequest(args.worker, { ...item, payloadHash: args.payloadHash, formGeneration: args.formGeneration }, args.action, current);
     return { state: 'response_sent' };
+  }
+  assertControlScope() {
+    const binding = this.store.binding(this.runId);
+    if (!this.broker.canWake(this.runId) || binding?.state !== 'consumed' || binding.scope_hash !== this.scopeHash()) throw new Error('human response binding rejected');
+    this.plan?.assertCurrent();
+  }
+  presentControlDecision(decisionId: string) {
+    this.assertControlScope();
+    const ref = { runId: this.runId, operationId: randomUUID(), expectedRevision: this.store.run(this.runId).revision };
+    const service = new DecisionService(this.store, () => this.assertControlScope(), () => undefined);
+    const form = service.present(ref, decisionId);
+    return { form, decision: this.store.coordinationDecision(this.runId, decisionId)!.decision };
+  }
+  // Both callers verify the human input channel before entering this non-tool endpoint.
+  resolveControlDecision(input: unknown, answer: unknown) {
+    this.assertControlScope();
+    const form = HumanDecisionRef.parse(input), context = {};
+    let expectedRevision = this.store.run(this.runId).revision;
+    try { expectedRevision = this.store.operation(form.formGeneration).expected_revision; } catch { /* first response */ }
+    const service = new DecisionService(this.store, () => { throw new Error('coordinator endpoint required'); }, verified => verified === context ? { runId: this.runId, operationId: form.formGeneration, expectedRevision } : undefined);
+    const result = service.resolveHuman(form, DecisionAnswer.parse(answer), context);
+    return { state: result.state, decisionId: result.id };
   }
   private scopeHash(): string {
     return this.diagnoseScope().scopeHash;
@@ -255,7 +268,8 @@ export class McpController {
     Actor.parse(identity.actor); Id.parse(identity.turnId);
     if (name === 'start_run') {
       if (!sameActor(identity.actor, this.parent)) throw new Error('only verified parent can request binding');
-      if (realpathSync(args.planPath) !== realpathSync(this.scope.planPath)) throw new Error('plan outside fixture scope');
+      const planPath = args.planPath ?? (this.parentSessionId && this.scope.parentSessionKind === 'cli' ? this.scope.planPath : undefined);
+      if (!planPath || realpathSync(planPath) !== realpathSync(this.scope.planPath)) throw new Error('plan outside fixture scope');
       const { scopeHash, scope: scopeRecord } = this.startPreview();
       let binding = this.store.binding(this.runId);
       const routing = scopeRecord.modelRouting;

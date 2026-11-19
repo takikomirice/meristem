@@ -9,6 +9,7 @@ These versions and license identifiers come from `package-lock.json` and the ins
 | Package | Version | License | Installed license file | Upstream |
 |---|---|---|---|---|
 | `@modelcontextprotocol/sdk` | 1.32.2 | MIT | `node_modules/@modelcontextprotocol/sdk/LICENSE` | [TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) |
+| `ws` | 8.23.0 | MIT | `node_modules/ws/LICENSE` | [ws](https://github.com/websockets/ws) |
 | `yaml` | 2.8.2 | ISC | `node_modules/yaml/LICENSE` | [yaml](https://github.com/eemeli/yaml) |
 | `zod` | 4.6.7 | MIT | `node_modules/zod/LICENSE` | [Zod](https://github.com/colinhacks/zod) |
 
@@ -19,6 +20,7 @@ These versions and license identifiers come from `package-lock.json` and the ins
 | `typescript` | 5.9.3 | Apache-2.0 | `node_modules/typescript/LICENSE.txt`, `node_modules/typescript/ThirdPartyNoticeText.txt` | [TypeScript](https://github.com/microsoft/TypeScript) |
 | `@types/node` | 24.19.2 | MIT | `node_modules/@types/node/LICENSE` | [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) |
 | `@types/vscode` | 1.95.0 | MIT | `node_modules/@types/vscode/LICENSE` | [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/vscode) |
+| `@types/ws` | 8.18.2 | MIT | `node_modules/@types/ws/LICENSE` | [DefinitelyTyped](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ws) |
 
 ## Transitive dependencies and distribution
 

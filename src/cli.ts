@@ -66,6 +66,7 @@ export async function serve(configPath: string): Promise<void> {
   let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId, config.mcp?.scope.plan ? UsagePolicy.parse(config.usagePolicy ?? {}) : undefined); }
   let mcp: McpController | undefined;
   let sessionServerPid: number | undefined;
+  let sessionLauncherEndpoint = false;
   let relayOwner: Pick<ActorRef, 'ownerId' | 'ownerEpoch'> | undefined;
   let boundActor: ActorRef | undefined;
   let leasedPeer: string | undefined, leaseId: string | undefined, controllerLease: string | undefined;
@@ -86,7 +87,10 @@ export async function serve(configPath: string): Promise<void> {
     let parent;
     for (let i = 0; i < 30; i++) { try { parent = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status'); break; } catch { await delay(100); } }
     if (!parent?.managementEnabled) throw new Error('verified parent owner unavailable');
-    if (dynamic) sessionServerPid = z.number().int().positive().parse(parent.ownedPid);
+    if (dynamic) {
+      sessionServerPid = z.number().int().positive().parse(parent.ownedPid);
+      sessionLauncherEndpoint = parent.cliTransport === 'launcher-websocket';
+    }
     relayOwner = { ownerId: Id.parse(parent.ownerId), ownerEpoch: Id.parse(parent.ownerEpoch) };
     if (fixedThread) {
       boundActor = { ...relayOwner, threadId: fixedThread };
@@ -177,6 +181,12 @@ export async function serve(configPath: string): Promise<void> {
     if (leasedPeer && store.binding(config.runId)?.state === 'consumed') void wake!.monitor(config.runId).catch(() => { void broker.stopRun(config.runId, 'wake_monitor_failed'); });
   }, 500);
   const snapshot = (offset = 0, attemptId?: string, registrationOnly = false) => store.terminalSnapshot(config.runId, offset, attemptId, { registrationOnly, telemetry: worker => runtime.terminalTelemetry(worker) });
+  function disconnectOwner() {
+    // A clean CLI shutdown already fenced delivery and collected every Worker exit.
+    if (relayConfig && 'mode' in relayConfig && relayConfig.sessionKind === 'cli' && store.run(config.runId).state === 'stopped'
+      && store.attempts(config.runId).every(row => row.state === 'stopped' || row.state === 'completed')) return;
+    return broker.leaseLost(config.runId);
+  }
   async function handle(envelope: any): Promise<unknown> {
     if (envelope.internalMethod === 'parent_stop' && (!dynamic || boundActor && envelope.request?.threadId === boundActor.threadId)) return { ok: true, results: await broker.stopRun(config.runId, 'parent_ui_stop') };
     const request = envelope.request;
@@ -203,17 +213,25 @@ export async function serve(configPath: string): Promise<void> {
     }
     if (!request || request.runId !== config.runId || request.ownerId !== discovery.ownerId || request.ownerEpoch !== discovery.ownerEpoch || !tokenMatches(request.token, discovery.token) || envelope.peer?.inBrokerJob !== false) return { ok: false, error: 'binding_rejected' };
     const peerKey = `${envelope.peer.pid}:${envelope.peer.created}`;
+    const cliSession = relayConfig && 'mode' in relayConfig && relayConfig.sessionKind === 'cli';
+    const currentLease = () => !!leaseId && leasedPeer === peerKey && request.leaseId === leaseId && request.windowBindingId === discovery.windowBindingId;
+    if (cliSession && ['close_terminal', 'retire_worker', 'rename_worker', 'resume_worker_history'].includes(request.method)) throw new Error('VS Code terminal control is unavailable for CLI runs');
     if (envelope.internalMethod === 'lease_lost') {
-      if (leasedPeer === peerKey) { leasedPeer = undefined; leaseId = undefined; await broker.leaseLost(config.runId); }
+      if (leasedPeer === peerKey) { leasedPeer = undefined; leaseId = undefined; await disconnectOwner(); }
       return { ok: true };
     }
     if (dynamic && config.mcp && ['lease', 'stop', 'preview_parent_start', 'start_parent', 'resume_parent'].includes(request.method)) {
       const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('human control peer required');
       if (request.method !== 'stop' && ownership.launcher !== true) throw new Error('start must come from the UI that owns the relay');
+      if (cliSession && request.method === 'stop' && (!currentLease() || ownership.launcher !== true)) throw new Error('current CLI session required');
     }
     if (dynamic && config.mcp && ['preview_parent_start', 'start_parent', 'resume_parent'].includes(request.method)) {
       const actor = Actor.parse(request.parent);
+      if (cliSession && sessionLauncherEndpoint) {
+        const firstCaller = store.binding(config.runId);
+        if (!firstCaller || Actor.parse(JSON.parse(firstCaller.parent)).threadId !== actor.threadId) throw new Error('await the first verified CLI start request');
+      }
       const status = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status');
       if (leasedPeer !== peerKey || !leaseId || request.leaseId !== leaseId || request.windowBindingId !== discovery.windowBindingId
         || !status.managementEnabled || status.ownerId !== actor.ownerId || status.ownerEpoch !== actor.ownerEpoch
@@ -229,7 +247,7 @@ export async function serve(configPath: string): Promise<void> {
     }
     if (request.method === 'lease') {
       if (relayConfig && 'mode' in relayConfig && request.sessionKind !== (relayConfig.sessionKind ?? 'vscode')) throw new Error('wrong control session');
-      if (envelope.internalMethod === 'terminal_server') return dynamic && request.sessionKind === 'cli' ? { ok: true, sessionServerPid } : { ok: false };
+      if (envelope.internalMethod === 'terminal_server') return dynamic && request.sessionKind === 'cli' ? { ok: true, sessionServerPid, sessionLauncherEndpoint } : { ok: false };
       if (request.windowBindingId !== discovery.windowBindingId || leasedPeer) return { ok: false, error: 'window_already_bound' };
       leasedPeer = peerKey;
       leaseId = randomUUID();
@@ -262,10 +280,21 @@ export async function serve(configPath: string): Promise<void> {
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('verified human peer required');
       return { ok: true, result: await mcp.prepareHistoryResume(HistoryResume.parse(request.resume), hasWindow) };
     }
+    if (['present_decision', 'answer_decision'].includes(request.method)) {
+      if (!cliSession || !config.mcp || !mcp || !currentLease() || controllerLease !== leaseId) throw new Error('current CLI owner required');
+      const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
+      if (!currentLease() || controllerLease !== leaseId || ownership.verified !== true || ownership.owned !== false || ownership.launcher !== true) throw new Error('human CLI control required');
+      if (request.method === 'present_decision') return { ok: true, ...mcp.presentControlDecision(Id.parse(request.decisionId)) };
+      return { ok: true, ...mcp.resolveControlDecision(request.form, request.answer) };
+    }
     if ((request.method === 'requests' || request.method === 'answer_request') && mcp && config.mcp) {
       if (leasedPeer !== peerKey || request.windowBindingId !== discovery.windowBindingId) throw new Error('human window lease required');
       const ownership = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/owns-peer', { peerPid: envelope.peer.pid, peerCreated: envelope.peer.created });
       if (ownership.verified !== true || ownership.owned !== false) throw new Error('model cannot answer human request');
+      if (cliSession) {
+        if (!currentLease() || controllerLease !== leaseId || ownership.launcher !== true) throw new Error('current CLI owner required');
+        mcp.assertControlScope();
+      }
       if (request.method === 'requests') {
         const offset = z.number().int().nonnegative().parse(request.requestOffset ?? 0), items = runtime.pendingRequests();
         const requests = [];
@@ -339,10 +368,15 @@ export async function serve(configPath: string): Promise<void> {
       }).catch(error => process.stdout.write(JSON.stringify({ id: envelope.id, result: { ok: false, error: error instanceof RevisionConflict ? 'stale_revision' : 'control_rejected' } }) + '\n'));
     }
   });
-  const close = async () => { if (closing) return; closing = true; usageClosing = true; if (usageTimer) clearInterval(usageTimer); if (wakeTimer) clearInterval(wakeTimer); await broker.leaseLost(config.runId); store.close(); };
+  const close = async () => { if (closing) return; closing = true; usageClosing = true; if (usageTimer) clearInterval(usageTimer); if (wakeTimer) clearInterval(wakeTimer); await disconnectOwner(); store.close(); };
   process.stdin.once('end', () => { void close(); });
 }
 export async function main(args: string[]): Promise<void> {
+  if (args[0] === 'terminal') {
+    const { terminalMain } = await import('./cli-parent.js');
+    await terminalMain(args.slice(1));
+    return;
+  }
   const option = (name: string) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
   if (args[0] === 'routing-summary') {
     const { values } = parseArgs({ args: args.slice(1), options: { state: { type: 'string', multiple: true }, out: { type: 'string' } } });
@@ -418,4 +452,7 @@ export async function main(args: string[]): Promise<void> {
     } finally { db.close(); }
   }
 }
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).catch(() => { console.error('control command failed; inspect local state and reconcile'); process.exitCode = 1; });
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2)).catch(error => {
+  console.error(process.argv[2] === 'terminal' && error instanceof Error ? terminalText(error.message, 1000) : 'control command failed; inspect local state and reconcile');
+  process.exitCode = 1;
+});

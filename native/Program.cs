@@ -27,7 +27,24 @@ internal static class Program
             if (String.Equals(real, self, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("recursive real exe binding");
             bool verified=String.Equals(Hash(real), Text(config,"realSha256"), StringComparison.OrdinalIgnoreCase);
             if (!verified) Console.Error.WriteLine("Codex identity changed; management disabled. Revalidate before enabling management.");
-            using (var child=new ProcessTree(real, args)) {
+            var binding=Map(config,"controlHost");
+            bool cli=Text(binding,"cliTransport")=="launcher-websocket";
+            string[] serverArgs=args;
+            if(cli) {
+                string file=Text(binding,"configPath");
+                if(!verified || args.Length!=1 || args[0]!="app-server" || Text(binding,"parentMode")!="verified-start"
+                    || !Path.IsPathRooted(file??"") || Hash(file)!=Text(binding,"configSha256"))
+                    throw new InvalidOperationException("CLI runtime binding changed");
+                var broker=Parse(File.ReadAllText(file,Encoding.UTF8));
+                var mcp=Map(broker,"mcp");
+                // Set the whole table for this server only. TOML basic strings accept JSON string escaping.
+                string table="mcp_servers.meristem={command="+Encode(Text(broker,"nodeExecutable"))
+                    +",args="+Encode(new[]{Text(mcp,"entryPoint"),"--pipe",Text(broker,"pipeName")})+",enabled=true}";
+                serverArgs=new[]{"-c",table,"app-server"};
+            }
+            // Windows releases this handle even on forced launcher/relay termination.
+            using (var runLock=cli ? new FileStream(self+".lock",FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None) : null)
+            using (var child=new ProcessTree(real, serverArgs)) {
                 child.Resume();
                 var stderr=Console.OpenStandardError();
                 var errorThread=Background(delegate { try { child.Error.CopyTo(stderr); stderr.Flush(); } catch (IOException) {} });
@@ -40,7 +57,6 @@ internal static class Program
                     var relay=new StdioRelay(child, config, real);
                     ProcessTree control=null;
                     try {
-                        var binding=Map(config,"controlHost");
                         if(binding!=null) {
                             // Optional explicitly bound CC-01 owner. Failure never kills the parent App Server.
                             try {

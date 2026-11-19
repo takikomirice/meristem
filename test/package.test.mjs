@@ -71,9 +71,12 @@ test('release ZIP runs with its own Node and locked dependencies and contains no
   assert(readFileSync(path.join(payload, 'README.md'), 'utf8').includes('[MIT License](LICENSE)'));
   const manifest = JSON.parse(readFileSync(path.join(payload, 'release-manifest.json'), 'utf8'));
   const native = Object.keys(manifest.files).filter(file => file.startsWith('.local/')).sort();
-  assert.deepEqual(native, ['.local/chat-control-build/CodexRelay.exe', '.local/chat-control-build/CodexWorkerHost.exe', '.local/chat-control-build/MeristemControl.exe']);
+  assert.deepEqual(native, ['.local/chat-control-build/CodexRelay.exe', '.local/chat-control-build/CodexWorkerHost.exe', '.local/chat-control-build/MeristemControl.exe', '.local/chat-control-build/MeristemTerminal.exe']);
   assert(!Object.keys(manifest.files).some(file => /^(?:\.git\/|test\/|src\/)|(?:^|\/)(?:auth\.json|control\.sqlite|installation\.json|debug\.log)$/.test(file)));
   assert.equal(readFileSync(path.join(payload, 'node/LICENSE.txt'), 'utf8'), readFileSync(license, 'utf8'));
+  const cliHelp = spawnSync('powershell.exe', ['-NoProfile', '-File', path.join(payload, 'scripts/meristem.ps1'), 'help'], { cwd: root, encoding: 'utf8', windowsHide: true });
+  assert.equal(cliHelp.status, 0, cliHelp.stderr);
+  assert.match(cliHelp.stdout, /\bstart\b/); assert.match(cliHelp.stdout, /\bresume\b/);
   for (const file of ['node/node.exe', 'node/LICENSE.txt', 'dist/src/install.js', 'scripts/install.ps1', 'scripts/uninstall.ps1', 'extension/package.json', 'node_modules/typescript/LICENSE.txt', 'node_modules/typescript/ThirdPartyNoticeText.txt']) {
     assert.equal(sha256(path.join(payload, file)), manifest.files[file]);
   }

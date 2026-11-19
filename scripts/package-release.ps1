@@ -72,7 +72,7 @@ function Copy-PayloadTree([string]$source, [string]$relative) {
         if (-not $item.PSIsContainer) { Copy-PayloadFile $item.FullName ($relative + '/' + $item.FullName.Substring($source.Length + 1)) }
     }
 }
-foreach ($relative in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'package.json', 'package-lock.json', 'scripts/install.ps1', 'scripts/uninstall.ps1', 'extension/package.json')) {
+foreach ($relative in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'package.json', 'package-lock.json', 'scripts/install.ps1', 'scripts/uninstall.ps1', 'scripts/meristem.ps1', 'extension/package.json')) {
     Copy-PayloadFile (Join-Path $repoRoot $relative) $relative
 }
 foreach ($guide in @(@('INSTALL.ja.md','README.md'), @('INSTALL.en.md','README.en.md'))) {
@@ -91,7 +91,7 @@ foreach ($relative in @('dist/src', 'extension/dist/src')) {
 }
 Copy-PayloadTree (Join-Path $repoRoot 'migrations') 'migrations'
 # Only these compiled files enter .local; never copy developer state, fixtures or credentials.
-foreach ($exe in @('CodexRelay.exe', 'CodexWorkerHost.exe', 'MeristemControl.exe')) {
+foreach ($exe in @('CodexRelay.exe', 'CodexWorkerHost.exe', 'MeristemControl.exe', 'MeristemTerminal.exe')) {
     $relative = '.local/chat-control-build/' + $exe
     Copy-PayloadFile (Join-Path $repoRoot $relative) $relative
 }

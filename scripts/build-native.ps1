@@ -11,6 +11,8 @@ if (-not (Test-Path -LiteralPath $compiler)) { throw '.NET Framework x64 compile
 $sources = @('Program.cs', 'StdioRelay.cs', 'LocalPipe.cs', 'ProcessTree.cs', 'McpPeer.cs') | ForEach-Object { Join-Path $repoRoot "native\$_" }
 & $compiler /nologo /target:winexe /platform:x64 /optimize+ /reference:System.Web.Extensions.dll "/out:$outputPath\CodexRelay.exe" @sources
 if ($LASTEXITCODE -ne 0) { throw 'Relay compilation failed' }
+& $compiler /nologo /target:exe /platform:x64 /optimize+ "/out:$outputPath\MeristemTerminal.exe" (Join-Path $repoRoot 'native\CliTerminal.cs') (Join-Path $repoRoot 'native\ProcessTree.cs')
+if ($LASTEXITCODE -ne 0) { throw 'CLI terminal compilation failed' }
 if ($WithFixtures) {
     & $compiler /nologo /target:exe /platform:x64 /optimize+ /reference:System.Web.Extensions.dll "/out:$outputPath\MockCodex.exe" (Join-Path $repoRoot 'test\fixtures\MockCodex.cs')
     if ($LASTEXITCODE -ne 0) { throw 'Fixture compilation failed' }

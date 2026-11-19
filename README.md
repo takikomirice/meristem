@@ -10,6 +10,14 @@
 
 > 現在は開発者向けの実験段階です。専用のVS Codeプロファイルで実機検証しており、通常プロファイルでの常用や幅広い環境での安定動作を保証するものではありません。
 
+## 開発版で公式CLIを使う
+
+「ファイル名を指定して実行」から `powershell.exe` を開き、版2の工程表に指定したリポジトリに移動します。ChatGPTでログイン済みの公式Codex CLIをPATHに置き、ビルド済みのMeristemを指定して `& 'C:\Tools\Meristem\scripts\meristem.ps1' start` を実行します。初回は工程表を検出し、公式TUIを別のコンソールに開きます。開始元のPowerShellが管理端末です。承認操作には、Explorerから直接、または対応するWindows Terminalを経由して開いた対話PowerShellの起動元を照合します。
+
+コーディネーターにする会話で「Meristemを開始して」と指示したら、開始元のPowerShellで `start` で対象・Git送信先・人数を確認してください。`status` は進捗、`usage` は利用枠、`answer` は相談と追加権限への回答、`stop` はワーカーの停止結果を表示します。端末を閉じた後は `meristem.ps1 resume` で対象のrunを選びます。
+
+実機でのワーカーからの報告とコーディネーターの自動再開は受入保留中です。[P5の実装・検証範囲](docs/superpowers/plans/2026-11-19-meristem-v030.md)
+
 ## できること
 
 開発中のMC-01では、DB schema 6への追加移行と相談・保留・増員承認・計画改訂の保存契約を追加しています。工程表の版2は、`run.execution_limits`（`maxWakeTurns`、`maxCorrectionsPerTask`）、タスクの`display_name`、`agent.permissionProfileId`を読み取れます。MC-05で回数上限を実行時に接続し、未指定／nullは無制限、正整数指定時だけ有限枠を適用します。表示名はtrim後1〜128文字です。版1でも専用configの`executionLimits`で上限を指定できます。人の回答検証は相談・回答と結び付ける信頼済みadapterを必須とし、再起動時は旧フォームを無効化します。

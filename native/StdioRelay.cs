@@ -128,6 +128,15 @@ internal sealed class StdioRelay
         object id;
         if (call == null || !call.TryGetValue("id", out id) || !(id is string || id is int || id is long)) return Error(null,"scalar id required");
         string method=Program.Text(call,"method");
+        if (Program.Text(Program.Map(config,"controlHost"),"cliTransport")=="launcher-websocket") {
+            // Product CLI management accepts only the pinned broker and its direct local launcher.
+            bool broker=caller!=null && VerifyWakePeer!=null && VerifyWakePeer(caller);
+            if (!broker && !(method=="relay/status" && caller!=null && McpPeer.IsLauncher(caller)))
+                return Error(id,"CLI management peer is not bound");
+            if (method!="relay/status" && method!="relay/owns-peer" && method!="relay/verify-peer"
+                && method!="relay/usage-context" && method!="account/read" && method!="account/rateLimits/read")
+                return Error(id,"method not exposed for managed CLI");
+        }
         bool usageRead=method=="relay/usage-context"||method=="account/rateLimits/read";
         if(usageRead||(method!=null&&method.StartsWith("relay/wake",StringComparison.Ordinal)&&Program.Map(config,"controlHost")!=null)) {
             bool verified=caller!=null&&VerifyWakePeer!=null&&VerifyWakePeer(caller);
@@ -162,7 +171,7 @@ internal sealed class StdioRelay
                 return new {id=id,result=new {actor=new {ownerId=owner,ownerEpoch=epoch,threadId=thread},turnId=turn,peer=new {pid=p["peerPid"],created=p["peerCreated"]}}};
             }
             if (method == "relay/status") return new { id=id, result=new {
-                ownerId=owner, ownerEpoch=epoch, testProfile=Program.Text(config,"testProfile"),
+                ownerId=owner, ownerEpoch=epoch, cliTransport=Program.Text(Program.Map(config,"controlHost"),"cliTransport"), testProfile=Program.Text(config,"testProfile"),
                 realExecutable=real, realSha256=hash, serverVersion=serverAgent,
                 managementEnabled=enabled && !closed, disabledReason=reason, initialized=initialized,
                 initializeCapabilities=capabilities, jobAssigned=child.Assigned, ownedPid=child.Pid, jobProcessIds=child.ProcessIds(),
