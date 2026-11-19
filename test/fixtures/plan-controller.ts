@@ -9,11 +9,11 @@ import type { RoutingHistory } from '../../src/routing-summary.js';
 
 export async function planControllerFixture(t: { after(fn: () => void): void }, configure?: (f: ReturnType<typeof serialFixture>, scope?: FixtureScope) => void, managedRuntime?: ManagedRuntime,
   approve?: (controller: McpController, pending: any, fixture: ReturnType<typeof serialFixture>, startRun: () => Promise<any>) => Promise<void>,
-  routingHistory?: (fixture: ReturnType<typeof serialFixture>) => RoutingHistory) {
+  routingHistory?: (fixture: ReturnType<typeof serialFixture>) => RoutingHistory, usagePolicy?: import('../../src/usage.js').UsagePolicy) {
   const f = serialFixture();
   const scope = { fixture: true, plan: true, planPath: f.planPath, repositoryPath: f.repository, repositoryId: 'repo', windowBindingId: 'window', branchScope: ['cc05-integration'], assignments: [] } as FixtureScope;
   configure?.(f, scope); f.savePlan();
-  const store = new Store(path.join(f.root, 'state'), f.repository); store.createRun('run'); t.after(() => store.close());
+  const store = new Store(path.join(f.root, 'state'), f.repository); store.createRun('run', usagePolicy); t.after(() => store.close());
   const starts: any[] = [], parent = { actor: { ownerId: 'parent', ownerEpoch: 'epoch', threadId: 'P' }, turnId: 'parent-turn' };
   const runtime = managedRuntime ?? {
     async start(assignment: any) { starts.push(assignment); return { ...assignment.identity, threadId: assignment.previous?.threadId ?? randomUUID() }; },

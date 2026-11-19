@@ -129,6 +129,10 @@ internal static class MockCodex {
                 }
             }
             switch ((string)m["method"]) {
+                case "account/read":
+                    result=new {account=new {type="chatgpt",email="fixture@example.invalid",workspaceName="fixture"},userId="fixture-user"};break;
+                case "account/rateLimits/read":
+                    result=new {accountId="fixture-billing",ordinaryUsageAllowed=true,rateLimits=new {limitId="codex",primary=new {usedPercent=80,windowDurationMins=300,resetsAt=(object)null},secondary=(object)null}};break;
                 case "initialize":
                     if (Environment.GetEnvironmentVariable("CC00_MOCK_INIT") == "exit") return 17;
                     if (Environment.GetEnvironmentVariable("CC00_MOCK_INIT") == "silent") {

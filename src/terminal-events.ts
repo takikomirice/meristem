@@ -5,6 +5,7 @@ const labels: Record<ControlEvent['kind'], string> = {
   decision_proposed: '相談を作成しました', decision_answered: '相談への回答を受け取りました',
   decision_cancelled: '相談を取り消しました', decision_superseded: '以前の提案を取り下げました',
   decision_revised: '修正案を新しい相談として登録しました', plan_change_applied: '承認済みの工程表変更を適用しました',
+  usage_recovered: '利用枠を再確認し、次の担当を割り当てられるようになりました',
   wake_limit: '親の再開回数の上限で停止しました', correction_limit: '工程の修正回数の上限で停止しました',
   registered: '担当を登録しました', running: '実行中', waiting_approval: '人の承認待ち',
   waiting_input: '質問への回答待ち', authentication_required: '認証が必要です', limit_reached: '利用上限に達しました',

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { z } from 'zod';
 import { fileHash, readPlan, type PlanSnapshot } from './plan.js';
+import { UsagePolicy } from './usage.js';
 import { ExecutionLimits, Hash, Id, ModelId } from './contracts.js';
 import { resolveTaskPermissions, RunPermissionPermit } from './permissions.js';
 import { pinRepository } from './git-evidence.js';
@@ -23,7 +24,7 @@ const Prepare = z.object({
   repositoryId: Id, branchScope: z.array(z.string().max(180).regex(/^[a-zA-Z0-9][a-zA-Z0-9/_-]*$/)
     .refine(branch => !['main', 'master'].includes(branch.toLowerCase()) && !branch.endsWith('/'))).min(1).max(128)
     .refine(branches => new Set(branches).size === branches.length),
-  coordinator: Agent, permissionPermit: RunPermissionPermit.optional(), executionLimits: ExecutionLimits.optional(),
+  coordinator: Agent, usagePolicy: UsagePolicy.optional(), permissionPermit: RunPermissionPermit.optional(), executionLimits: ExecutionLimits.optional(),
   modelRoutingSummary: RoutingSummaryReference.optional()
 }).strict().refine(value => !value.parentThreadId || !value.parentSessionKind, 'choose a fixed thread or a session kind');
 const Spec = z.object({ implementationRoot: absolute, realExe: absolute, nodeExe: absolute, helperExtension: absolute, settings: absolute, sourceSettings: absolute.optional(), codexConfig: absolute, controlConfig: absolute, installDirectory: absolute, parentCwd: absolute,
@@ -81,7 +82,7 @@ export function inspectEnvironment(input: Partial<InstallationSpec>, environment
 type ControlBinding = {
   runId: string; pipeName: string; stateDirectory: string; nodeSha256: string; realSha256: string;
   parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>;
-  wake?: z.infer<typeof Agent> & { maxTurns?: number }; executionLimits?: ExecutionLimits;
+  wake?: z.infer<typeof Agent> & { maxTurns?: number }; executionLimits?: ExecutionLimits; usagePolicy?: UsagePolicy;
 };
 
 // Used by both the snapshot runner and the extracted Windows package.
@@ -94,6 +95,7 @@ export function buildInstallationControl(s: Pick<InstallationSpec, 'implementati
     nodeExecutable: s.nodeExe, nodeSha256: binding.nodeSha256, entryPoint, entrySha256: artifactHash(entryPoint),
     runtime: { hostExe, hostSha256: artifactHash(hostExe), realExe: s.realExe, realSha256: binding.realSha256,
       authHome: path.dirname(s.codexConfig), fixture: false }, assignments: [],
+    ...(binding.usagePolicy && {usagePolicy:binding.usagePolicy}),
     ...(binding.executionLimits && { executionLimits: binding.executionLimits }),
     mcp: { ...(binding.wake && { wake: binding.wake }), parentRelay: binding.parentRelay, entryPoint: mcp,
       entrySha256: artifactHash(mcp), scope: binding.scope } };
@@ -169,7 +171,7 @@ export function prepareInstallation(input: InstallationSpec, report: Environment
       scope: { fixture: true, plan: true, planPath: plan.path, repositoryId: binding.repositoryId, repositoryPath: pin.repository,
         branchScope: binding.branchScope, permissionPermit: permit, assignments: [],
         ...(routingSummary ? { modelRoutingSummary: routingSummary } : {}) },
-      wake: binding.coordinator, executionLimits: ExecutionLimits.parse(binding.executionLimits ?? {}) }),
+      wake: binding.coordinator, usagePolicy:UsagePolicy.parse(binding.usagePolicy ?? {}), executionLimits: ExecutionLimits.parse(binding.executionLimits ?? {}) }),
     installationTarget: { environmentRoot: binding.environmentRoot, planFileSha256: plan.fileHash,
       settings: s.settings, codexConfig: s.codexConfig, controlConfig: s.controlConfig, installDirectory: s.installDirectory, parentCwd: s.parentCwd }
   };

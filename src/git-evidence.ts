@@ -1,5 +1,5 @@
 import { spawnSync, execFile } from 'node:child_process';
-import { existsSync, realpathSync, mkdirSync } from 'node:fs';
+import { existsSync, realpathSync, mkdirSync, lstatSync } from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import { Id } from './contracts.js';
@@ -21,8 +21,8 @@ function gitEnvironment(): NodeJS.ProcessEnv {
   for (const key of Object.keys(env)) if (/^GIT_(DIR|WORK_TREE|COMMON_DIR|INDEX_FILE|OBJECT_DIRECTORY|ALTERNATE_OBJECT_DIRECTORIES|CONFIG|NAMESPACE|CEILING_DIRECTORIES)/i.test(key)) delete (env as NodeJS.ProcessEnv)[key];
   return env;
 }
-function git(cwd: string, args: string[], raw = false): string {
-  const result = spawnSync('git', ['--no-replace-objects', ...args], { cwd, env: gitEnvironment(), windowsHide: true, encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024 });
+function git(cwd: string, args: string[], raw = false, input?: string): string {
+  const result = spawnSync('git', ['--no-replace-objects', ...args], { cwd, env: gitEnvironment(), windowsHide: true, encoding: 'utf8', input, timeout: 10000, maxBuffer: 1024 * 1024 });
   if (result.status !== 0) throw new Error('Git evidence unavailable'); return raw ? result.stdout : result.stdout.trim();
 }
 const canonical = (p: string) => realpathSync(p).toLowerCase();
@@ -70,11 +70,11 @@ export class GitEvidence {
     const current = pinRepository(this.snapshot, this.pin.runId);
     for (const key of ['repository', 'root', 'commonDir', 'origin', 'pushUrl', 'integrationBranch'] as const) if (current[key] !== this.pin[key]) throw new Error('repository identity changed');
   }
-  private worktree(cwd: string, expectedBranch: string): string {
+  private worktree(cwd: string, expectedBranch: string, allowChanges = false): string {
     this.assertRepository();
     const remote = remoteUrls(cwd);
     if (remote.origin !== this.pin.origin || remote.pushUrl !== this.pin.pushUrl) throw new Error('worktree remote identity changed');
-    if (!inside(this.pin.root, realpathSync(cwd)) || canonical(git(cwd, ['rev-parse', '--show-toplevel'])) !== canonical(cwd) || canonical(git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir'])) !== canonical(this.pin.commonDir) || git(cwd, ['symbolic-ref', '--short', 'HEAD']) !== expectedBranch || git(cwd, ['status', '--porcelain=v1', '--untracked-files=all'])) throw new Error('worktree identity, branch or clean state changed');
+    if (!inside(this.pin.root, realpathSync(cwd)) || canonical(git(cwd, ['rev-parse', '--show-toplevel'])) !== canonical(cwd) || canonical(git(cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir'])) !== canonical(this.pin.commonDir) || git(cwd, ['symbolic-ref', '--short', 'HEAD']) !== expectedBranch || (!allowChanges && git(cwd, ['status', '--porcelain=v1', '--untracked-files=all']))) throw new Error('worktree identity, branch or clean state changed');
     for (const operation of ['MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'rebase-merge', 'rebase-apply']) if (existsSync(git(cwd, ['rev-parse', '--git-path', operation]))) throw new Error('Git operation unfinished');
     return Sha.parse(git(cwd, ['rev-parse', 'HEAD']));
   }
@@ -110,6 +110,79 @@ export class GitEvidence {
     this.contains(assignment.cwd, baseSha, [assignment.baseSha, ...integrations]);
     if (newTask && baseSha !== this.worktree(this.pin.integrationCwd, this.pin.integrationBranch)) throw new Error('cross-task history must match integration HEAD');
     return { ...assignment, baseSha, scopeBaseSha: newTask ? baseSha : assignment.scopeBaseSha };
+  }
+  // The broker constructs every argument. The caller supplies no command, cwd,
+  // pathspec, Git option, ref or remote, and receives no metadata write grant.
+  async saveWorkerChanges(assignment: GitAssignment, expectedHead: string, message: string, checkOwner: () => void, beforeWrite = () => {}) {
+    const { cwd, branch: target, taskId } = assignment;
+    const task = this.snapshot.plan.tasks.find(t => t.id === taskId);
+    if (!task || taskAgent(task).permissionProfileId === 'read-only' || !message.trim() || message.length > 2048 || message.includes('\0')) throw new Error('writable task and commit message required');
+    const check = (head: string) => {
+      checkOwner();
+      if (this.worktree(cwd,target,true) !== head) throw new Error('assigned branch HEAD changed');
+      const gitDir = realpathSync(git(cwd,['rev-parse','--absolute-git-dir']));
+      if (!inside(this.pin.commonDir,gitDir)) throw new Error('unmanaged Git directory');
+    };
+    const parts = (data: string) => data.split('\0').filter(Boolean);
+    const scoped = (files: string[]) => {
+      if (files.some(file => !task.scope.some(root => file === root || file.startsWith(root + '/')))) throw new Error('changes outside task scope');
+    };
+    check(Sha.parse(expectedHead));
+    this.contains(cwd,expectedHead,[assignment.scopeBaseSha,assignment.baseSha]);
+    // Disable repository hook execution for broker-originated writes.
+    const options = ['--literal-pathspecs','-c','core.hooksPath=NUL','-c','core.fsmonitor=false'];
+    const run = (args: string[], raw = false, input?: string) => git(cwd,[...options,...args],raw,input);
+    const range = assignment.scopeBaseSha + '..' + expectedHead;
+    if (run(['rev-list','--max-count=1','--merges',range,'--'])) throw new Error('merged worker history requires review');
+    scoped(parts(run(['log','--format=','--name-only','--no-renames','-z',range,'--'],true)));
+    // Ignore external clean/process helpers even if attributes change between inspection and staging.
+    const keys = parts(run(['config','--null','--name-only','--list'],true));
+    for (const driver of new Set(keys.filter(k => /^filter\..+\.(clean|process|required)$/i.test(k)).map(k => k.slice(0,k.lastIndexOf('.'))))) {
+      options.push('-c',driver+'.process=','-c',driver+'.clean=','-c',driver+'.required=false');
+    }
+    const files = [...new Set([...parts(run(['diff','--name-only','--no-renames','-z','HEAD','--'],true)),...parts(run(['ls-files','-z','--others','--exclude-standard'],true))])];
+    scoped(files);
+    for (const file of files) {
+      let current = cwd;
+      for (const component of file.split('/')) {
+        current = path.join(current,component);
+        if (lstatSync(current,{throwIfNoEntry:false})?.isSymbolicLink()) throw new Error('linked paths require review');
+      }
+      if (lstatSync(current,{throwIfNoEntry:false})?.isDirectory()) throw new Error('nested repository requires review');
+    }
+    const paths = files.join('\0') + '\0';
+    if (files.length) {
+      const attributes = parts(run(['check-attr','--stdin','-z','filter'],true,paths));
+      if (attributes.length !== files.length * 3 || attributes.some((v,i) => i % 3 === 2 && v !== 'unspecified' && v !== 'unset')) throw new Error('filtered path requires review');
+    }
+    const destination = this.pin.pushUrl;
+    if (!(path.isAbsolute(destination) || /^(https|ssh):\/\//i.test(destination) || /^[\w.-]+@[\w.-]+:/.test(destination))) throw new Error('unsupported push destination');
+    if (path.isAbsolute(destination)) {
+      const remote = realpathSync(destination);
+      if (remote.toLowerCase() !== path.resolve(destination).toLowerCase() || git(remote,['rev-parse','--is-bare-repository']) !== 'true') throw new Error('local push requires the pinned bare repository');
+    }
+    scoped(parts(run(['diff','--cached','--name-only','--no-renames','-z',assignment.scopeBaseSha,'--'],true)));
+    check(expectedHead);
+    beforeWrite();
+    if (files.length) {
+      // Stage only the task paths already inspected. A concurrently created file
+      // in another directory cannot be swept into the index.
+      run(['add','-A','--pathspec-from-file=-','--pathspec-file-nul'],false,paths);
+    }
+    const tree = Sha.parse(run(['write-tree']));
+    scoped(parts(run(['diff','--name-only','--no-renames','-z',assignment.scopeBaseSha,tree,'--'],true)));
+    const ref = 'refs/heads/' + target;
+    let sha = expectedHead;
+    if (tree !== run(['rev-parse',expectedHead+'^{tree}'])) {
+      check(expectedHead);
+      sha = Sha.parse(run(['-c','commit.gpgSign=false','commit-tree',tree,'-p',expectedHead,'-m',message]));
+      run(['update-ref',ref,sha,expectedHead]);
+    }
+    check(sha);
+    const args = ['--no-replace-objects',...options,'-c','push.followTags=false','push','--no-verify','--recurse-submodules=no','--',destination,sha+':'+ref];
+    await new Promise<void>((resolve,reject) => execFile('git',args,{cwd,env:gitEnvironment(),windowsHide:true,timeout:30000},error=>error ? reject(new Error('scoped push unconfirmed')) : resolve()));
+    check(sha);
+    return { candidateSha:sha, branch:target, pushResult:'pushed' };
   }
   async verifyCandidate(taskId: string, input: unknown, assignment: GitAssignment): Promise<CandidateEvidence> {
     const report = TaskReport.parse(input), task = this.snapshot.plan.tasks.find(t => t.id === taskId);

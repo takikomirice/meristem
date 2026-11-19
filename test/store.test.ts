@@ -80,6 +80,18 @@ test('restart_preserves_unknown_without_resend_and_requires_reconciliation', () 
     assert.equal(store.prepareOperation({ operationId: 'op', runId: 'run', expectedRevision: 0 }, 'a'.repeat(64)).fresh, false);
   } finally { store.close(); }
 });
+test('new run policy is fixed across a restart, legacy runs retain their worker ceiling', () => {
+  const dir=stateDirectory(); let store=new Store(dir,process.cwd());
+  store.createRun('old'); store.createRun('new',{enabled:true,threshold:15,lowMaximum:2});
+  store.saveUsage('new',{account:'a'.repeat(64),ordinaryUsageAllowed:false,windows:[],status:'missing',fetchedAt:1000});
+  store.close(); store=new Store(dir,process.cwd());
+  try {
+    assert.equal(store.capacity('old').effectiveMaximum,2);
+    assert.deepEqual(store.capacity('new').policy,{enabled:true,threshold:15,lowMaximum:2});
+    assert.equal(store.capacity('new').effectiveMaximum,0);
+    assert.equal(store.capacity('new').usageStatus,'stale');
+  } finally { store.close(); }
+});
 test('unknown_schema_and_second_writer_are_rejected', () => {
   const dir = stateDirectory(), first = new Store(dir, process.cwd());
   assert.throws(() => new Store(dir, process.cwd()), /writer/); first.close();
@@ -116,7 +128,7 @@ test('coordination_migration_preserves_v5_state', () => {
   for (let pass = 0; pass < 2; pass++) {
     const store = new Store(directory, process.cwd()); store.close();
     const migrated = new DatabaseSync(path.join(directory, 'control.sqlite'));
-    assert.equal(migrated.prepare('PRAGMA user_version').get()!.user_version, 6);
+    assert.equal(migrated.prepare('PRAGMA user_version').get()!.user_version, 7);
     assert.deepEqual(tables.map(table => migrated.prepare(`SELECT * FROM ${table}`).all()), before);
     migrated.close();
   }

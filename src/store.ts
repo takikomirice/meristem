@@ -31,9 +31,13 @@ export type PlanTaskState = TaskState & {
 type Run = { id: string; state: RunState; revision: number; stop_generation: number };
 type StoredOperation = { id: string; run_id: string; payload_hash: string; expected_revision: number; state: DeliveryState; result: string | null };
 export type Attempt = { id: string; run_id: string; cwd: string; state: string; registration: string; stop_result: string | null; completed_turn_id: string | null };
+import { UsagePolicy, admission, applyUsage, type Usage, type UsageState } from './usage.js';
+
 export class Store {
   private db!: DatabaseSync;
   private lock: DatabaseSync;
+  private transactionStarted?: number;
+  private savepoint = 0;
   constructor(private directory: string, repository: string) {
     const repo = realpathSync(repository).toLowerCase();
     const candidate = path.resolve(directory).toLowerCase();
@@ -48,7 +52,7 @@ export class Store {
       this.db = new DatabaseSync(path.join(directory, 'control.sqlite'));
       this.db.exec('PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL;');
       const version = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
-      if (![0, 1, 2, 3, 4, 5, 6].includes(version)) throw new Error('unknown schema');
+      if (![0, 1, 2, 3, 4, 5, 6, 7].includes(version)) throw new Error('unknown schema');
       if (version === 0) {
         if (this.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").get()) throw new Error('unknown schema');
         this.transaction(() => this.db.exec(readFileSync(fileURLToPath(new URL('../../migrations/001-control.sql', import.meta.url)), 'utf8')));
@@ -58,6 +62,8 @@ export class Store {
       if (version < 4) this.transaction(() => this.db.exec(readFileSync(fileURLToPath(new URL('../../migrations/004-requests.sql', import.meta.url)), 'utf8')));
       if (version < 5) this.transaction(() => this.db.exec(readFileSync(fileURLToPath(new URL('../../migrations/005-plan.sql', import.meta.url)), 'utf8')));
       if (version < 6) this.transaction(() => this.db.exec(readFileSync(fileURLToPath(new URL('../../migrations/006-coordination.sql', import.meta.url)), 'utf8')));
+      if (version < 7) this.transaction(() => this.db.exec(readFileSync(fileURLToPath(new URL('../../migrations/007-usage.sql', import.meta.url)), 'utf8')));
+      this.db.exec("UPDATE run_usage SET observation=json_set(observation,'$.latest.status','stale') WHERE observation IS NOT NULL");
       this.db.exec('UPDATE coordination_decisions SET form_generation=NULL');
       this.db.exec("UPDATE requests SET state='cancelled' WHERE state IN ('pending','unsupported')");
       this.transaction(() => {
@@ -66,11 +72,51 @@ export class Store {
     } catch (error) { this.db?.close(); this.lock.close(); throw error; }
   }
   transaction<T>(action: () => T): T {
-    this.db.exec('BEGIN IMMEDIATE');
-    try { const result = action(); this.db.exec('COMMIT'); return result; }
-    catch (error) { this.db.exec('ROLLBACK'); throw error; }
+    const nested = this.transactionStarted !== undefined;
+    const marker = 'nested_' + ++this.savepoint;
+    this.db.exec(nested ? 'SAVEPOINT ' + marker : 'BEGIN IMMEDIATE');
+    if (!nested) this.transactionStarted = Date.now();
+    try { const result = action(); this.db.exec(nested ? 'RELEASE ' + marker : 'COMMIT'); return result; }
+    catch (error) { this.db.exec(nested ? 'ROLLBACK TO ' + marker + '; RELEASE ' + marker : 'ROLLBACK'); throw error; }
+    finally { if (!nested) this.transactionStarted = undefined; }
   }
-  createRun(id: string): void { Id.parse(id); this.db.prepare("INSERT INTO runs(id,state) VALUES(?,'active')").run(id); }
+  createRun(id: string, policy?: UsagePolicy): void {
+    Id.parse(id);
+    this.transaction(() => {
+      this.db.prepare("INSERT INTO runs(id,state) VALUES(?,'active')").run(id);
+      if (policy) this.db.prepare('INSERT INTO run_usage(run_id,policy) VALUES(?,?)').run(id, JSON.stringify(UsagePolicy.parse(policy)));
+    });
+  }
+  usageRecord(runId: string) {
+    const row = this.db.prepare('SELECT * FROM run_usage WHERE run_id=?').get(runId);
+    return row && { policy: UsagePolicy.parse(JSON.parse(String(row.policy))), state: row.observation ? JSON.parse(String(row.observation)) as UsageState : undefined, waiting: !!row.waiting };
+  }
+  capacity(runId: string, now = this.transactionStarted ?? Date.now()) {
+    const usage = this.usageRecord(runId), latest = usage?.state?.latest;
+    const quota = usage ? admission(usage.policy, usage.state, now) : {maximum:null, reason:'legacy', status:'unavailable'};
+    const requestedMaximum = this.plan(runId)?.snapshot.plan.run.max_parallel ?? 128;
+    const approvedMaximum = this.effectiveParallelLimit(runId);
+    const activeWorkers = Number(this.db.prepare("SELECT COUNT(*) AS n FROM attempts WHERE run_id=? AND state NOT IN ('completed','stopped')").get(runId)!.n);
+    const effectiveMaximum = Math.min(requestedMaximum,approvedMaximum,quota.maximum ?? Infinity);
+    return { requestedMaximum, approvedMaximum, activeWorkers, effectiveMaximum, quotaMaximum:quota.maximum, reason:quota.reason, usageStatus:quota.status,
+      policy:usage?.policy ?? null, fetchedAt:latest?.fetchedAt ?? null, windows:latest?.windows.map(w => ({...w, resetsAtLocal: w.resetsAt === null ? null : new Date(w.resetsAt * 1000).toLocaleString()})) ?? [] };
+  }
+  saveUsage(runId: string, value: Usage) {
+    this.transaction(() => {
+      const prior = this.usageRecord(runId);
+      if (!prior) return;
+      const state = applyUsage(prior.state, value);
+      this.db.prepare('UPDATE run_usage SET observation=? WHERE run_id=?').run(JSON.stringify(state),runId);
+    });
+  }
+  usageWaiting(runId: string) {
+    this.db.prepare('UPDATE run_usage SET waiting=1 WHERE run_id=? AND waiting=0').run(runId);
+  }
+  notifyUsageRecovery(runId: string) {
+    this.transaction(() => {
+      if (this.db.prepare('UPDATE run_usage SET waiting=0 WHERE run_id=? AND waiting=1').run(runId).changes) this.appendEvent({runId,kind:'usage_recovered'});
+    });
+  }
   plan(runId: string): { snapshot: PlanSnapshot; pin: RepositoryPin; bindingHash: string; frozen: boolean; initialized: boolean } | undefined {
     const row = this.db.prepare('SELECT * FROM plans WHERE run_id=?').get(runId);
     return row ? { snapshot: JSON.parse(row.snapshot as string), pin: JSON.parse(row.pin as string), bindingHash: row.binding_hash as string, frozen: !!row.frozen, initialized: !!row.initialized } : undefined;
@@ -428,6 +474,8 @@ export class Store {
         this.db.prepare("UPDATE attempts SET registration=?,state='running' WHERE id=?").run(JSON.stringify(safe), reg.worker.attemptId);
         this.appendEvent({ runId: reg.runId, kind: 'registered', attemptId: reg.worker.attemptId }); return;
       }
+      const capacity = this.capacity(reg.runId);
+      if ((starting || capacity.policy) && capacity.activeWorkers >= capacity.effectiveMaximum) throw new Error('worker capacity unavailable');
       this.db.prepare("INSERT INTO tasks VALUES(?,?,'assigned') ON CONFLICT(id) DO NOTHING").run(reg.taskId, reg.runId);
       const task = this.db.prepare('SELECT run_id FROM tasks WHERE id=?').get(reg.taskId);
       if (task?.run_id !== reg.runId) throw new Error('task run mismatch');
@@ -439,8 +487,6 @@ export class Store {
   }
   reserve(reg: Registration): void {
     if (reg.worker.threadId !== 'pending' || reg.hostPid !== 0 || reg.childPid !== 0) throw new Error('unstarted reservation required');
-    const limit = Math.min(this.effectiveParallelLimit(reg.runId), this.plan(reg.runId)?.snapshot.plan.run.max_parallel ?? 128);
-    if (this.attempts(reg.runId).filter(row => !['completed', 'stopped'].includes(row.state)).length >= limit) throw new Error('worker capacity unavailable');
     this.persistRegistration(reg, true);
   }
   attempts(runId?: string): Attempt[] { return (runId ? this.db.prepare('SELECT * FROM attempts WHERE run_id=? ORDER BY rowid').all(runId) : this.db.prepare('SELECT * FROM attempts ORDER BY rowid').all()) as Attempt[]; }
@@ -509,7 +555,7 @@ export class Store {
     if (attemptId !== undefined) Id.parse(attemptId);
     const rows = attemptId ? this.db.prepare('SELECT * FROM attempts WHERE run_id=? AND id=?').all(runId, attemptId) as Attempt[] : this.displayAttempts(runId);
     const attempts: ({ state: string; registration: Registration; stopResult: StopResult | null } & Partial<ReturnType<Store['terminalPresentation']>>)[] = [];
-    const result = { ok: true, run: this.run(runId), binding: this.binding(runId), attempts, nextAttemptOffset: null as number | null };
+    const result = { ok: true, run: this.run(runId), capacity: this.capacity(runId), binding: this.binding(runId), attempts, nextAttemptOffset: null as number | null };
     for (const row of rows.slice(offset, offset + 4)) {
       const registration = JSON.parse(row.registration) as Registration, stopResult = row.stop_result ? JSON.parse(row.stop_result) as StopResult : null;
       const item = { state: row.state, registration, stopResult, ...(options.registrationOnly ? {}

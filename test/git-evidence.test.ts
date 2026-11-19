@@ -55,6 +55,22 @@ test('git_approval_roots_include_only_metadata_and_verified_local_bare_remote', 
   assert.throws(() => evidence.approvalRoots());
 });
 
+test('scoped push checks intermediate history even after an outside file was removed', async () => {
+  const f = setup(), a = f.assignment;
+  commitFile(a.cwd,'unassigned.txt','private change');
+  git(a.cwd,'rm','unassigned.txt'); git(a.cwd,'commit','-m','Restore original tree');
+  await assert.rejects(f.evidence.saveWorkerChanges(a,git(a.cwd,'rev-parse','HEAD'),'save',()=>{}),/outside task scope/);
+  assert.equal(git(a.cwd,'ls-remote','origin','refs/heads/'+a.branch).split(/\s/)[0],f.candidate);
+});
+test('scoped save refuses unrelated files, a stale owner and changed push destinations', async () => {
+  const f=setup(), a=f.assignment;
+  writeFileSync(path.join(a.cwd,'outside.txt'),'outside task');
+  await assert.rejects(f.evidence.saveWorkerChanges(a,f.candidate,'message',()=>{}),/outside task scope/);
+  assert.equal(git(a.cwd,'rev-parse','HEAD'),f.candidate);
+  await assert.rejects(f.evidence.saveWorkerChanges(a,f.candidate,'message',()=>{throw new Error('stale owner');}),/stale owner/);
+  git(f.repository,'remote','set-url','--push','origin',f.root);
+  await assert.rejects(f.evidence.saveWorkerChanges(a,f.candidate,'message',()=>{}),/identity changed/);
+});
 test('scope_does_not_trim_leading_whitespace_in_changed_paths', async () => {
   const f = setup(), candidate = commitFile(f.assignment.cwd, ' a.txt', 'outside'); git(f.assignment.cwd, 'push', 'origin', f.assignment.branch);
   await assert.rejects(f.evidence.verifyCandidate('A', { ...f.report, candidate_sha: candidate }, f.assignment));

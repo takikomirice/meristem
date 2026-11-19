@@ -38,7 +38,7 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
   const config = { stateDirectory: state, repository: process.cwd(), runId: 'run', pipeName, nodeExecutable: process.execPath, nodeSha256: sha(process.execPath), entryPoint, entrySha256: sha(entryPoint), runtime: { hostExe, hostSha256: sha(hostExe), realExe, realSha256: sha(realExe), authHome: root, fixture: true }, assignments: [], mcp: { wake: { model: 'mock', effort: 'low', maxTurns: 12 }, parentRelay: { pipeName: parentPipe, ...(dynamic ? { mode: 'verified-start', sessionKind: mode === 'terminal-exit' ? 'cli' : 'vscode' } : { threadId: 'P' }) }, entryPoint: mcpEntry, entrySha256: sha(mcpEntry), scope: { fixture: true, planPath, repositoryId: 'repo', ...scopeGit } } };
   writeFileSync(configPath, JSON.stringify(config));
   writeFileSync(relay + '.json', JSON.stringify({ realExecutable: realExe, realSha256: sha(realExe), pipeName: parentPipe, allowedCwds: [root], testProfile: 'CC-00R-CC02-fixture', controlHost: { executable: control, sha256: sha(control), configPath, configSha256: sha(configPath), ...(dynamic ? { parentMode: 'verified-start' } : { parentThreadId: 'P' }) } }));
-  const child = spawn(relay, ['app-server'], { cwd: root, windowsHide: true, stdio: 'pipe' });
+  const child = spawn(relay, ['app-server'], { cwd: root, env:{...process.env,CODEX_HOME:root}, windowsHide: true, stdio: 'pipe' });
   let stdout = '', stderr = ''; child.stdout.on('data', chunk => stdout += chunk); child.stderr.on('data', chunk => stderr += chunk);
   t.after(async () => { child.stdin.end(); for (let i = 0; i < 100 && child.exitCode === null; i++) await delay(50); if (child.exitCode === null && !child.signalCode) child.kill(); });
   for (let i = 0; i < 150 && !existsSync(path.join(state, 'discovery.json')); i++) { if (child.exitCode !== null) assert.fail(stderr); await delay(40); }
@@ -204,6 +204,10 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
     return;
   }
   if (adaptive) {
+    const usage = await request('usage');
+    assert.equal(usage.ok,true);
+    assert.equal((usage.capacity as any).windows[0]?.remainingPercent,20);
+    assert.equal((usage.capacity as any).effectiveMaximum,1);
     assert.match(authorized!.stderr, /"maxAutomaticChangesPerTask": 1/);
     assert(authorized!.stderr.includes(pending.structuredContent.modelRouting.scopeHash));
     assert.equal(((await request('status')).binding as any).state, 'consumed');

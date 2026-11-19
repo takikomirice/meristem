@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { Store } from './store.js';
 export type WakeRef = { runId: string; sourceEventSeq: number };
 export type WakeResult = { state: 'deferred' | 'acked' | 'sent_unknown' | 'stopped' | 'empty'; turnId?: string };
-const candidates = new Set(['completed', 'failed', 'authentication_required', 'limit_reached', 'waiting_input', 'waiting_approval', 'decision_changed']);
+const candidates = new Set(['completed', 'failed', 'authentication_required', 'limit_reached', 'waiting_input', 'waiting_approval', 'decision_changed', 'usage_recovered']);
 export class WakeCoordinator {
   private busy = new Set<string>();
   constructor(private store: Store, private parent: ActorRef, private agent: { model: string; effort: string }, private relay: (method: string, params: Record<string, unknown>) => Promise<any>, private stop: (runId: string, reason: string) => Promise<unknown> = async runId => store.stopRun(runId), private limit: number | null | ((runId: string) => number | null) = null, private canWake: (runId: string) => boolean = runId => store.run(runId).state === 'active') {

@@ -20,6 +20,31 @@ const parallel = (t: Parameters<typeof planControllerFixture>[0], configure?: Pa
   configure?.(f);
 });
 
+test('quota controls real reservations, permits registered workers to finish and notifies once after recovery', async t => {
+  const f = await planControllerFixture(t, file => { file.plan.run.max_parallel=2; file.plan.tasks[1].depends_on=[]; },
+    undefined, undefined, undefined, {enabled:true,threshold:20,lowMaximum:1});
+  const update = (remaining: number) => f.store.saveUsage('run',{status:'ok', account:'f'.repeat(64), fetchedAt:Date.now(), ordinaryUsageAllowed:true,
+    windows:[{name:'primary',remainingPercent:remaining,usedPercent:100-remaining,windowDurationMins:null,resetsAt:null}]});
+  update(21);
+  const worker = await f.create('A'); assert(worker.threadId);
+  update(20);
+  assert.equal((await f.create('B')).state,'waiting_usage');
+  assert.equal(f.store.attempts('run').length,1);
+  assert.equal(f.store.correctionCount('run','B'),0);
+  assert.deepEqual((await f.status()).plan.eligible,[]);
+  update(0);
+  assert.equal((await f.status()).capacity.activeWorkers,1);
+  update(21); f.controller.checkUsageWaiting(); f.controller.checkUsageWaiting();
+  assert.equal(f.store.events('run',0,100).filter(e=>e.kind==='usage_recovered').length,1);
+  assert((await f.create('B')).threadId);
+  assert.equal(f.starts[0].gitApprovalRoots.length,0);
+  const a=f.store.gitAssignment(worker.attemptId)!;
+  writeFileSync(path.join(a.cwd,'a.txt'),'scoped change');
+  const save = { ...f.ref(),taskId:'A',target:worker,expectedHead:a.baseSha,message:'Save assigned change' };
+  const saved=await f.call('save_worker_changes',save);
+  assert.equal(git(a.cwd,'ls-remote','origin','refs/heads/'+a.branch).split(/\s/)[0],saved.candidateSha);
+  assert.deepEqual(await f.call('save_worker_changes',save),saved);
+});
 function coordination(f: Awaited<ReturnType<typeof parallel>>) {
   const control = new PlanControl(f.store, 'run', () => f.broker.canWake('run'));
   const decisions = new DecisionService(f.store, () => {}, () => undefined);
@@ -396,6 +421,27 @@ async function approveMaximum(f: Awaited<ReturnType<typeof expanded>>, maximum: 
   return decision;
 }
 
+test('a quota drop during startup preserves three reserved workers under a human grant', async t => {
+  const { expandedParallelPlan } = await import('./fixtures/parallel-git.js');
+  const f=await planControllerFixture(t,file=>expandedParallelPlan(file,4),undefined,undefined,undefined,{enabled:true,threshold:20,lowMaximum:1});
+  const update=(usedPercent:number)=>f.store.saveUsage('run',{status:'ok',account:'a'.repeat(64),ordinaryUsageAllowed:null,fetchedAt:Date.now(),
+    windows:[{name:'primary',remainingPercent:100-usedPercent,usedPercent,windowDurationMins:null,resetsAt:null}]});
+  update(79); await approveMaximum(f,4); const a=await f.create('A'), b=await f.create('B');
+  const start = f.runtime.start.bind(f.runtime);
+  t.mock.method(f.runtime,'start', async (args: Parameters<typeof start>[0]) => {
+    assert.equal(f.store.capacity('run').activeWorkers,3);
+    update(99);
+    return start(args);
+  });
+  const c=await f.create('C');
+  assert.equal(f.store.capacity('run').effectiveMaximum,1);
+  for (const target of [a,b,c]) {
+    assert.equal((await f.create('D')).state,'waiting_usage');
+    await f.call('retire_worker',{target});
+  }
+  t.mock.restoreAll();
+  assert((await f.create('D')).threadId);
+});
 test('third_worker_requires_current_human_grant', async t => {
   const f = await expanded(t); await f.create('A'); await f.create('B');
   assert.deepEqual((await f.status()).plan.eligible, []);

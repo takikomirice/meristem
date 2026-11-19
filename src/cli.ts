@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -16,12 +16,13 @@ import { displayEvent, terminalText } from './terminal-events.js';
 import { z } from 'zod';
 import { Worker } from './contracts.js';
 import { WakeCoordinator } from './wake.js';
+import { UsagePolicy, UsageReader, expiresAt, ttl, unavailable, readOfficialUsage } from './usage.js';
 import { RevisionConflict } from './failures.js';
 import { parseArgs } from 'node:util';
 import { exportRoutingSummary, loadPlanRoutingSummary } from './routing-summary.js';
 import { fileHash, readPlan } from './plan.js';
 
-type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
+type Config = { stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; usagePolicy?: UsagePolicy; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
 type Discovery = { pipeName: string; token: string; ownerId: string; ownerEpoch: string; windowBindingId: string; runId: string };
 function tokenMatches(left: unknown, right: string): boolean { return typeof left === 'string' && Buffer.byteLength(left) === Buffer.byteLength(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right)); }
 export async function serve(configPath: string): Promise<void> {
@@ -62,7 +63,7 @@ export async function serve(configPath: string): Promise<void> {
   broker = new Broker(store, runtime, config.mcp?.wake && fixedThread ? async blocked => {
     await relayRequest(config.mcp!.parentRelay.pipeName, blocked ? 'relay/wake-block' : 'relay/wake-resume', { threadId: fixedThread });
   } : undefined, limits);
-  let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId); }
+  let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId, config.mcp?.scope.plan ? UsagePolicy.parse(config.usagePolicy ?? {}) : undefined); }
   let mcp: McpController | undefined;
   let sessionServerPid: number | undefined;
   let relayOwner: Pick<ActorRef, 'ownerId' | 'ownerEpoch'> | undefined;
@@ -95,6 +96,54 @@ export async function serve(configPath: string): Promise<void> {
         wake = new WakeCoordinator(store, boundActor, config.mcp.wake, relay, (runId, reason) => broker.stopRun(runId, reason), runId => broker.executionLimits(runId).maxWakeTurns, runId => broker.canWake(runId));
       }
     }
+  }
+  let usageTimer: NodeJS.Timeout | undefined, usageReader: UsageReader | undefined, usageClosing = false;
+  let syncUsage: (() => Promise<void>) | undefined;
+  if (config.mcp && store.usageRecord(config.runId)) {
+    const pipe = config.mcp.parentRelay.pipeName, runId = config.runId;
+    const context = async () => {
+      const ctx = await relayRequest(pipe,'relay/usage-context');
+      if (ctx.ownerId !== relayOwner?.ownerId || ctx.ownerEpoch !== relayOwner?.ownerEpoch ||
+          !Number.isSafeInteger(ctx.usageSequence) || !Number.isSafeInteger(ctx.accountGeneration) ||
+          typeof ctx.authHome !== 'string' || realpathSync(ctx.authHome).toLowerCase() !== realpathSync(config.runtime.authHome).toLowerCase()) throw new Error('usage context mismatch');
+      return ctx;
+    };
+    let nextRead = 0, lastSequence = -1, lastAccountGeneration = -1;
+    const read = () => readOfficialUsage(context, (method, params) => relayRequest(pipe, method, params),
+      () => runtime.readWorkerUsage(), before => {
+        lastSequence = before.usageSequence;
+        lastAccountGeneration = before.accountGeneration;
+      });
+    usageReader = new UsageReader(read, value => {
+      if (usageClosing) return;
+      store.saveUsage(runId,value);
+      const expiry = expiresAt(value);
+      nextRead = value.status === 'ok' && expiry > Date.now() ? expiry : Date.now()+ttl;
+      if (mcp && store.binding(runId)?.state === 'consumed') mcp.checkUsageWaiting();
+    });
+    const reader = usageReader;
+    let checking: Promise<void> | undefined;
+    const poll = async () => {
+      if (usageClosing || store.run(runId).state !== 'active') return;
+      if (Date.now() < nextRead) {
+        try {
+          const ctx = await context();
+          if (ctx.usageSequence === lastSequence) return;
+          lastSequence = ctx.usageSequence;
+          const previous = store.usageRecord(runId)?.state?.latest;
+          if (previous && lastAccountGeneration === ctx.accountGeneration) store.saveUsage(runId,{...previous,status:'stale'});
+          else store.saveUsage(runId,unavailable('account_mismatch'));
+        } catch {
+          if (!usageClosing) store.saveUsage(runId,unavailable('account_mismatch'));
+          return;
+        }
+        reader.invalidate();
+      }
+      await reader.refresh();
+    };
+    syncUsage = () => checking ??= poll().finally(() => { checking = undefined; });
+    usageTimer = setInterval(() => { void syncUsage!().catch(() => {}); },2000);
+    void syncUsage().catch(() => {});
   }
   if (!existing && !config.mcp) {
     if (config.assignments.length > 2) throw new Error('initial worker limit exceeded');
@@ -148,6 +197,8 @@ export async function serve(configPath: string): Promise<void> {
       if (!mcp) throw new Error('parent has not started this run');
       if (dynamic && envelope.peer?.inBrokerJob !== true && (!leaseId || controllerLease !== leaseId)
         && !['get_status', 'stop_run'].includes(request.name)) throw new Error('session must be rebound');
+      if (request.name === 'create_worker' && boundActor && sameActor(identity.actor,boundActor)) await syncUsage?.();
+      if (dynamic && request.name === 'create_worker' && observedLease !== leaseId) throw new Error('control session changed');
       return { ok: true, value: request.method === 'mcp_human_response' ? await mcp.humanResponse(request.args, identity) : await mcp.call(request.name, request.args, identity) };
     }
     if (!request || request.runId !== config.runId || request.ownerId !== discovery.ownerId || request.ownerEpoch !== discovery.ownerEpoch || !tokenMatches(request.token, discovery.token) || envelope.peer?.inBrokerJob !== false) return { ok: false, error: 'binding_rejected' };
@@ -189,6 +240,7 @@ export async function serve(configPath: string): Promise<void> {
       }
       return dynamic ? { ok: true, leaseId } : { ok: true };
     }
+    if (request.method === 'usage') { await usageReader?.refresh(); return {ok:true,capacity:store.capacity(config.runId)}; }
     if (request.method === 'status' && request.pendingDecisions === true) {
       const afterId = Id.optional().parse(request.afterDecisionId);
       const rows = store.coordinationDecisions(config.runId, afterId, 5, true);
@@ -287,7 +339,7 @@ export async function serve(configPath: string): Promise<void> {
       }).catch(error => process.stdout.write(JSON.stringify({ id: envelope.id, result: { ok: false, error: error instanceof RevisionConflict ? 'stale_revision' : 'control_rejected' } }) + '\n'));
     }
   });
-  const close = async () => { if (closing) return; closing = true; if (wakeTimer) clearInterval(wakeTimer); await broker.leaseLost(config.runId); store.close(); };
+  const close = async () => { if (closing) return; closing = true; usageClosing = true; if (usageTimer) clearInterval(usageTimer); if (wakeTimer) clearInterval(wakeTimer); await broker.leaseLost(config.runId); store.close(); };
   process.stdin.once('end', () => { void close(); });
 }
 export async function main(args: string[]): Promise<void> {
@@ -307,7 +359,7 @@ export async function main(args: string[]): Promise<void> {
   const runId = Id.parse(option('--run')), directory = option('--state') ?? path.join(process.env.LOCALAPPDATA ?? '', 'Meristem', 'chat-control', runId);
   const historyCommand = args[0] === 'history' || args[0] === 'resume-history';
   const pendingDecisions = args[0] === 'status' && args.includes('--pending-decisions');
-  if (!historyCommand && !['status', 'stop', 'authorize'].includes(args[0])) throw new Error('usage: status|stop|authorize|history|resume-history --run <id> [--state <directory>] [--attempt <id>]');
+  if (!historyCommand && !['status', 'usage', 'stop', 'authorize'].includes(args[0])) throw new Error('usage: usage|status|stop|authorize|history|resume-history --run <id> [--state <directory>] [--attempt <id>]');
   const discoveryPath = path.join(directory, 'discovery.json');
   try {
     const discovery = JSON.parse(readFileSync(discoveryPath, 'utf8')) as Discovery;
@@ -344,7 +396,7 @@ export async function main(args: string[]): Promise<void> {
       const result = await pipeRequest(discovery.pipeName, { ...discovery, method: 'authorize', bindingId, ...(scopeHash ? { scopeHash } : {}) });
       if (!result.ok) throw new Error('authorization rejected'); console.log(JSON.stringify(result)); return;
     }
-    const result = await pipeRequest(discovery.pipeName, { ...discovery, method: args[0], ...(pendingDecisions ? { pendingDecisions, afterDecisionId: Id.optional().parse(option('--after-id')) } : {}) });
+    const result = await pipeRequest(discovery.pipeName, { ...discovery, method: args[0], ...(pendingDecisions ? { pendingDecisions, afterDecisionId: Id.optional().parse(option('--after-id')) } : {}) }, args[0] === 'usage' ? 50000 : 10000);
     if (!result.ok) throw new Error('control rejected');
     if (args[0] === 'status') {
       while (result.nextAttemptOffset !== null && result.nextAttemptOffset !== undefined) {
@@ -355,7 +407,7 @@ export async function main(args: string[]): Promise<void> {
     }
     console.log(JSON.stringify(result)); return;
   } catch (error) {
-    if (historyCommand || pendingDecisions) throw error;
+    if (historyCommand || pendingDecisions || args[0] === 'usage') throw error;
     // Read-only fallback never steals the writer lease, reconnects to an old PID, or claims a stop.
     if (!existsSync(path.join(directory, 'control.sqlite'))) throw new Error('run state unavailable');
     const db = new DatabaseSync(path.join(directory, 'control.sqlite'), { readOnly: true });

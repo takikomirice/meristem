@@ -152,6 +152,14 @@ export class PlanControl {
     const row = this.store.attempts(this.runId).find(a => a.id === attemptId);
     if (!row || row.state !== 'completed' || !row.completed_turn_id || !row.stop_result || JSON.parse(row.stop_result).state !== 'stopped' || this.store.requests(this.runId).some(r => r.attempt_id === attemptId && ['pending', 'unsupported', 'replied'].includes(String(r.state)))) throw new Error('attempt cleanup, turn or requests unresolved');
   }
+  checkUsageWaiting() {
+    const cap = this.store.capacity(this.runId);
+    if (!cap.policy || !this.canProceed() || !this.store.plan(this.runId)) return;
+    const p = this.current(), states = this.assignmentStates();
+    if (p.frozen || Object.values(states).some(s => s.pendingIntegration || s.state === 'unknown')) return;
+    if (eligibleTasks(p.snapshot, states, cap.effectiveMaximum).length) this.store.notifyUsageRecovery(this.runId);
+    else if (eligibleTasks(p.snapshot, states, cap.approvedMaximum).length && cap.quotaMaximum !== null) this.store.usageWaiting(this.runId);
+  }
   reserveAssignment(taskId: string, attemptId: string, permissionPermit?: RunPermissionPermit) {
     this.assertCurrent();
     // Single writer: reserve slots/resources and persist the assignment before runtime I/O.
@@ -207,7 +215,7 @@ export class PlanControl {
     permissionPermit ??= { allowedProfileIds: ['workspace'], writableRoots: [p.snapshot.plan.run.worktrees_root], allowedReviewers: ['user'] };
     resolveTaskPermissions(agent, permissionPermit);
     if (!this.canProceed() || this.store.attempts(this.runId).some(a => a.state === 'unknown') || Object.values(states).some(s => s.pendingIntegration)) throw new Error('dispatch or cleanup unresolved');
-    if (!eligibleTasks(p.snapshot, this.assignmentStates(), this.store.effectiveParallelLimit(this.runId)).includes(taskId)) throw new Error('assignment slots, dependencies or resources unavailable');
+    if (!eligibleTasks(p.snapshot, this.assignmentStates(), this.store.capacity(this.runId).effectiveMaximum).includes(taskId)) throw new Error('assignment slots, dependencies or resources unavailable');
     if (states[taskId]?.integrationSha || task.depends_on.some(d => states[d]?.state !== 'integrated')) throw new Error('task dependencies not integrated');
     const git = this.git();
     if (agent.permissionProfileId !== 'read-only') git.approvalRoots();
@@ -320,7 +328,8 @@ export class PlanControl {
       return [id, { state: s?.state ?? 'pending', attemptId: s?.attemptId, candidateSha: s?.candidate?.candidateSha, integrationSha: s?.integrationSha, ...(review ? { reportRef: review.reportRef, reviewedSha: review.reviewedSha } : {}), ...(s?.hold ? { releasedExecutionSlot: s.hold.releasedExecutionSlot } : {}), ...(blocking.has(id) ? { blockedByDecision: true } : {}) }];
     }));
     const blocked = p.frozen || !this.canProceed() || Object.values(states).some(s => s.pendingIntegration || s.state === 'unknown');
-    return { requestedMaximum: p.snapshot.plan.run.max_parallel, approvedMaximum: this.store.effectiveParallelLimit(this.runId), planHash: p.snapshot.planHash, observedPlanHash: p.observed?.planHash, fileHash: p.observed?.fileHash, frozen: p.frozen, tasks: summary, eligible: blocked ? [] : eligibleTasks(p.snapshot, this.assignmentStates(), this.store.effectiveParallelLimit(this.runId)), integrationCwd: p.pin.integrationCwd };
+    const capacity = this.store.capacity(this.runId);
+    return { ...capacity, planHash: p.snapshot.planHash, observedPlanHash: p.observed?.planHash, fileHash: p.observed?.fileHash, frozen: p.frozen, tasks: summary, eligible: blocked ? [] : eligibleTasks(p.snapshot, this.assignmentStates(), capacity.effectiveMaximum), integrationCwd: p.pin.integrationCwd };
   }
   reconcile(expectedFileHash: string, expectedPlanHash: string): void {
     const p = this.current(), next = p.observed;
