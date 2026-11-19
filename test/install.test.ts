@@ -241,7 +241,7 @@ test('generated_configuration_binds_explicit_parent_and_repository', t => {
       '-ConfigPath', f.request, '-Prepare', '-EnvironmentPath', environmentPath], { encoding: 'utf8', windowsHide: true, env });
   };
   for (const invalid of [
-    { ...binding, parentThreadId: '' }, { ...binding, repositoryPath: f.trees }, { ...binding, branchScope: ['source'] },
+    { ...binding, parentThreadId: '' }, { ...binding, parentSessionKind: 'cli' }, { ...binding, repositoryPath: f.trees }, { ...binding, branchScope: ['source'] },
     { ...binding, executionLimits: { maxWakeTurns: 0, maxCorrectionsPerTask: null } },
     { ...binding, permissionPermit: { ...binding.permissionPermit, allowedProfileIds: ['workspace'] } },
     { ...binding, permissionPermit: { ...binding.permissionPermit, writableRoots: [f.root] } }
@@ -258,6 +258,12 @@ test('generated_configuration_binds_explicit_parent_and_repository', t => {
   writeFileSync(repositoryAuth, readFileSync(codexConfig));
   assert.notEqual(invoke({ ...request, codexConfig: repositoryAuth }).status, 0);
   assert(!existsSync(request.controlConfig));
+  const { parentThreadId: _pinnedParent, ...sessionBinding } = binding;
+  const sessionConfig = path.join(envRoot, 'session-control.json');
+  const dynamic = invoke({ ...request, controlConfig: sessionConfig, prepare: { ...sessionBinding, parentSessionKind: 'cli' } });
+  assert.equal(dynamic.status, 0, dynamic.stderr);
+  const sessionRelay = JSON.parse(readFileSync(sessionConfig, 'utf8')).mcp.parentRelay;
+  assert.deepEqual(sessionRelay, { pipeName: sessionRelay.pipeName, mode: 'verified-start', sessionKind: 'cli' });
   const before = treeHashes(envRoot), authBefore = treeHashes(authHome);
   const prepared = invoke(request);
   assert.equal(prepared.status, 0, prepared.stderr);

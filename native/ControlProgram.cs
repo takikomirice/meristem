@@ -7,6 +7,7 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
 using System.Threading;
+using System.Runtime.InteropServices;
 
 // Native-only ingress. The broker has stdio, never a second network/pipe server.
 internal sealed class ControlProgram {
@@ -30,14 +31,47 @@ internal sealed class ControlProgram {
         } catch { terminal.Dispose(); throw; }
     }
 
-    private static void HoldLease(NamedPipeServerStream pipe, Process terminal) {
+    [DllImport("iphlpapi.dll")]
+    private static extern uint GetExtendedTcpTable(IntPtr table, ref int size, bool order, int family, int tableClass, uint reserved);
+
+    // Match both ESTABLISHED loopback rows, including the reverse endpoint and its owner.
+    private static bool ConnectedToServer(Process terminal, int serverPid, int port) {
+        if (port < 1 || terminal.HasExited) return false;
+        int size = 0;
+        GetExtendedTcpTable(IntPtr.Zero, ref size, false, 2, 5, 0);
+        if (size < 4 || size > 16*1024*1024) return false;
+        var table = Marshal.AllocHGlobal(size);
+        try {
+            if (GetExtendedTcpTable(table, ref size, false, 2, 5, 0) != 0) return false;
+            int rows = Marshal.ReadInt32(table);
+            if (rows < 0 || rows > (size-4)/24) return false;
+            var clientPorts = new HashSet<int>();
+            var serverPeers = new HashSet<int>();
+            int wirePort = (port >> 8) | ((port & 255) << 8);
+            for (int n=0; n<rows; n++) {
+                int pos = 4+n*24;
+                if (Marshal.ReadInt32(table,pos) != 5
+                    || Marshal.ReadInt32(table,pos+4) != 0x0100007f
+                    || Marshal.ReadInt32(table,pos+12) != 0x0100007f) continue;
+                int local = Marshal.ReadInt32(table,pos+8) & 65535;
+                int remote = Marshal.ReadInt32(table,pos+16) & 65535;
+                int pid = Marshal.ReadInt32(table,pos+20);
+                if (pid == terminal.Id && remote == wirePort) clientPorts.Add(local);
+                if (pid == serverPid && local == wirePort) serverPeers.Add(remote);
+            }
+            return clientPorts.Overlaps(serverPeers);
+        } finally { Marshal.FreeHGlobal(table); }
+    }
+
+    private static void HoldLease(NamedPipeServerStream pipe, Process terminal, int serverPid, int port) {
         if (terminal == null) { while (pipe.ReadByte() != -1) {} return; }
         var exited = new System.Threading.Tasks.TaskCompletionSource<bool>();
         terminal.Exited += delegate { exited.TrySetResult(true); };
         terminal.EnableRaisingEvents = true;
         if (terminal.HasExited) return;
         var disconnected = pipe.ReadAsync(new byte[1], 0, 1);
-        System.Threading.Tasks.Task.WaitAny(exited.Task, disconnected);
+        var ends = new System.Threading.Tasks.Task[]{exited.Task, disconnected};
+        while (System.Threading.Tasks.Task.WaitAny(ends, 500) == -1 && ConnectedToServer(terminal, serverPid, port)) {}
         disconnected.ContinueWith(task => { var ignored = task.Exception; }, System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
     }
     private static string ReadFrame(Stream stream) {
@@ -99,9 +133,15 @@ internal sealed class ControlProgram {
                         &&method!="history_targets"&&method!="worker_history"&&method!="resume_worker_history"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
                     if (method == "lease") {
                         using (var terminal = Program.Text(request, "sessionKind") == "cli" ? OpenTerminalSession(request, peer) : null) {
+                            int port = terminal == null ? 0 : McpPeer.TerminalPort(terminal);
+                            if (terminal != null && port < 1) throw new IOException("expected an interactive remote TUI");
                             string leaseReply = Call(request, peer);
                             if (Object.Equals(Program.Parse(leaseReply)["ok"], true)) {
-                                try { writer.WriteLine(leaseReply); HoldLease(server, terminal); }
+                                try {
+                                    int serverPid = terminal == null ? 0 : Convert.ToInt32(Program.Parse(leaseReply)["sessionServerPid"]);
+                                    if (terminal != null && !ConnectedToServer(terminal, serverPid, port)) throw new IOException("TUI is not connected to this App Server");
+                                    writer.WriteLine(leaseReply); HoldLease(server, terminal, serverPid, port);
+                                }
                                 finally { try { Call(request, peer, "lease_lost"); } catch { broker.CloseJob(); } }
                             } else writer.WriteLine(leaseReply);
                         }

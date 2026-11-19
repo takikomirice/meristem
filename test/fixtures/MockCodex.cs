@@ -31,6 +31,13 @@ internal static class MockCodex {
         } finally {if(server!=null){try{if(!server.WaitForExit(1000))server.Kill();}catch{}server.Dispose();}}
     }
     static int Main(string[] args) {
+        if (args.Length == 4 && args[0] == "--remote" && args[2] == "--remote-auth-token-env") {
+            var uri = new Uri(args[1]);
+            using (var connection = new System.Net.Sockets.TcpClient("127.0.0.1", uri.Port)) {
+                Console.WriteLine("connected"); Console.Out.Flush(); Console.ReadLine();
+            }
+            return 0;
+        }
         Console.OutputEncoding=new UTF8Encoding(false); Console.InputEncoding=new UTF8Encoding(false);
         if (args.Length == 1 && args[0] == "--version") { Console.WriteLine("mock-codex 0"); return 0; }
         if (args.Length > 0 && args[0] == "ticker") {
@@ -152,6 +159,16 @@ internal static class MockCodex {
                     break;
                 case "fixture/mcp": {
                     RunMcp((string)p["executable"],(string)p["helper"],(string)p["file"]);break;
+                }
+                case "fixture/terminal-listener": {
+                    var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
+                    listener.Start();
+                    var keepAlive = new Thread(delegate() {
+                        using (var connection = listener.AcceptTcpClient()) { connection.GetStream().ReadByte(); }
+                        listener.Stop();
+                    });
+                    keepAlive.IsBackground = true; keepAlive.Start();
+                    result = new { port = ((System.Net.IPEndPoint)listener.LocalEndpoint).Port }; break;
                 }
                 case "fixture/events":
                     for(int i=0;i<300;i++)Write(new {method="turn/started",@params=new {secret="Bearer must-never-appear-in-terminal"}});

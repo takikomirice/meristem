@@ -126,7 +126,7 @@ export class McpController {
       if (Buffer.byteLength(a.cwd) > 4096 || Buffer.byteLength(a.branch) > 512) throw new Error('fixture path exceeds supported scope');
       if (a.repositoryId !== this.scope.repositoryId || !this.scope.branchScope.includes(a.branch) || ['main', 'master'].includes(a.branch) || realpathSync(git(a.cwd, ['rev-parse', '--show-toplevel'])).toLowerCase() !== realpathSync(a.cwd).toLowerCase() || realpathSync(git(a.cwd, ['rev-parse', '--path-format=absolute', '--git-common-dir'])).toLowerCase() !== common || git(a.cwd, ['symbolic-ref', '--short', 'HEAD']) !== a.branch) throw new Error('assignment outside Git scope');
     }
-    return digest({ ...this.scope, planPath: realpathSync(this.scope.planPath), planHash: createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex'), assignments: this.scope.assignments.map(a => ({ ...a, cwd: realpathSync(a.cwd) })) });
+    return digest({ ...this.scope, ...(this.parentSessionId ? { commonDir: common } : {}), planPath: realpathSync(this.scope.planPath), planHash: createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex'), assignments: this.scope.assignments.map(a => ({ ...a, cwd: realpathSync(a.cwd) })) });
   }
   private modelRoutingPermit() {
     if (!this.plan) return undefined;
@@ -147,7 +147,8 @@ export class McpController {
     const stored = this.plan && this.store.plan(this.runId)!;
     const planScope = this.parentSessionId && stored ? { planVersion: stored.snapshot.plan.schema_version,
       integrationBranch: stored.pin.integrationBranch, gitDestination: stored.pin.pushUrl,
-      worktreesRoot: stored.pin.root, maxParallel: stored.snapshot.plan.run.max_parallel } : undefined;
+      worktreesRoot: stored.pin.root, requestedMaximum: stored.snapshot.plan.run.max_parallel,
+      approvedMaximum: Math.min(stored.snapshot.plan.run.max_parallel, this.store.effectiveParallelLimit(this.runId)) } : undefined;
     const scope = { ...this.scope, ...(targetHash ? { targetHash } : {}), ...(planScope ? { planScope } : {}), planHash: this.plan ? this.store.plan(this.runId)!.bindingHash : createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex'),
       ...(routing ? { modelRouting: routing } : {}) };
     return { runId: this.runId, parent: this.parent, scope, scopeHash };
@@ -242,8 +243,8 @@ export class McpController {
       const modelRouting = routing ? { ...routing, scopeHash } : undefined;
       if (routing && binding?.state !== 'consumed') this.plan!.assertCurrent();
       if (binding && (binding.scope_hash !== scopeHash || !sameActor(JSON.parse(binding.parent), identity.actor))) {
-        const { windowBindingId: _oldWindow, startSource: _previousStart, ...oldScope } = JSON.parse(binding.scope);
-        const { windowBindingId: _newWindow, ...newScope } = scopeRecord;
+        const { windowBindingId: _oldWindow, startSource: _previousStart, planScope: _oldDisplay, ...oldScope } = JSON.parse(binding.scope);
+        const { windowBindingId: _newWindow, planScope: _newDisplay, ...newScope } = scopeRecord;
         if (this.parentSessionId && JSON.parse(binding.parent).threadId !== identity.actor.threadId) throw new Error('another conversation owns this run');
         if (hash(oldScope) !== hash(newScope)) throw new Error('rebind scope changed');
         this.store.replaceBinding(randomUUID(), this.runId, args.operationId, this.parent, scopeHash, scopeRecord);

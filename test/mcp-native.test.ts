@@ -65,17 +65,28 @@ for (const mode of ['legacy', 'adaptive', 'verified-start', 'control-start', 'te
     return { socket: lease, id: accepted.leaseId };
   }
   if (mode === 'terminal-exit') {
-    const tui = spawn(realExe, ['app-server'], { cwd: root, stdio: 'pipe', windowsHide: true });
-    t.after(() => { if (tui.exitCode === null) tui.kill(); });
-    const pid = tui.pid!;
-    const birth = spawnSync('powershell.exe', ['-NoProfile', '-Command', "(Get-Process -Id " + pid + ").StartTime.ToUniversalTime().ToFileTimeUtc()"], { encoding: 'utf8', windowsHide: true });
-    assert.equal(birth.status, 0);
-    const terminal = {pid, created: birth.stdout.trim()};
-    const lease = await acquireLease(terminal);
-    assert(lease.id);
-    tui.stdin.end();
+    async function connectedTui() {
+      const { port } = await ui('fixture/terminal-listener', {});
+      const tui = spawn(realExe, ['--remote', 'ws://127.0.0.1:' + port, '--remote-auth-token-env', 'TEST_ONLY'], { cwd: root, stdio: 'pipe', windowsHide: true });
+      t.after(() => { if (tui.exitCode === null) tui.kill(); });
+      await once(tui.stdout, 'data');
+      const pid = tui.pid!;
+      const birth = spawnSync('powershell.exe', ['-NoProfile', '-Command', "(Get-Process -Id " + pid + ").StartTime.ToUniversalTime().ToFileTimeUtc()"], { encoding: 'utf8', windowsHide: true });
+      assert.equal(birth.status, 0);
+      return { tui, lease: await acquireLease({ pid, created: birth.stdout.trim() }) };
+    }
+    const first = await connectedTui();
+    first.tui.stdin.end();
     for (let i = 0; i < 60 && ((await request('status')).run as any).state === 'active'; i++) await delay(50);
-    assert.equal(((await request('status')).run as any).state, 'needs_reconcile', 'TUI exit stops the run while its launcher is still alive');
+    assert.equal(((await request('status')).run as any).state, 'needs_reconcile', 'TUI exit fences its still-live launcher');
+    const second = await connectedTui();
+    const owner = await relayRequest(parentPipe, 'relay/status');
+    const parent = { ownerId: owner.ownerId, ownerEpoch: owner.ownerEpoch, threadId: 'P' };
+    const input = { parent, leaseId: second.lease.id };
+    const preview = await request('preview_parent_start', input);
+    assert.equal(preview.ok, true, 'disconnecting before registration must allow a new session to start');
+    assert.equal((await request('start_parent', { ...input, scopeHash: preview.scopeHash, operationId: 'reconnected' })).state, 'active');
+    second.tui.stdin.end();
     return;
   }
   const acceptedLease = dynamic ? await acquireLease() : undefined;

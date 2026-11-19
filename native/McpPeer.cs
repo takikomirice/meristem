@@ -29,6 +29,43 @@ internal static class McpPeer {
     internal static bool IsLauncher(Process peer) {
         using (var relay = Process.GetCurrentProcess()) return IsDirectParent(peer, relay);
     }
+    private static string[] ReadArguments(IntPtr handle, IntPtr data) {
+        int returned;
+        if (NtQueryInformationProcess(handle, 60, data, 65536, out returned) != 0) return null;
+        var command = (UnicodeString)Marshal.PtrToStructure(data, typeof(UnicodeString));
+        long offset = command.Buffer.ToInt64() - data.ToInt64();
+        if (command.Length == 0 || command.Length % 2 != 0 || offset < Marshal.SizeOf(typeof(UnicodeString)) || offset + command.Length > Math.Min(returned, 65536)) return null;
+        int count;
+        IntPtr argv = CommandLineToArgvW(Marshal.PtrToStringUni(command.Buffer, command.Length / 2), out count);
+        if (argv == IntPtr.Zero) return null;
+        try {
+            var args = new string[count];
+            for (int i=0; i<count; i++) args[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i*IntPtr.Size));
+            return args;
+        } finally { LocalFree(argv); }
+    }
+
+    internal static int TerminalPort(Process terminal) {
+        var data = Marshal.AllocHGlobal(65536);
+        try {
+            var args = ReadArguments(terminal.Handle, data);
+            if (args == null) return 0;
+            Uri endpoint = null;
+            string tokenVariable = null;
+            for (int i=1; i<args.Length; i++) {
+                string arg = args[i];
+                if (arg == "--no-alt-screen") continue;
+                if (++i >= args.Length) return 0;
+                if (arg == "--remote" && endpoint == null) {
+                    if (!Uri.TryCreate(args[i], UriKind.Absolute, out endpoint) || endpoint.Scheme != "ws" || endpoint.Host != "127.0.0.1") return 0;
+                } else if (arg == "--remote-auth-token-env" && tokenVariable == null) tokenVariable = args[i];
+                else if (arg == "-C" || arg == "--cd") { if (!Path.IsPathRooted(args[i])) return 0; }
+                else if (arg != "resume" || i != args.Length-1) return 0;
+            }
+            return endpoint == null || String.IsNullOrEmpty(tokenVariable) ? 0 : endpoint.Port;
+        } finally { Marshal.FreeHGlobal(data); }
+    }
+
     internal static bool Verify(ProcessTree parent,int pid,string created,Dictionary<string,object> pins,string[] arguments=null) {
         try {
             if(pins==null || parent.IsExited) return false;
@@ -46,17 +83,10 @@ internal static class McpPeer {
                     if(basic.Pid.ToInt64()!=pid || basic.ParentPid.ToInt64()!=parent.Pid || peer.StartTime.ToUniversalTime().ToFileTimeUtc()<parentCreated) return false;
                     var image=new StringBuilder(32768);int size=image.Capacity;
                     if(!QueryFullProcessImageName(handle,0,image,ref size)||!Same(Path.GetFullPath(image.ToString()),Path.GetFullPath(node))) return false;
-                    if(NtQueryInformationProcess(handle,60,data,65536,out returned)!=0) return false;
-                    var command=(UnicodeString)Marshal.PtrToStructure(data,typeof(UnicodeString));
-                    long offset=command.Buffer.ToInt64()-data.ToInt64();
-                    if(command.Length==0 || command.Length%2!=0 || offset<Marshal.SizeOf(typeof(UnicodeString)) || offset+command.Length>Math.Min(returned,65536)) return false;
-                    int count;IntPtr argv=CommandLineToArgvW(Marshal.PtrToStringUni(command.Buffer,command.Length/2),out count);
-                    if(argv==IntPtr.Zero)return false;
-                    try {
-                        var expected=arguments??new[]{node,entry,"--pipe",pipe};
-                        if(count!=expected.Length)return false;
-                        for(int i=0;i<count;i++)if(!Same(Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv,i*IntPtr.Size)),expected[i]))return false;
-                    } finally {LocalFree(argv);}
+                    var actual = ReadArguments(handle, data);
+                    var expected = arguments ?? new[]{node,entry,"--pipe",pipe};
+                    if(actual==null || actual.Length!=expected.Length)return false;
+                    for(int i=0;i<actual.Length;i++)if(!Same(actual[i],expected[i]))return false;
                     return !parent.IsExited && !peer.HasExited && LocalPipe.Created(peer)==created;
                 } finally {Marshal.FreeHGlobal(data);}
             }

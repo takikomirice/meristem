@@ -64,6 +64,7 @@ export async function serve(configPath: string): Promise<void> {
   } : undefined, limits);
   let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId); }
   let mcp: McpController | undefined;
+  let sessionServerPid: number | undefined;
   let relayOwner: Pick<ActorRef, 'ownerId' | 'ownerEpoch'> | undefined;
   let boundActor: ActorRef | undefined;
   let leasedPeer: string | undefined, leaseId: string | undefined, controllerLease: string | undefined;
@@ -84,6 +85,7 @@ export async function serve(configPath: string): Promise<void> {
     let parent;
     for (let i = 0; i < 30; i++) { try { parent = await relayRequest(config.mcp.parentRelay.pipeName, 'relay/status'); break; } catch { await delay(100); } }
     if (!parent?.managementEnabled) throw new Error('verified parent owner unavailable');
+    if (dynamic) sessionServerPid = z.number().int().positive().parse(parent.ownedPid);
     relayOwner = { ownerId: Id.parse(parent.ownerId), ownerEpoch: Id.parse(parent.ownerEpoch) };
     if (fixedThread) {
       boundActor = { ...relayOwner, threadId: fixedThread };
@@ -176,7 +178,12 @@ export async function serve(configPath: string): Promise<void> {
       if (request.windowBindingId !== discovery.windowBindingId || leasedPeer) return { ok: false, error: 'window_already_bound' };
       leasedPeer = peerKey;
       leaseId = randomUUID();
-      return dynamic ? { ok: true, leaseId } : { ok: true };
+      // No work or permit exists to resume if the previous session disappeared before its first start.
+      if (dynamic && !store.binding(config.runId) && store.run(config.runId).state === 'needs_reconcile' && !store.attempts(config.runId).length) {
+        try { await broker.resumeRun(config.runId); }
+        catch (error) { leasedPeer = undefined; leaseId = undefined; throw error; }
+      }
+      return dynamic ? { ok: true, leaseId, ...(request.sessionKind === 'cli' ? { sessionServerPid } : {}) } : { ok: true };
     }
     if (request.method === 'status' && request.pendingDecisions === true) {
       const afterId = Id.optional().parse(request.afterDecisionId);
