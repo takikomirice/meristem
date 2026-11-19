@@ -29,7 +29,7 @@ internal sealed class StdioRelay
     private readonly Dictionary<string,string> completedTurns=new Dictionary<string,string>();
     private readonly HashSet<string> wakeBlocked=new HashSet<string>();
     private readonly HashSet<string> wakeUnsupported=new HashSet<string>();
-    private long stateSeq;
+    private long stateSeq, usageSequence, accountGeneration;
     private long wakePeerAccepted, wakePeerRejected;
     private readonly Dictionary<string,HashSet<string>> models=new Dictionary<string,HashSet<string>>();
     private readonly List<object> events=new List<object>();
@@ -83,6 +83,7 @@ internal sealed class StdioRelay
             case "model/list": allowed="cursor,limit,includeHidden"; break;
             case "thread/loaded/list": allowed="cursor,limit"; break;
             case "account/read": allowed="refreshToken"; break;
+            case "account/rateLimits/read": allowed=""; break;
             case "thread/start": allowed="cwd,model,ephemeral,permissions"; break;
             case "permissionProfile/list": allowed="cwd,cursor,limit"; break;
             case "thread/resume": allowed="threadId"; break;
@@ -94,7 +95,7 @@ internal sealed class StdioRelay
         var keys=new HashSet<string>(allowed.Split(','));
         foreach (var key in p.Keys) if (!keys.Contains(key)) throw new InvalidOperationException("parameter not exposed: "+key);
         switch (method) {
-            case "model/list": case "thread/loaded/list": return;
+            case "model/list": case "thread/loaded/list": case "account/rateLimits/read": return;
             case "account/read":
                 if (p.ContainsKey("refreshToken") && !Object.Equals(p["refreshToken"],false)) throw new InvalidOperationException("credential refresh not exposed");
                 return;
@@ -127,10 +128,11 @@ internal sealed class StdioRelay
         object id;
         if (call == null || !call.TryGetValue("id", out id) || !(id is string || id is int || id is long)) return Error(null,"scalar id required");
         string method=Program.Text(call,"method");
-        if(method!=null&&method.StartsWith("relay/wake",StringComparison.Ordinal)&&Program.Map(config,"controlHost")!=null) {
+        bool usageRead=method=="relay/usage-context"||method=="account/rateLimits/read";
+        if(usageRead||(method!=null&&method.StartsWith("relay/wake",StringComparison.Ordinal)&&Program.Map(config,"controlHost")!=null)) {
             bool verified=caller!=null&&VerifyWakePeer!=null&&VerifyWakePeer(caller);
-            lock(gate){if(verified)wakePeerAccepted++;else wakePeerRejected++;}
-            if(!verified)return Error(id,"wake requires owned broker");
+            if(!usageRead)lock(gate){if(verified)wakePeerAccepted++;else wakePeerRejected++;}
+            if(!verified)return Error(id,usageRead?"usage requires owned broker":"wake requires owned broker");
         }
         var p=Program.Map(call,"params") ?? new Dictionary<string,object>();
         bool wake=method=="relay/wake";
@@ -145,6 +147,7 @@ internal sealed class StdioRelay
         }
         Pending request; string wireId; byte[] command;
         lock (gate) {
+            if(method=="relay/usage-context") return new {id=id,result=new {ownerId=owner,ownerEpoch=epoch,usageSequence=usageSequence,accountGeneration=accountGeneration,authHome=Environment.GetEnvironmentVariable("CODEX_HOME")??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),".codex")}};
             if(method=="relay/wake-state") {
                 string thread=Program.Text(p,"threadId");
                 bool supported=Program.Text(Program.Map(config,"controlHost"),"parentMode")!="verified-start"&&enabled&&!closed&&initialized&&thread!=null&&registered.Contains(thread)&&!wakeBlocked.Contains(thread)&&!wakeUnsupported.Contains(thread)&&Program.Text(p,"ownerId")==owner&&Program.Text(p,"ownerEpoch")==epoch;
@@ -193,6 +196,9 @@ internal sealed class StdioRelay
                     method="turn/start";
                 }
                 Validate(method,p);
+                if (method=="account/rateLimits/read"||method=="account/read") {
+                    foreach(var other in pending.Values)if(other.Method==method)return Error(id,"account read already pending");
+                }
                 if (pending.Count >= 256) { Disable("unsettled_rpc_limit"); return Error(id,"too many unsettled calls"); }
                 do { wireId="cc00:"+epoch+":"+(++seq); } while (uiIds.Contains(Key(wireId)));
                 request=new Pending { Method=method, Params=p };
@@ -205,6 +211,7 @@ internal sealed class StdioRelay
             catch { Disable("management_write_failed"); return new { id=id, error=new { code=-32001, message="send outcome unknown; reconcile before retry", delivery="unknown" } }; }
         }
         if (!request.Done.WaitOne(15000)) {
+            if(method=="account/rateLimits/read" || method=="account/read") return Error(id,"account read timed out");
             Disable("management_reply_timeout");
             return new { id=id, error=new { code=-32001, message="reply missing; do not resend", delivery="unknown" } };
         }
@@ -300,6 +307,8 @@ internal sealed class StdioRelay
                 }
             }
             var p=Program.Map(m,"params"); string thread=Program.Text(p,"threadId"), turn=Program.Text(p,"turnId");
+            if (method == "account/updated") { accountGeneration++; usageSequence++; }
+            if (method == "account/rateLimits/updated") usageSequence++;
             if (method == "turn/started" || method == "turn/completed") {
                 turn=Program.Text(Program.Map(p,"turn"),"id") ?? turn;
                 if (thread != null) {

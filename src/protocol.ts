@@ -26,7 +26,7 @@ export async function relayRequest(pipeName: string, method: string, params: Rec
     socket.on('data', chunk => {
       buffer = Buffer.concat([buffer, chunk]); if (buffer.length > 262144) return fail();
       const end = buffer.indexOf(10); if (end < 0 || settled) return;
-      try { const reply = JSON.parse(buffer.subarray(0, end).toString('utf8')); if (reply.error || reply.id !== 'cc02-proof') return fail(); settled = true; resolve(reply.result); socket.destroy(); } catch { fail(); }
+      try { const reply = JSON.parse(buffer.subarray(0, end).toString('utf8')); if (reply.id !== 'cc02-proof') return fail(); if (reply.error?.code === -32601) { settled = true; reject(new Error('method unsupported')); socket.destroy(); return; } if (reply.error) return fail(); settled = true; resolve(reply.result); socket.destroy(); } catch { fail(); }
     });
   });
 }

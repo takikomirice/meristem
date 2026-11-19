@@ -326,7 +326,29 @@ export class WorkerRuntime {
     if (live && path.resolve(live.assignment.cwd).toLowerCase() !== cwd) throw new Error('worker identity mismatch');
     if (cursor !== undefined && !historyCursor.safeParse(cursor).success) throw new Error('invalid history cursor');
 
-    // Bound history reads to a disposable stdio connection. A bad history frame cannot close a worker transport.
+    return this.readOnlySession('meristem-history', async rpc => {
+      const metadata = historyThread.safeParse(await rpc.call('thread/read', { threadId, includeTurns: false }, 4000));
+      if (!metadata.success) throw new Error('history identity or response mismatch');
+      const { thread } = metadata.data;
+      if (thread.id !== threadId || thread.parentThreadId != null || !path.isAbsolute(thread.cwd) || path.resolve(thread.cwd).toLowerCase() !== cwd ||
+          (live && live.provider !== thread.modelProvider) ||
+          (registration.modelProvider !== undefined && registration.modelProvider !== thread.modelProvider)) throw new Error('history identity or response mismatch');
+      const page = historyPage.safeParse(await rpc.call('thread/turns/list', {
+        threadId, itemsView: 'summary', limit: historyPageSize, ...(cursor === undefined ? {} : { cursor }),
+      }, 4000));
+      if (!page.success || page.data.nextCursor === cursor) throw new Error('invalid history page');
+      return { threadId, modelProvider: thread.modelProvider, turns: page.data.data.map(({ id, status, items }) => ({ id, status, messages: historyMessages(items) })), nextCursor:page.data.nextCursor };
+    });
+  }
+  readWorkerUsage() {
+    return this.readOnlySession('meristem-usage', async rpc => {
+      const identity = await rpc.call('account/read', {refreshToken:false}, 4000);
+      const limits = await rpc.call('account/rateLimits/read', {}, 4000);
+      const after = await rpc.call('account/read', {refreshToken:false}, 4000);
+      return { identity: JSON.stringify(identity) === JSON.stringify(after) ? identity : null, limits };
+    });
+  }
+  private async readOnlySession<T>(name: string, read: (rpc: Rpc) => Promise<T>): Promise<T> {
     const { realExe, realSha256, stateDirectory } = this.config;
     const executableHash = createHash('sha256');
     for await (const chunk of createReadStream(realExe)) executableHash.update(chunk);
@@ -335,21 +357,9 @@ export class WorkerRuntime {
     const closed = new Promise<boolean>(resolve => child.once('close', () => resolve(true)));
     const rpc = new Rpc(child, () => {});
     try {
-      await rpc.call('initialize', { clientInfo: { name: 'meristem-history', version: '0.0.0' }, capabilities: { experimentalApi: true } }, 4000);
+      await rpc.call('initialize', { clientInfo: { name, version: '0.0.0' }, capabilities: { experimentalApi: true } }, 4000);
       rpc.notify('initialized');
-      const metadata = historyThread.safeParse(await rpc.call('thread/read', { threadId, includeTurns: false }, 4000));
-      if (!metadata.success) throw new Error('history identity or response mismatch');
-      const { thread } = metadata.data;
-      if (thread.id !== threadId || thread.parentThreadId != null || !path.isAbsolute(thread.cwd) || path.resolve(thread.cwd).toLowerCase() !== cwd ||
-          (live && live.provider !== thread.modelProvider) ||
-          (registration.modelProvider !== undefined && registration.modelProvider !== thread.modelProvider)) throw new Error('history identity or response mismatch');
-
-      const page = historyPage.safeParse(await rpc.call('thread/turns/list', {
-        threadId, itemsView: 'summary', limit: historyPageSize, ...(cursor === undefined ? {} : { cursor }),
-      }, 4000));
-      if (!page.success || page.data.nextCursor === cursor) throw new Error('invalid history page');
-      const { data: turns, nextCursor } = page.data;
-      return { threadId, modelProvider: thread.modelProvider, turns: turns.map(({ id, status, items }) => ({ id, status, messages: historyMessages(items) })), nextCursor };
+      return await read(rpc);
     } finally {
       rpc.close();
       if (!await Promise.race([closed, delay(1000, false, { ref: false })])) {
