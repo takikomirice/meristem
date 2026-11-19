@@ -117,7 +117,11 @@ test('terminal_client_does_not_exclude_mcp_or_stop_client',{timeout:10000},async
   t.after(async()=>{held?.destroy();await killAndWait(host);rmSync(cwd,{recursive:true,force:true});});
   await until(()=>client(name,'status'));
   held=net.connect(`\\\\.\\pipe\\${name}-${nextSlot++%16}`);held.on('error',()=>{});await once(held,'connect');
-  const reply=once(held,'data');held.write('{"method":"events","afterSeq":0,"limit":100}\n');await reply;
+  let replies='';
+  held.setEncoding('utf8'); held.on('data', chunk => { replies += chunk; });
+  held.write('{"method":"events","afterSeq":0,"limit":100}\n{"method":"status"}\n');
+  await until(() => replies.split('\n').length >= 3);
+  assert.equal(JSON.parse(replies.split('\n')[1]).state,'running');
   assert.equal((await client(name,'status')).state,'running');
   assert.equal((await client(name,'stop')).state,'stopped');await until(()=>host.exitCode!==null);
 });
