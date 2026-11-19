@@ -25,7 +25,7 @@ test('VSIX includes license and notices, excludes private state, and never overw
       foreach ($entry in $zip.Entries) {
         if ($entry.FullName.StartsWith('extension/runtime/')) {
           $relative = $entry.FullName.Substring('extension/runtime/'.Length)
-          if ($relative -notmatch '^(node_modules/|dist/src/[^/]+\.js$|migrations/[^/]+\.sql$|node/(node\.exe|LICENSE\.txt)$|\.local/chat-control-build/(CodexRelay|CodexWorkerHost|MeristemControl)\.exe$|package(-lock)?\.json$|LICENSE$|THIRD_PARTY_NOTICES\.md$)' -or $relative -match '(^|/)(auth\.json|discovery\.json|control\.sqlite|debug\.log|\.git)(/|$)') { throw 'Unexpected runtime entry' }
+          if ($relative -notmatch '^(node_modules/|dist/src/[^/]+\.js$|migrations/[^/]+\.sql$|node/(node\.exe|LICENSE\.txt)$|\.local/chat-control-build/(CodexRelay|CodexWorkerHost|MeristemControl|MeristemTerminal)\.exe$|package(-lock)?\.json$|LICENSE$|THIRD_PARTY_NOTICES\.md$)' -or $relative -match '(^|/)(auth\.json|discovery\.json|control\.sqlite|debug\.log|\.git)(/|$)') { throw 'Unexpected runtime entry' }
           if ($entry.FullName -match '^extension/runtime/(node/node.exe|dist/src/cli.js|migrations/[^/]+|\.local/chat-control-build/[^/]+|node/LICENSE.txt)$') { $files[$entry.FullName] = $entry.Length }
           continue
         }
@@ -83,9 +83,12 @@ test('release ZIP runs with its own Node and locked dependencies and contains no
   assert(readFileSync(path.join(payload, 'README.md'), 'utf8').includes('[MIT License](LICENSE)'));
   const manifest = JSON.parse(readFileSync(path.join(payload, 'release-manifest.json'), 'utf8'));
   const native = Object.keys(manifest.files).filter(file => file.startsWith('.local/')).sort();
-  assert.deepEqual(native, ['.local/chat-control-build/CodexRelay.exe', '.local/chat-control-build/CodexWorkerHost.exe', '.local/chat-control-build/MeristemControl.exe']);
+  assert.deepEqual(native, ['.local/chat-control-build/CodexRelay.exe', '.local/chat-control-build/CodexWorkerHost.exe', '.local/chat-control-build/MeristemControl.exe', '.local/chat-control-build/MeristemTerminal.exe']);
   assert(!Object.keys(manifest.files).some(file => /^(?:\.git\/|test\/|src\/)|(?:^|\/)(?:auth\.json|control\.sqlite|installation\.json|debug\.log)$/.test(file)));
   assert.equal(readFileSync(path.join(payload, 'node/LICENSE.txt'), 'utf8'), readFileSync(license, 'utf8'));
+  const cliHelp = spawnSync('powershell.exe', ['-NoProfile', '-File', path.join(payload, 'scripts/meristem.ps1'), 'help'], { cwd: root, encoding: 'utf8', windowsHide: true });
+  assert.equal(cliHelp.status, 0, cliHelp.stderr);
+  assert.match(cliHelp.stdout, /\bstart\b/); assert.match(cliHelp.stdout, /\bresume\b/);
   for (const file of ['node/node.exe', 'node/LICENSE.txt', 'dist/src/install.js', 'scripts/install.ps1', 'scripts/uninstall.ps1', 'extension/package.json', 'node_modules/typescript/LICENSE.txt', 'node_modules/typescript/ThirdPartyNoticeText.txt']) {
     assert.equal(sha256(path.join(payload, file)), manifest.files[file]);
   }

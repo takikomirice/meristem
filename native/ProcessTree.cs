@@ -46,6 +46,8 @@ internal sealed class ProcessTree : IDisposable
     [DllImport("kernel32.dll")] private static extern bool GetExitCodeProcess(IntPtr process, out uint code);
     [DllImport("kernel32.dll", SetLastError=true)] private static extern bool GetProcessTimes(IntPtr process, out long created, out long exited, out long kernel, out long user);
     [DllImport("kernel32.dll")] private static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll")] private static extern IntPtr GetStdHandle(int kind);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern bool SetStdHandle(int kind, IntPtr handle);
     [DllImport("kernel32.dll", SetLastError=true)] private static extern bool TerminateJobObject(IntPtr job,uint code);
     internal bool Contains(IntPtr handle) { lock(jobGate) { bool member; if(job==IntPtr.Zero)return false; Check(IsProcessInJob(handle,job,out member));return member; } }
     internal bool StopAndConfirm(int milliseconds) {
@@ -71,7 +73,7 @@ internal sealed class ProcessTree : IDisposable
         }
         return b.Append('\\', slashes * 2).Append('"').ToString();
     }
-    internal ProcessTree(string executable, string[] args, string workingDirectory=null) {
+    internal ProcessTree(string executable, string[] args, string workingDirectory=null, bool newConsole=false) {
         IntPtr stdinRead=IntPtr.Zero, stdinWrite=IntPtr.Zero, stdoutRead=IntPtr.Zero, stdoutWrite=IntPtr.Zero, stderrRead=IntPtr.Zero, stderrWrite=IntPtr.Zero;
         IntPtr attributes=IntPtr.Zero, handles=IntPtr.Zero; bool attributesReady=false;
         ProcessInfo info = new ProcessInfo();
@@ -79,29 +81,42 @@ internal sealed class ProcessTree : IDisposable
             job = CreateJobObject(IntPtr.Zero, null); Check(job != IntPtr.Zero);
             var limits = new ExtendedLimits(); limits.Basic.Flags = 0x2000; // KILL_ON_JOB_CLOSE, no breakaway
             Check(SetInformationJobObject(job, 9, ref limits, (uint)Marshal.SizeOf(limits)));
-            var sec = new Security { Length=Marshal.SizeOf(typeof(Security)), Inherit=true };
-            Check(CreatePipe(out stdinRead, out stdinWrite, ref sec, 0));
-            Check(CreatePipe(out stdoutRead, out stdoutWrite, ref sec, 0));
-            Check(CreatePipe(out stderrRead, out stderrWrite, ref sec, 0));
-            Check(SetHandleInformation(stdinWrite, 1, 0)); Check(SetHandleInformation(stdoutRead, 1, 0)); Check(SetHandleInformation(stderrRead, 1, 0));
-            IntPtr size=IntPtr.Zero; InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
-            attributes=Marshal.AllocHGlobal(size); Check(InitializeProcThreadAttributeList(attributes, 1, 0, ref size)); attributesReady=true;
-            handles=Marshal.AllocHGlobal(IntPtr.Size * 3);
-            Marshal.WriteIntPtr(handles, 0, stdinRead); Marshal.WriteIntPtr(handles, IntPtr.Size, stdoutWrite); Marshal.WriteIntPtr(handles, IntPtr.Size * 2, stderrWrite);
-            Check(UpdateProcThreadAttribute(attributes, 0, (IntPtr)0x20002, handles, (IntPtr)(IntPtr.Size*3), IntPtr.Zero, IntPtr.Zero));
-            var startup=new StartupEx(); startup.Info.Size=Marshal.SizeOf(startup); startup.Info.Flags=0x100;
-            startup.Info.In=stdinRead; startup.Info.Out=stdoutWrite; startup.Info.Err=stderrWrite; startup.Attributes=attributes;
+            var startup=new StartupEx();
+            if (!newConsole) {
+                IntPtr size=IntPtr.Zero; InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
+                attributes=Marshal.AllocHGlobal(size); Check(InitializeProcThreadAttributeList(attributes, 1, 0, ref size)); attributesReady=true;
+                startup.Info.Size=Marshal.SizeOf(startup); startup.Attributes=attributes;
+                var sec = new Security { Length=Marshal.SizeOf(typeof(Security)), Inherit=true };
+                Check(CreatePipe(out stdinRead, out stdinWrite, ref sec, 0));
+                Check(CreatePipe(out stdoutRead, out stdoutWrite, ref sec, 0));
+                Check(CreatePipe(out stderrRead, out stderrWrite, ref sec, 0));
+                Check(SetHandleInformation(stdinWrite, 1, 0)); Check(SetHandleInformation(stdoutRead, 1, 0)); Check(SetHandleInformation(stderrRead, 1, 0));
+                handles=Marshal.AllocHGlobal(IntPtr.Size * 3);
+                Marshal.WriteIntPtr(handles, 0, stdinRead); Marshal.WriteIntPtr(handles, IntPtr.Size, stdoutWrite); Marshal.WriteIntPtr(handles, IntPtr.Size * 2, stderrWrite);
+                Check(UpdateProcThreadAttribute(attributes, 0, (IntPtr)0x20002, handles, (IntPtr)(IntPtr.Size*3), IntPtr.Zero, IntPtr.Zero));
+                startup.Info.Flags=0x100; startup.Info.In=stdinRead; startup.Info.Out=stdoutWrite; startup.Info.Err=stderrWrite;
+            } else startup.Info.Size=Marshal.SizeOf(typeof(Startup));
             var command=new StringBuilder(Quote(executable)); foreach (var arg in args) command.Append(' ').Append(Quote(arg));
-            Check(CreateProcess(executable, command, IntPtr.Zero, IntPtr.Zero, true, 0x08080004, IntPtr.Zero, workingDirectory, ref startup, out info));
+            if (newConsole) {
+                // Windows can duplicate redirected standard handles even with inherit=false.
+                // This single-purpose launcher starts no other child. Let the TUI open its own console handles.
+                IntPtr[] standard={GetStdHandle(-10),GetStdHandle(-11),GetStdHandle(-12)};
+                try {
+                    for(int n=0;n<3;n++) Check(SetStdHandle(-10-n,IntPtr.Zero));
+                    Check(CreateProcess(executable,command,IntPtr.Zero,IntPtr.Zero,false,0x14,IntPtr.Zero,workingDirectory,ref startup,out info));
+                } finally { for(int n=0;n<3;n++) SetStdHandle(-10-n,standard[n]); }
+            } else Check(CreateProcess(executable, command, IntPtr.Zero, IntPtr.Zero, true, 0x08080004, IntPtr.Zero, workingDirectory, ref startup, out info));
             process=info.Process; Pid=info.Pid;
             long created,exited,kernel,user; Check(GetProcessTimes(process,out created,out exited,out kernel,out user));
             Created=created.ToString(System.Globalization.CultureInfo.InvariantCulture);
             Check(AssignProcessToJobObject(job, process)); bool inJob; Check(IsProcessInJob(process, job, out inJob));
             if (!inJob) throw new InvalidOperationException("child job membership not confirmed");
             Assigned=true;
-            Input=new FileStream(new SafeFileHandle(stdinWrite, true), FileAccess.Write, 8192, false); stdinWrite=IntPtr.Zero;
-            Output=new FileStream(new SafeFileHandle(stdoutRead, true), FileAccess.Read, 8192, false); stdoutRead=IntPtr.Zero;
-            Error=new FileStream(new SafeFileHandle(stderrRead, true), FileAccess.Read, 8192, false); stderrRead=IntPtr.Zero;
+            if (!newConsole) {
+                Input=new FileStream(new SafeFileHandle(stdinWrite, true), FileAccess.Write, 8192, false); stdinWrite=IntPtr.Zero;
+                Output=new FileStream(new SafeFileHandle(stdoutRead, true), FileAccess.Read, 8192, false); stdoutRead=IntPtr.Zero;
+                Error=new FileStream(new SafeFileHandle(stderrRead, true), FileAccess.Read, 8192, false); stderrRead=IntPtr.Zero;
+            }
             initialThread=info.Thread;info.Thread=IntPtr.Zero;
         } catch { if (process != IntPtr.Zero) { TerminateProcess(process, 125); WaitForSingleObject(process, 5000); } Dispose(); throw; }
         finally {

@@ -26,6 +26,82 @@ internal static class McpPeer {
         } finally { Marshal.FreeHGlobal(data); }
     }
 
+    internal static Process VerifiedParent(Process process) {
+        int size=Marshal.SizeOf(typeof(BasicInfo)), returned;
+        var data=Marshal.AllocHGlobal(size);
+        try {
+            if(NtQueryInformationProcess(process.Handle,0,data,size,out returned)!=0 || returned<size) return null;
+            var basic=(BasicInfo)Marshal.PtrToStructure(data,typeof(BasicInfo));
+            var parent=Process.GetProcessById(checked((int)basic.ParentPid.ToInt64()));
+            try {
+                if(IsDirectParent(parent,process) && parent.SessionId==process.SessionId) return parent;
+            } catch { parent.Dispose(); throw; }
+            parent.Dispose(); return null;
+        } finally { Marshal.FreeHGlobal(data); }
+    }
+    private static bool InteractivePowerShell(Process shell) {
+        string system=Environment.GetFolderPath(Environment.SpecialFolder.System);
+        string programs=Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        string image=shell.MainModule.FileName;
+        if(!Same(image,Path.Combine(system,@"WindowsPowerShell\v1.0\powershell.exe")) &&
+            !Same(image,Path.Combine(programs,@"PowerShell\7\pwsh.exe"))) return false;
+        var args=Arguments(shell);
+        if(args==null || args.Length==0)return false;
+        for(int i=1;i<args.Length;i++) {
+            if(Same(args[i],"-NoLogo") || Same(args[i],"-NoExit") || Same(args[i],"-NoProfile"))continue;
+            if(Same(args[i],"-WorkingDirectory") && i+1<args.Length && Path.IsPathRooted(args[++i]))continue;
+            return false;
+        }
+        return true;
+    }
+    private static bool WindowsTerminal(Process terminal) {
+        string exe=terminal.MainModule.FileName;
+        var package=Directory.GetParent(exe);
+        return Same(Path.GetFileName(exe),"WindowsTerminal.exe") && package!=null && package.Parent!=null
+            && Same(package.Parent.FullName,Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),"WindowsApps"))
+            && System.Text.RegularExpressions.Regex.IsMatch(package.Name,@"^Microsoft\.WindowsTerminal(?:Preview)?_[0-9.]+_(?:x64|arm64)__8wekyb3d8bbwe$",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+    private static string[] Arguments(Process process) {
+        var data=Marshal.AllocHGlobal(65536);
+        try {return ReadArguments(process.Handle,data);}finally{Marshal.FreeHGlobal(data);}
+    }
+    internal static bool IsTerminalBridge(Process launcher,Process terminal,string helper,string helperHash,string tui) {
+        try {
+            using(var parent=VerifiedParent(terminal)) {
+                if(parent==null || !IsDirectParent(launcher,parent) || !Same(parent.MainModule.FileName,helper) || !Pinned(helper,helperHash))
+                    return false;
+                var args=Arguments(parent); var childArgs=Arguments(terminal);
+                if(args==null || childArgs==null || args.Length!=childArgs.Length+1 || !Same(args[1],tui))return false;
+                for(int i=1;i<childArgs.Length;i++)if(args[i+1]!=childArgs[i])return false;
+                return true;
+            }
+        } catch {return false;}
+    }
+    internal static bool HumanCliLauncher(Process peer,string node,string entry) {
+        try {
+            if(!Same(peer.MainModule.FileName,node) || peer.SessionId==0)return false;
+            // The native control process is a child of this run's relay. Other approved terminals
+            // can have the same node path and arguments, but cannot act for this relay.
+            using(var control=Process.GetCurrentProcess())
+            using(var relay=VerifiedParent(control)) {
+                if(relay==null || !IsDirectParent(peer,relay))return false;
+            }
+            var args=Arguments(peer);
+            if(args==null || args.Length!=4 || !Same(args[1],entry) || args[2]!="terminal" ||
+                (args[3]!="start" && args[3]!="resume")) return false;
+            string explorer=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),"explorer.exe");
+            using(var shell=VerifiedParent(peer)) {
+                if(shell==null || !InteractivePowerShell(shell))return false;
+                using(var owner=VerifiedParent(shell)) {
+                    if(owner==null)return false;
+                    if(Same(owner.MainModule.FileName,explorer))return true;
+                    if(!WindowsTerminal(owner))return false;
+                    using(var desktop=VerifiedParent(owner))return desktop!=null && Same(desktop.MainModule.FileName,explorer);
+                }
+            }
+        } catch {return false;}
+    }
     internal static bool IsLauncher(Process peer) {
         using (var relay = Process.GetCurrentProcess()) return IsDirectParent(peer, relay);
     }

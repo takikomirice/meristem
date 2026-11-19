@@ -53,15 +53,41 @@ internal static class Program
             // Only the measured stdio app-server invocation enables the side channel.
             bool managed=verified && ((args.Length == 1 && args[0] == "app-server") ||
                     String.Join("\n",args) == "-c\nfeatures.code_mode_host=true\n-c\nfeatures.windows_sandbox_service=true\napp-server\n--analytics-default-enabled");
-            var hostConfig = Map(config, "controlHost");
-            bool requiresManagement = hostConfig != null && hostConfig.ContainsKey("ideTerminal") && Object.Equals(hostConfig["ideTerminal"], true);
+            var binding=Map(config,"controlHost");
+            bool cli=Text(binding,"cliTransport")=="launcher-websocket";
+            string[] serverArgs=args;
+            bool requiresManagement = binding != null && binding.ContainsKey("ideTerminal") && Object.Equals(binding["ideTerminal"], true);
             if (requiresManagement && !managed) return 126;
-            string[] forwardedArgs = args;
-            if (managed) {
-                try { forwardedArgs = SidebarArguments(config, args); }
+            if(cli) {
+                string file=Text(binding,"configPath");
+                if(!verified || args.Length!=1 || args[0]!="app-server" || Text(binding,"parentMode")!="verified-start"
+                    || !Path.IsPathRooted(file??"") || Hash(file)!=Text(binding,"configSha256"))
+                    throw new InvalidOperationException("CLI runtime binding changed");
+                var broker=Parse(File.ReadAllText(file,Encoding.UTF8));
+                var mcp=Map(broker,"mcp");
+                // Set the whole table for this server only. TOML basic strings accept JSON string escaping.
+                string table="mcp_servers.meristem={command="+Encode(Text(broker,"nodeExecutable"))
+                    +",args="+Encode(new[]{Text(mcp,"entryPoint"),"--pipe",Text(broker,"pipeName")})+",enabled=true}";
+                serverArgs=new[]{"-c",table,"app-server"};
+            }
+            else if (managed) {
+                try { serverArgs = SidebarArguments(config, args); }
                 catch { if (requiresManagement) return 126; managed = false; Console.Error.WriteLine("Sidebar control configuration changed; starting ordinary Codex without Meristem."); }
             }
-            using (var child=new ProcessTree(real, forwardedArgs)) {
+            // Windows releases this handle even on forced launcher/relay termination.
+            using (var runLock=cli ? new FileStream(self+".lock",FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None) : null)
+            using (var child=new ProcessTree(real, serverArgs)) {
+                if (cli) {
+                    System.Diagnostics.Process launcher;
+                    using (var relayProcess=System.Diagnostics.Process.GetCurrentProcess()) launcher=McpPeer.VerifiedParent(relayProcess);
+                    if(launcher==null)throw new InvalidOperationException("CLI launcher unavailable");
+                    Background(delegate {
+                        using(launcher) launcher.WaitForExit();
+                        // Allow the control lease to stop Workers first. A stuck App Server must not
+                        // outlive a force-closed terminal even when its stdio reader is blocked.
+                        Thread.Sleep(20000); child.CloseJob();
+                    });
+                }
                 child.Resume();
                 var stderr=Console.OpenStandardError();
                 var errorThread=Background(delegate { try { child.Error.CopyTo(stderr); stderr.Flush(); } catch (IOException) {} });
@@ -71,7 +97,6 @@ internal static class Program
                     var relay=new StdioRelay(child, config, real);
                     ProcessTree control=null;
                     try {
-                        var binding=Map(config,"controlHost");
                         if(binding!=null) {
                             // Optional explicitly bound CC-01 owner. Failure never kills the parent App Server.
                             try {

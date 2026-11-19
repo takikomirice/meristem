@@ -30,7 +30,7 @@ export async function relayRequest(pipeName: string, method: string, params: Rec
     });
   });
 }
-async function availablePipe(pipeName: string): Promise<Socket> {
+export async function availablePipe(pipeName: string): Promise<Socket> {
   // Retry only connection establishment. Once a request is written its result may be unknown.
   for (let attempt = 0; attempt < 16; attempt++) {
     try {

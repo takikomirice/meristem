@@ -17,17 +17,18 @@ internal sealed class ControlProgram {
     private readonly Dictionary<string,Pending> pending=new Dictionary<string,Pending>();
     private sealed class Pending { internal ManualResetEvent Done=new ManualResetEvent(false); internal string Reply; }
     private volatile bool stopped;
-    private string pipeName, sessionExecutable, sessionSha256;
-    private bool ideTerminal;
+    private string pipeName, sessionExecutable, sessionSha256, nodeExecutable, cliEntry, terminalHelper, terminalHelperHash;
+    private bool ideTerminal, cliSession;
     private Process OpenTerminalSession(Dictionary<string,object> request, Process peer) {
         var identity = Program.Map(request, "terminal");
         if (identity == null || !identity.ContainsKey("pid")) throw new IOException("terminal identity missing");
         var terminal = Process.GetProcessById(Convert.ToInt32(identity["pid"]));
         try {
             var handle = terminal.Handle;
-            // VS Code launches the terminal through its PTY host. The verified extension
-            // host owns the opposite TCP endpoint and obtained this PID from Terminal.processId.
-            if ((!ideTerminal && (LocalPipe.Created(terminal) != Program.Text(identity, "created") || !McpPeer.IsDirectParent(peer, terminal)))
+            // VS Code proves the PTY by the owned listener and Terminal.processId.
+            if ((!ideTerminal && (LocalPipe.Created(terminal) != Program.Text(identity, "created") || !(cliSession
+                ? McpPeer.IsTerminalBridge(peer,terminal,terminalHelper,terminalHelperHash,sessionExecutable)
+                : McpPeer.IsDirectParent(peer,terminal))))
                 || !String.Equals(terminal.MainModule.FileName, sessionExecutable, StringComparison.OrdinalIgnoreCase)
                 || !String.Equals(Program.Hash(sessionExecutable), sessionSha256, StringComparison.OrdinalIgnoreCase)) throw new IOException("terminal identity mismatch");
             return terminal;
@@ -122,6 +123,14 @@ internal sealed class ControlProgram {
         try { if(!wait.Done.WaitOne(timeout)||wait.Reply==null)throw new IOException("broker response unknown");return wait.Reply; }
         finally {lock(gate){pending.Remove(id);wait.Done.Dispose();}}
     }
+    // DisconnectNamedPipe discards unread bytes. Wait briefly for the client to consume the reply.
+    private static void AwaitClientClose(NamedPipeServerStream pipe) {
+        var consumed=pipe.ReadAsync(new byte[1],0,1);
+        if(!consumed.Wait(1000)) {
+            pipe.Dispose();
+            consumed.ContinueWith(task=>{var ignored=task.Exception;},System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+        }
+    }
     private void Serve(NamedPipeServerStream server,int slot,List<NamedPipeServerStream> servers) {
         while(!stopped) {
             try {
@@ -132,8 +141,14 @@ internal sealed class ControlProgram {
                     string line=ReadPeerFrame(server);if(line==null)continue;
                     var request=Program.Parse(line);string method=Program.Text(request,"method");
                     if(method!="mcp"&&broker.Contains(peer.Handle)){writer.WriteLine("{\"ok\":false,\"error\":\"worker_peer_denied\"}");continue;}
-                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="preview_parent_start"&&method!="start_parent"&&method!="resume_parent"&&method!="status"&&method!="usage"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"
+                    if(method!="mcp"&&method!="mcp_human_response"&&method!="authorize"&&method!="preview_parent_start"&&method!="start_parent"&&method!="resume_parent"&&method!="status"&&method!="usage"&&method!="stop"&&method!="events"&&method!="close_terminal"&&method!="retire_worker"&&method!="rename_worker"&&method!="lease"&&method!="requests"&&method!="answer_request"&&method!="present_decision"&&method!="answer_decision"
                         &&method!="history_targets"&&method!="worker_history"&&method!="resume_worker_history"){writer.WriteLine("{\"ok\":false,\"error\":\"unsupported_method\"}");continue;}
+                    if (cliSession && method!="lease" && method!="mcp" && method!="mcp_human_response" && method!="status" && method!="usage" && method!="events"
+                        && !McpPeer.HumanCliLauncher(peer,nodeExecutable,cliEntry)) {
+                        writer.WriteLine("{\"ok\":false,\"error\":\"human_cli_origin_unverified\"}");
+                        AwaitClientClose(server);
+                        continue;
+                    }
                     if (method == "lease") {
                         using (var terminal = ideTerminal || Program.Text(request, "sessionKind") == "cli" ? OpenTerminalSession(request, peer) : null) {
                             int port = terminal == null ? 0 : McpPeer.TerminalPort(terminal);
@@ -142,11 +157,19 @@ internal sealed class ControlProgram {
                             if (terminal != null) {
                                 var proof = Program.Parse(Call(request, peer, "terminal_server"));
                                 if (!Object.Equals(proof["ok"], true)) throw new IOException("terminal session owner rejected");
-                                serverPid = Convert.ToInt32(proof["sessionServerPid"]);
+                                object ownsListener;
+                                bool launcherEndpoint=proof.TryGetValue("sessionLauncherEndpoint",out ownsListener) && Object.Equals(ownsListener,true);
+                                if (launcherEndpoint!=cliSession) throw new IOException("terminal helper binding mismatch");
+                                serverPid = launcherEndpoint ? peer.Id : Convert.ToInt32(proof["sessionServerPid"]);
                                 if (!ConnectedToServer(terminal, serverPid, port)) throw new IOException("TUI is not connected to this App Server");
                             }
                             string leaseReply = Call(request, peer);
-                            if (Object.Equals(Program.Parse(leaseReply)["ok"], true)) {
+                            var granted=Program.Parse(leaseReply);
+                            if (Object.Equals(granted["ok"], true)) {
+                                if(cliSession) {
+                                    granted["humanControlVerified"]=McpPeer.HumanCliLauncher(peer,nodeExecutable,cliEntry);
+                                    leaseReply=Program.Encode(granted);
+                                }
                                 try {
                                     writer.WriteLine(leaseReply); HoldLease(server, terminal, serverPid, port);
                                 }
@@ -155,15 +178,7 @@ internal sealed class ControlProgram {
                         }
                     } else {
                         writer.WriteLine(Call(request, peer));
-                        // DisconnectNamedPipe discards unread replies. Let the client consume
-                        // the response and close first, with a bounded wait for stalled clients.
-                        // ReadAsync owns its completion resources. Closing an APM wait
-                        // handle before a timed-out read completes crashes the CLR callback.
-                        var consumed=server.ReadAsync(new byte[1],0,1);
-                        if(!consumed.Wait(1000)) {
-                            server.Dispose();
-                            consumed.ContinueWith(task=>{var ignored=task.Exception;},System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
-                        }
+                        AwaitClientClose(server);
                     }
                 }
             } catch(IOException) {} catch(ObjectDisposedException) {if(stopped)return;} catch(Exception e) { Console.Error.WriteLine("control-peer-rejected: "+e.GetType().Name); }
@@ -182,6 +197,10 @@ internal sealed class ControlProgram {
         if(!String.Equals(Program.Hash(node),Program.Text(config,"nodeSha256"),StringComparison.OrdinalIgnoreCase)||!String.Equals(Program.Hash(entry),Program.Text(config,"entrySha256"),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("broker executable identity mismatch");
         var runtime = Program.Map(config, "runtime");
         ideTerminal = config.ContainsKey("ideTerminal") && Object.Equals(config["ideTerminal"],true);
+        var helper=Program.Map(config,"cliTerminal");
+        cliSession=helper!=null;
+        terminalHelper=Program.Text(helper,"executable"); terminalHelperHash=Program.Text(helper,"sha256");
+        nodeExecutable=node; cliEntry=entry;
         sessionExecutable = Program.Text(runtime, "realExe"); sessionSha256 = Program.Text(runtime, "realSha256");
         ProtectDirectory(state,repo);
         pipeName=Program.Text(config,"pipeName");if(!System.Text.RegularExpressions.Regex.IsMatch(pipeName??"","^meristem-cc01-control-[a-zA-Z0-9-]{1,90}$"))throw new InvalidOperationException("invalid control pipe");

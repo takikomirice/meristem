@@ -10,6 +10,14 @@ Keep the standard Codex extension as the Coordinator and monitor Workers in VS C
 
 > This is an experimental tool for developers. It has been tested in dedicated VS Code profiles; everyday use in your normal profile and reliable operation across a broad range of environments are not guaranteed.
 
+## Using the official CLI in the development build
+
+Open `powershell.exe` from the Windows Run dialog and change to the repository named by your version 2 plan. With the official Codex CLI on PATH and signed in to ChatGPT, run a command such as `& 'C:\Tools\Meristem\scripts\meristem.ps1' start` using the location of your Meristem build. On first use it detects the plan and opens the official TUI in a separate console. The original PowerShell stays open for management. For approvals, Meristem checks that the interactive shell was launched by Explorer, directly or through a supported Windows Terminal process.
+
+Ask the conversation you want as Coordinator to start Meristem. In the original PowerShell, enter `start` to review the repository, Git destination, and Worker limit. Use `status` for progress, `usage` for rate limits, `answer` for consultations and permission requests, and `stop` to stop Workers and see their termination results. After closing the terminal, use `meristem.ps1 resume` to select the saved run.
+
+Live acceptance of Worker reporting and automatic continuation of the Coordinator is pending. [P5 implementation and validation](docs/superpowers/plans/2026-11-19-meristem-v030.md)
+
 ## Features
 
 Meristem loads on demand when you select one of its commands. To use the v0.3.0 development extension, right-click a version 2 Markdown plan in Explorer and select **「Meristem: このウィンドウで新しい Codex 親チャットを開く」** to open a new official Codex Coordinator in the integrated terminal. The confirmation shows the tasks, number of concurrent Workers and file permissions. The Meristem progress item in the status bar opens usage, approval requests and stop controls.

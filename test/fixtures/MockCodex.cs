@@ -30,7 +30,40 @@ internal static class MockCodex {
             }
         } finally {if(server!=null){try{if(!server.WaitForExit(1000))server.Kill();}catch{}server.Dispose();}}
     }
+    // A separately named copy exercises the product remote-TUI entry without account or inference I/O.
+    static int InteractiveFixture(string[] args) {
+        if (args.Length==1 && args[0]=="--version") { Console.WriteLine("codex-cli 1.0.0-fixture");return 0; }
+        if (args.Length==1 && args[0]=="--help") { Console.WriteLine("--remote URL --remote-auth-token-env NAME");return 0; }
+        if (args.Length==2 && args[0]=="login" && args[1]=="status") { Console.WriteLine("Logged in using ChatGPT");return 0; }
+        if (args.Length>0 && args[0]=="sandbox") return 0; // deterministic isolation probe; real OS sandbox is tested separately
+        if (args.Length<7 || args[0]!="--no-alt-screen") return -1;
+        using(var ui=new System.Net.WebSockets.ClientWebSocket()) {
+            ui.Options.SetRequestHeader("Authorization","Bearer "+Environment.GetEnvironmentVariable(args[4]));
+            ui.ConnectAsync(new Uri(args[2]),CancellationToken.None).GetAwaiter().GetResult();
+            Action<object> send=delegate(object msg) {
+                var bytes=new ArraySegment<byte>(Encoding.UTF8.GetBytes(Json.Serialize(msg)));
+                ui.SendAsync(bytes,System.Net.WebSockets.WebSocketMessageType.Text,true,CancellationToken.None).GetAwaiter().GetResult();
+            };
+            string id=args.Length==9?args[8]:"TUI-"+Process.GetCurrentProcess().Id;
+            send(new { id=1,method="initialize",@params=new {clientInfo=new {name="fixture",version="0"}} });
+            send(new { method="initialized" });
+            send(new { id=2,method="thread/resume",@params=new {threadId=id} });
+            string marker=Path.Combine(Environment.GetEnvironmentVariable("CODEX_HOME"),id);
+            File.WriteAllText(marker,Process.GetCurrentProcess().Id.ToString());
+            for(;;) {
+                if(File.Exists(marker+".exit"))return 0;
+                if(File.Exists(marker+".interrupt")) {
+                    File.Delete(marker+".interrupt");
+                    send(new {id=3,method="turn/interrupt",@params=new {threadId=id,turnId="fixture-interrupt"}});
+                }
+                Thread.Sleep(30);
+            }
+        }
+    }
     static int Main(string[] args) {
+        if (Path.GetFileNameWithoutExtension(System.Reflection.Assembly.GetExecutingAssembly().Location)=="MockInteractiveCodex") {
+            int result=InteractiveFixture(args); if(result>=0)return result;
+        }
         if (args.Length == 4 && args[0] == "--remote" && args[2] == "--remote-auth-token-env") {
             var uri = new Uri(args[1]);
             using (var connection = new System.Net.Sockets.TcpClient("127.0.0.1", uri.Port)) {
@@ -180,7 +213,8 @@ internal static class MockCodex {
                     var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, 0);
                     listener.Start();
                     var keepAlive = new Thread(delegate() {
-                        using (var connection = listener.AcceptTcpClient()) { connection.GetStream().ReadByte(); }
+                        try { using (var connection = listener.AcceptTcpClient()) { connection.GetStream().ReadByte(); } }
+                        catch (IOException) { /* An abruptly terminated TUI resets its fixture socket. */ }
                         listener.Stop();
                     });
                     keepAlive.IsBackground = true; keepAlive.Start();
