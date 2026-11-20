@@ -8,6 +8,7 @@ import { WakeCoordinator } from '../src/wake.js';
 import { DecisionService } from '../src/decisions.js';
 import type { PlanSnapshot } from '../src/plan.js';
 import type { RepositoryPin } from '../src/git-evidence.js';
+import { draftTrialWake } from '../src/install.js';
 
 test('consultation_changes_coalesce_while_human_input_and_progress_never_steers', async t => {
   const f = fixture(t);
@@ -21,6 +22,33 @@ test('consultation_changes_coalesce_while_human_input_and_progress_never_steers'
   f.idle(); assert.equal((await f.wake.monitor('run')).state, 'acked'); assert.equal(f.sends(), 1);
   f.idle(); await f.wake.monitor('run'); assert.equal(f.sends(), 1);
   assert.doesNotMatch(JSON.stringify(f.wire), /相談/);
+});
+
+test('managed parent only wakes on a saved consultation or a matching completed report', async t => {
+  const f = fixture(t); f.idle();
+  f.event();
+  f.store.appendEvent({ runId:'run', kind:'decision_proposed' }, 'parallelism');
+  f.store.appendEvent({ runId:'run', kind:'completed', attemptId:'missing' });
+  assert.equal((await f.wake.monitor('run', true)).state, 'empty');
+  f.store.appendEvent({ runId:'run', kind:'decision_proposed' }, 'consultation');
+  assert.equal((await f.wake.monitor('run', true)).state, 'acked');
+  assert.equal((await f.wake.monitor('run', true)).state, 'empty');
+  assert.equal(f.sends(), 1);
+});
+
+test('the direct UI trial is limited to the selected entry, document and one read-only task', () => {
+  const agent = {model:'mock',effort:'low',permissionProfileId:'read-only'};
+  const plan = {fileHash:'a'.repeat(64), plan:{run:{execution_limits:{maxWakeTurns:1}},tasks:[{agent}]}} as PlanSnapshot;
+  for (const entry of ['cli','vscode'] as const) {
+    assert.equal(draftTrialWake(plan, entry, ''), undefined);
+    assert.equal(draftTrialWake(plan, entry, entry + ':different'), undefined);
+    const selected = entry + ':' + plan.fileHash;
+    assert.equal(draftTrialWake(plan, entry === 'cli' ? 'vscode' : 'cli', selected), undefined);
+    assert.equal(draftTrialWake(plan, entry, selected)?.maxTurns, 1);
+    agent.permissionProfileId = 'workspace';
+    assert.throws(() => draftTrialWake(plan, entry, selected), /read-only/);
+    agent.permissionProfileId = 'read-only';
+  }
 });
 
 const parent = { ownerId: 'parent', ownerEpoch: 'epoch', threadId: 'P' };
@@ -55,6 +83,19 @@ test('parent_read_during_idle_probe_cancels_stale_wake', async t => {
   });
   wake.enqueueWake('run', seq); assert.equal((await wake.deliverWakeIfIdle('run')).state, 'empty');
 });
+test('connection loss during the idle probe prevents reservation; another owner cannot acknowledge readiness', async t => {
+  const f = fixture(t); let connected = true, swapped = true;
+  const wake = new WakeCoordinator(f.store, parent, {model:'mock', effort:'low'}, async method => {
+    assert.equal(method, 'relay/wake-state');
+    if (!swapped) connected = false;
+    return { ...parent, ownerEpoch: swapped ? 'replacement' : parent.ownerEpoch, idle:true, supported:true, stateSeq:1 };
+  }, undefined, null, () => connected);
+  wake.enqueueWake('run', f.event());
+  assert.equal((await wake.monitor('run')).state, 'deferred');
+  swapped = false;
+  assert.equal((await wake.monitor('run')).state, 'stopped');
+  assert.equal(f.store.wakeCount('run'), 0);
+});
 test('duplicate_reports_coalesce', async t => {
   const f = fixture(t), seq = f.event(); f.wake.enqueueWake('run', seq); f.wake.enqueueWake('run', seq); f.wake.enqueueWake('run', f.event());
   f.idle(); await Promise.all([f.wake.deliverWakeIfIdle('run'), f.wake.deliverWakeIfIdle('run')]);
@@ -73,6 +114,21 @@ test('wake_unknown_is_not_retried', async t => {
   assert.equal((await f.wake.deliverWakeIfIdle('run')).state, 'sent_unknown');
   f.idle(); await f.wake.deliverWakeIfIdle('run'); assert.equal(f.sends(), 1); assert.equal(f.store.run('run').state, 'stopped');
   assert.throws(() => f.store.resumeRun('run'), /reconciliation/);
+});
+test('a failed cursor write keeps the acknowledged turn reserved for reconciliation', async t => {
+  const f = fixture(t);
+  f.wake.enqueueWake('run', f.event());
+  f.idle();
+  const progress = f.store.wakeProgress.bind(f.store);
+  let fail = true;
+  t.mock.method(f.store, 'wakeProgress', (...args: Parameters<typeof progress>) => {
+    if (args[1] === 'delivered_seq' && fail) { fail = false; throw Error('write failed'); }
+    return progress(...args);
+  });
+  assert.equal((await f.wake.deliverWakeIfIdle('run')).state, 'sent_unknown');
+  assert.equal(f.store.wakeUnknown('run'), true);
+  assert.throws(() => f.store.resumeRun('run'), /reconciliation/);
+  assert.equal(f.sends(), 1);
 });
 test('stopped_run_never_wakes', async t => {
   const f = fixture(t); f.wake.enqueueWake('run', f.event()); f.store.stopRun('run'); f.idle();
@@ -102,6 +158,11 @@ test('saved_report_waits_for_normal_cleanup_before_waking_parent', async t => {
   f.store.appendEvent({ runId: 'run', attemptId: 'A', kind: 'turn_completed' });
   await f.wake.monitor('run'); assert.equal(f.sends(), 0);
   f.store.saveStop('run', { worker, state: 'stopped', evidenceRefs: ['job_empty'] }, true);
+  assert.equal(f.store.hasFinalReport('run', 'A', true), false);
+  f.store.completedTurn(worker, 'another-turn');
+  assert.equal(f.store.hasFinalReport('run', 'A', true), false);
+  f.store.completedTurn(worker, 'turn');
+  assert.equal(f.store.hasFinalReport('run', 'A', true), true);
   await f.wake.monitor('run'); assert.equal(f.sends(), 1);
 });
 test('wake_limit_stops_with_reason_and_read_cursor_is_separate', async t => {

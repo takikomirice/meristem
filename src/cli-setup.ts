@@ -4,7 +4,7 @@ import { constants, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSy
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildInstallationControl, identity, localPath } from './install.js';
+import { buildInstallationControl, draftTrialWake, identity, localPath } from './install.js';
 import { pinRepository } from './git-evidence.js';
 import { fileHash, readPlan } from './plan.js';
 import { resolveTaskPermissions, RunPermissionPermit } from './permissions.js';
@@ -117,7 +117,7 @@ export function prepareCliRun(repository: string, planPath: string, options: Opt
   const base = buildInstallationControl({ implementationRoot: implementation, realExe, nodeExe: process.execPath, codexConfig: path.join(authHome, 'config.toml') }, {
     runId, stateDirectory: path.join(directory, 'state'), pipeName: 'meristem-cc01-control-' + runId,
     nodeSha256: artifactHash(process.execPath), realSha256, parentRelay: { pipeName: 'meristem-cc00-' + runId, mode: 'verified-start', sessionKind: 'cli' },
-    usagePolicy: UsagePolicy.parse({}), executionLimits: plan.plan.run.execution_limits,
+    usagePolicy: UsagePolicy.parse({}), executionLimits: plan.plan.run.execution_limits, wake: draftTrialWake(plan, 'cli'),
     scope: { fixture: true, plan: true, planPath: plan.path, repositoryId: fileHash(pin.commonDir.toLowerCase()), repositoryPath: repository,
       branchScope: [pin.integrationBranch], permissionPermit: permit, assignments: [] }
   });

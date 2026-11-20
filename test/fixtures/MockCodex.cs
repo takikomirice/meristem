@@ -223,6 +223,9 @@ internal static class MockCodex {
                 case "fixture/events":
                     for(int i=0;i<300;i++)Write(new {method="turn/started",@params=new {secret="Bearer must-never-appear-in-terminal"}});
                     break;
+                case "fixture/thread-status":
+                    Write(new {method="thread/status/changed",@params=new {threadId=p["threadId"],status=new {type=p["type"]}}});
+                    break;
                 case "large": result=new { length=8*1024*1024+17, payload=new string('x',8*1024*1024+17) }; break;
                 case "thread/read":
                     if (!p.ContainsKey("includeTurns")) {

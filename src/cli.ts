@@ -22,7 +22,8 @@ import { parseArgs } from 'node:util';
 import { exportRoutingSummary, loadPlanRoutingSummary } from './routing-summary.js';
 import { fileHash, readPlan } from './plan.js';
 
-type Config = { ideTerminal?: true; stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; usagePolicy?: UsagePolicy; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: { model: string; effort: string; maxTurns?: number | null }; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
+type WakeConfig = { model: string; effort: string; maxTurns?: number | null; verifiedEntryPoint?: 'cli' | 'vscode' };
+type Config = { ideTerminal?: true; stateDirectory: string; repository: string; runId: string; pipeName: string; runtime: RuntimeConfig; usagePolicy?: UsagePolicy; executionLimits?: Partial<ExecutionLimits>; assignments: { workerId: string; cwd: string; model: string; effort: string; branch: string; repositoryId: string }[]; mcp?: { wake?: WakeConfig; parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>; entryPoint: string; entrySha256: string } };
 type Discovery = { pipeName: string; token: string; ownerId: string; ownerEpoch: string; windowBindingId: string; runId: string };
 function tokenMatches(left: unknown, right: string): boolean { return typeof left === 'string' && Buffer.byteLength(left) === Buffer.byteLength(right) && timingSafeEqual(Buffer.from(left), Buffer.from(right)); }
 export async function serve(configPath: string): Promise<void> {
@@ -34,6 +35,7 @@ export async function serve(configPath: string): Promise<void> {
   const relayConfig = config.mcp && ParentRelay.parse(config.mcp.parentRelay);
   const dynamic = !!relayConfig && 'mode' in relayConfig;
   const fixedThread = relayConfig && 'threadId' in relayConfig ? relayConfig.threadId : undefined;
+  const wakeConfig = !dynamic || config.mcp?.wake?.verifiedEntryPoint === (relayConfig.sessionKind ?? 'vscode') ? config.mcp?.wake : undefined;
   const scope = config.mcp?.scope;
   const routingHistory = scope?.modelRoutingSummary === undefined ? undefined : (() => {
     if (!scope.plan) throw new Error('routing summary requires a bound plan');
@@ -60,8 +62,8 @@ export async function serve(configPath: string): Promise<void> {
     }
     if (kind === 'unknown') void broker.stopRun(config.runId, 'worker_exit');
   }, item => store.saveRequest(config.runId, item));
-  broker = new Broker(store, runtime, config.mcp?.wake && fixedThread ? async blocked => {
-    await relayRequest(config.mcp!.parentRelay.pipeName, blocked ? 'relay/wake-block' : 'relay/wake-resume', { threadId: fixedThread });
+  broker = new Broker(store, runtime, wakeConfig ? async blocked => {
+    if (boundActor) await relayRequest(config.mcp!.parentRelay.pipeName, blocked ? 'relay/wake-block' : 'relay/wake-resume', boundActor);
   } : undefined, limits);
   let existing = false; try { store.run(config.runId); existing = true; } catch { store.createRun(config.runId, config.mcp?.scope.plan ? UsagePolicy.parse(config.usagePolicy ?? {}) : undefined); }
   let mcp: McpController | undefined;
@@ -95,10 +97,6 @@ export async function serve(configPath: string): Promise<void> {
     if (fixedThread) {
       boundActor = { ...relayOwner, threadId: fixedThread };
       mcp = controllerFor(boundActor);
-      if (config.mcp.wake) {
-        const relay = (method: string, params: Record<string, unknown>) => relayRequest(config.mcp!.parentRelay.pipeName, method, params);
-        wake = new WakeCoordinator(store, boundActor, config.mcp.wake, relay, (runId, reason) => broker.stopRun(runId, reason), runId => broker.executionLimits(runId).maxWakeTurns, runId => broker.canWake(runId));
-      }
     }
   }
   let usageTimer: NodeJS.Timeout | undefined, usageReader: UsageReader | undefined, usageClosing = false;
@@ -177,8 +175,20 @@ export async function serve(configPath: string): Promise<void> {
     }
   }
   writeFileSync(path.join(config.stateDirectory, 'discovery.json'), JSON.stringify(discovery), { mode: 0o600 });
-  if (wake) wakeTimer = setInterval(() => {
-    if (leasedPeer && store.binding(config.runId)?.state === 'consumed') void wake!.monitor(config.runId).catch(() => { void broker.stopRun(config.runId, 'wake_monitor_failed'); });
+  function connectedParent(runId: string, parent: ActorRef) {
+    if (!leasedPeer || (dynamic && (!leaseId || leaseId !== controllerLease)) || !broker.canWake(runId)) return false;
+    const binding = store.binding(runId);
+    return binding?.state === 'consumed' && sameActor(JSON.parse(binding.parent), parent);
+  }
+  let monitoring: Promise<unknown> | undefined;
+  if (wakeConfig) wakeTimer = setInterval(() => {
+    const parent = boundActor;
+    if (monitoring || !parent || !connectedParent(config.runId, parent)) return;
+    wake ??= new WakeCoordinator(store, parent, {model:wakeConfig.model, effort:wakeConfig.effort},
+      (method, params) => relayRequest(config.mcp!.parentRelay.pipeName, method, { ...params, ...(dynamic && {ownedPid:sessionServerPid}) }),
+      (runId, reason) => broker.stopRun(runId, reason), runId => broker.executionLimits(runId).maxWakeTurns,
+      runId => connectedParent(runId, parent));
+    monitoring = wake.monitor(config.runId, dynamic).catch(() => broker.stopRun(config.runId, 'wake_monitor_failed')).finally(() => { monitoring = undefined; });
   }, 500);
   const snapshot = (offset = 0, attemptId?: string, registrationOnly = false) => store.terminalSnapshot(config.runId, offset, attemptId, { registrationOnly, telemetry: worker => runtime.terminalTelemetry(worker) });
   function disconnectOwner() {
@@ -201,7 +211,8 @@ export async function serve(configPath: string): Promise<void> {
         if (envelope.peer?.inBrokerJob !== false) throw new Error('worker cannot start a run');
         const candidate = controllerFor(identity.actor);
         const value = await candidate.call('start_run', request.args, identity);
-        mcp = candidate; boundActor = identity.actor; controllerLease = leaseId;
+        if (!observedLease || observedLease !== leaseId) throw new Error('control session changed');
+        mcp = candidate; boundActor = identity.actor; controllerLease = observedLease;
         return { ok: true, value };
       }
       if (!mcp) throw new Error('parent has not started this run');
@@ -248,6 +259,7 @@ export async function serve(configPath: string): Promise<void> {
       const operation = Id.parse(request.operationId), scopeHash = Hash.parse(request.scopeHash);
       if (request.method === 'resume_parent' && request.stopGeneration !== run.stop_generation) throw new Error('stop generation changed');
       const result = request.method === 'resume_parent' ? await candidate.resumeFromControl(operation, scopeHash) : candidate.startFromControl(operation, scopeHash);
+      if (!currentLease()) throw new Error('control session changed');
       mcp = candidate; boundActor = actor; controllerLease = leaseId;
       return { ok: true, ...result };
     }
@@ -390,7 +402,7 @@ export async function serve(configPath: string): Promise<void> {
       }).catch(error => process.stdout.write(JSON.stringify({ id: envelope.id, result: { ok: false, error: error instanceof RevisionConflict ? 'stale_revision' : 'control_rejected' } }) + '\n'));
     }
   });
-  const close = async () => { if (closing) return; closing = true; usageClosing = true; if (usageTimer) clearInterval(usageTimer); if (wakeTimer) clearInterval(wakeTimer); await disconnectOwner(); store.close(); };
+  const close = async () => { if (closing) return; closing = true; usageClosing = true; if (usageTimer) clearInterval(usageTimer); if (wakeTimer) clearInterval(wakeTimer); await disconnectOwner(); await monitoring; store.close(); };
   process.stdin.once('end', () => { void close(); });
 }
 export async function main(args: string[]): Promise<void> {

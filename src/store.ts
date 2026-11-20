@@ -362,8 +362,9 @@ export class Store {
   reportCount(runId: string, attemptId?: string): number {
     return Number((attemptId ? this.db.prepare('SELECT COUNT(*) AS n FROM reports WHERE run_id=? AND attempt_id=?').get(runId, attemptId) : this.db.prepare('SELECT COUNT(*) AS n FROM reports WHERE run_id=?').get(runId))!.n);
   }
-  hasFinalReport(runId: string, attemptId: string): boolean {
-    const row = this.db.prepare('SELECT r.payload,r.turn_id,a.completed_turn_id FROM reports r JOIN attempts a ON a.id=r.attempt_id WHERE r.run_id=? AND r.attempt_id=? ORDER BY r.rowid DESC LIMIT 1').get(runId, attemptId);
+  hasFinalReport(runId: string, attemptId: string, requireCleanup = false): boolean {
+    const row = this.db.prepare('SELECT r.payload,r.turn_id,a.completed_turn_id,a.state FROM reports r JOIN attempts a ON a.id=r.attempt_id AND a.run_id=r.run_id WHERE r.run_id=? AND r.attempt_id=? ORDER BY r.rowid DESC LIMIT 1').get(runId, attemptId);
+    if (requireCleanup && (row?.state !== 'completed' || !row.completed_turn_id)) return false;
     return !!row && !JSON.parse(row.payload as string).question && (row.completed_turn_id === null || row.completed_turn_id === row.turn_id);
   }
   completedTurn(worker: import('./contracts.js').WorkerRef, turnId: string): void { this.db.prepare('UPDATE attempts SET completed_turn_id=? WHERE id=?').run(Id.parse(turnId), worker.attemptId); }

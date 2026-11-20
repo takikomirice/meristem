@@ -4,7 +4,7 @@ import { constants, copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpath
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { buildInstallationControl, localPath } from './install.js';
+import { buildInstallationControl, draftTrialWake, localPath } from './install.js';
 import { pinRepository } from './git-evidence.js';
 import { fileHash, readPlan } from './plan.js';
 import { resolveTaskPermissions, RunPermissionPermit } from './permissions.js';
@@ -61,7 +61,7 @@ export async function prepareIdeRun(storage: string, repository: string, file: s
   const base = buildInstallationControl({ implementationRoot: implementation, realExe, nodeExe: process.execPath, codexConfig: path.join(authHome, 'config.toml') }, {
     runId, pipeName, stateDirectory, realSha256: hash(realExe), nodeSha256: hash(process.execPath),
     parentRelay: { mode: 'verified-start', sessionKind: 'vscode', pipeName: parentPipe }, usagePolicy: UsagePolicy.parse({}),
-    executionLimits: plan.plan.run.execution_limits, scope: { fixture: true, plan: true, planPath: plan.path, repositoryId: fileHash(pin.commonDir), repositoryPath: pin.repository, branchScope: [pin.integrationBranch], permissionPermit: permit, assignments: [] }
+    executionLimits: plan.plan.run.execution_limits, wake: draftTrialWake(plan, 'vscode'), scope: { fixture: true, plan: true, planPath: plan.path, repositoryId: fileHash(pin.commonDir), repositoryPath: pin.repository, branchScope: [pin.integrationBranch], permissionPermit: permit, assignments: [] }
   });
   const native = path.join(implementation, '.local/chat-control-build'), control = path.join(native, 'MeristemControl.exe');
   const config = { ...base, ideTerminal: true, runtime: { ...base.runtime, managedProfile: true, windowsSandbox: 'mxc' as const } };

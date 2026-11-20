@@ -28,7 +28,7 @@ function alive(pid: number) {
 
 // Exercise the native CLI lease under the existing MockCodex-owned loopback endpoint.
 // The product launcher separately verifies a human terminal before allowing its control requests.
-async function nativeRun(t: TestContext, root: string, scope: Scope, index: number) {
+async function nativeRun(t: TestContext, root: string, scope: Scope, index: number, wakeTrial = false) {
   const assignment = scope.assignments[index], taskId = assignment.workerId, runId = 'run-' + taskId;
   const dir = path.join(root, runId); mkdirSync(dir);
   const build = path.resolve('.local/chat-control-build');
@@ -41,7 +41,8 @@ async function nativeRun(t: TestContext, root: string, scope: Scope, index: numb
   writeFileSync(planPath, 'Fixture for ' + runId);
   const config = { runId, repository: scope.repositoryPath, pipeName, stateDirectory, nodeExecutable: process.execPath, nodeSha256: sha(process.execPath),
     entryPoint, entrySha256: sha(entryPoint), runtime: { hostExe, hostSha256: sha(hostExe), realExe, realSha256: sha(realExe), authHome: dir, fixture: true }, assignments: [],
-    mcp: { parentRelay: { pipeName: parentPipe, mode: 'verified-start', sessionKind: 'cli' }, entryPoint: mcpEntry, entrySha256: sha(mcpEntry),
+    mcp: { ...(wakeTrial && { wake: { model:'mock', effort:'low', verifiedEntryPoint:'cli' } }),
+      parentRelay: { pipeName: parentPipe, mode: 'verified-start', sessionKind: 'cli' }, entryPoint: mcpEntry, entrySha256: sha(mcpEntry),
       scope: { ...scope, assignments: [assignment], repositoryId: 'repo', fixture: true, planPath } } };
   writeFileSync(configPath, JSON.stringify(config));
   writeFileSync(relay + '.json', JSON.stringify({ realExecutable: realExe, realSha256: sha(realExe), pipeName: parentPipe, allowedCwds: [scope.repositoryPath],
@@ -76,7 +77,7 @@ async function nativeRun(t: TestContext, root: string, scope: Scope, index: numb
   const terminal = await connect(), input = { parent, leaseId: terminal.leaseId };
   const preview = await controlRequest('preview_parent_start', input);
   assert.equal((await controlRequest('start_parent', { ...input, scopeHash: preview.scopeHash, operationId:'human-start' })).state, 'active');
-  const parentTurn = (await ui.call('turn/start', { threadId, input:[] })).turn.id;
+  const parentTurn = (await ui.call('turn/start', { threadId, input:wakeTrial ? [{type:'text',text:'fixture-parallel-completion'}] : [] })).turn.id;
   async function tool(name: string, args: object, thread = threadId, turnId = parentTurn) {
     const requestFile = path.join(dir, randomUUID() + '.json'), output = requestFile + '.result';
     writeFileSync(requestFile, JSON.stringify({ entryPoint:mcpEntry, pipeName, name, args, metadata:{ 'x-codex-turn-metadata':{ thread_id:thread, turn_id:turnId } }, output }));
@@ -88,7 +89,49 @@ async function nativeRun(t: TestContext, root: string, scope: Scope, index: numb
   const worker = create.structuredContent;
   const row = (await status()).attempts[0], { childPid, hostPid } = row.registration;
   assert(alive(childPid) && alive(hostPid));
-  return { taskId, runId, dir, assignment, mcpEntry, pipeName, ui, parent, parentTurn, controlRequest, status, tool, connect, terminal, worker, childPid, hostPid };
+  return { taskId, runId, dir, assignment, mcpEntry, pipeName, parentPipe, ui, parent, parentTurn, controlRequest, status, tool, connect, terminal, worker, childPid, hostPid };
+}
+
+for (const scenario of ['deliver', 'switch', 'disconnect', 'stop'] as const) {
+  test('managed report wake after confirmed cleanup: ' + scenario, { timeout:60000 }, async t => {
+    const root = mkdtempSync(path.join(tmpdir(), 'meristem-wake-')), scope = gitScope(root);
+    const f = await nativeRun(t, root, scope, 0, true);
+    const before = (await f.status()).run.revision;
+    writeFileSync(path.join(f.assignment.cwd, 'mcp-report.json'), JSON.stringify({ nodeExecutable:process.execPath, entryPoint:f.mcpEntry,
+      pipeName:f.pipeName, name:'report', args:{ operationId:'report', runId:f.runId, expectedRevision:before+1, taskId:f.taskId,
+        report:{summary:'private worker text'} }, output:path.join(f.dir,'report-result') }));
+    const sent = await f.tool('send_instruction',{ operationId:'send', runId:f.runId, expectedRevision:before, taskId:f.taskId,
+      target:f.worker, agent:{model:'mock', effort:'low'}, text:'fixture-mcp-report fixture-complete-before-ack' });
+    assert(!sent.isError, JSON.stringify(sent));
+    await until(f.status, state => state.attempts[0].state === 'completed', 'worker cleanup missing');
+    const relay = () => relayRequest(f.parentPipe, 'relay/status');
+    const starts = async () => (await relay()).events.filter((e: any) => e.method === 'turn/start/acked').map((e: any) => e.threadId);
+    await until(relay, state => state.wakePeerAccepted > 0, 'managed broker did not probe pending report');
+    assert.deepEqual(await starts(), [f.parent.threadId]);
+    if (scenario === 'switch') await f.ui.call('thread/resume', {threadId:'unrelated'});
+    if (scenario === 'disconnect') {
+      f.terminal.socket.destroy();
+      await until(f.status, state => state.run.state === 'needs_reconcile', 'disconnect did not fence wake');
+    }
+    if (scenario === 'stop') assert.equal((await f.controlRequest('stop', {leaseId:f.terminal.leaseId})).ok, true);
+    writeFileSync(path.join(scope.repositoryPath, 'complete-turn'), '');
+    await until(relay, state => !state.activeTurns[f.parent.threadId], 'parent remained busy');
+    const expected = [f.parent.threadId];
+    if (scenario === 'deliver') {
+      // A missing catalog and a busy resumed thread are both observable before writing.
+      await delay(1100);
+      assert.deepEqual(await starts(), expected);
+      await f.ui.call('fixture/thread-status', { threadId:f.parent.threadId, type:'active' });
+      await f.ui.call('model/list', {});
+      await delay(1100);
+      assert.deepEqual(await starts(), expected);
+      await f.ui.call('fixture/thread-status', { threadId:f.parent.threadId, type:'idle' });
+      expected.push(f.parent.threadId);
+      await until(starts, threads => threads.length === 2, 'idle parent did not receive report');
+    }
+    await delay(1100);
+    assert.deepEqual(await starts(), expected);
+  });
 }
 
 test('two native CLI leases keep worker reports, interrupt, terminal loss and explicit resume in their originating run', { timeout:110000 }, async t => {

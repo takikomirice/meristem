@@ -24,7 +24,7 @@ export class WakeCoordinator {
       if (!this.canWake(runId) || this.store.wakeUnknown(runId)) return { state: 'stopped' };
       if (cursor.pending_seq <= Math.max(cursor.delivered_seq, cursor.read_seq)) return { state: 'empty' };
       let status: any;
-      try { status = await this.relay('relay/wake-state', { ...this.parent }); } catch { return { state: 'deferred' }; }
+      try { status = await this.relay('relay/wake-state', { ...this.parent, ...this.agent }); } catch { return { state: 'deferred' }; }
       if (!status.supported || !status.idle || !sameActor(status, this.parent)) return { state: 'deferred' };
       const current = this.store.run(runId);
       if (!this.canWake(runId) || current.stop_generation !== run.stop_generation) return { state: 'stopped' };
@@ -42,18 +42,23 @@ export class WakeCoordinator {
         const result = await this.relay('relay/wake', { ...this.parent, ...this.agent, stateSeq: status.stateSeq, operationId, runId, sourceEventSeq: cursor.pending_seq });
         if (result.state === 'deferred') { this.store.settleWake(operationId, 'cancelled'); return { state: 'deferred' }; }
         if (result.state !== 'acked' || typeof result.turnId !== 'string') throw Error('wake delivery unknown');
-        this.store.settleWake(operationId, 'acked', result.turnId);
-        this.store.wakeProgress(runId, 'delivered_seq', cursor.pending_seq);
+        this.store.transaction(() => {
+          this.store.settleWake(operationId, 'acked', result.turnId);
+          this.store.wakeProgress(runId, 'delivered_seq', cursor.pending_seq);
+        });
         return { state: 'acked', turnId: result.turnId };
       } catch {
         await this.stop(runId, 'wake_unknown'); return { state: 'sent_unknown' };
       }
     } finally { this.busy.delete(runId); }
   }
-  async monitor(runId: string): Promise<WakeResult> {
+  async monitor(runId: string, managedParent = false): Promise<WakeResult> {
     const cursor = this.store.wakeCursor(runId);
     for (const event of this.store.events(runId, cursor.scanned_seq, 100)) {
-      if (candidates.has(String(event.kind)) && (event.kind !== 'completed' || (typeof event.attempt_id === 'string' && this.store.hasFinalReport(runId, event.attempt_id)))) this.enqueueWake(runId, Number(event.seq));
+      const eligible = event.kind === 'completed'
+        ? typeof event.attempt_id === 'string' && this.store.hasFinalReport(runId, event.attempt_id, managedParent)
+        : managedParent ? event.kind === 'decision_changed' && event.decisionKind === 'consultation' : candidates.has(String(event.kind));
+      if (eligible) this.enqueueWake(runId, Number(event.seq));
       this.store.wakeProgress(runId, 'scanned_seq', Number(event.seq));
     }
     return this.deliverWakeIfIdle(runId);

@@ -82,8 +82,18 @@ export function inspectEnvironment(input: Partial<InstallationSpec>, environment
 type ControlBinding = {
   runId: string; pipeName: string; stateDirectory: string; nodeSha256: string; realSha256: string;
   parentRelay: ParentRelay; scope: Omit<FixtureScope, 'windowBindingId'>;
-  wake?: z.infer<typeof Agent> & { maxTurns?: number }; executionLimits?: ExecutionLimits; usagePolicy?: UsagePolicy;
+  wake?: z.infer<typeof Agent> & { maxTurns?: number; verifiedEntryPoint?: 'cli' | 'vscode' }; executionLimits?: ExecutionLimits; usagePolicy?: UsagePolicy;
 };
+
+// Dedicated UI acceptance run. Ordinary launches have no trial selection.
+export function draftTrialWake(plan: PlanSnapshot, entry: 'cli' | 'vscode', selection = process.env.MERISTEM_DRAFT_TRIAL) {
+  if (selection !== entry + ':' + plan.fileHash) return;
+  const {run, tasks} = plan.plan;
+  if (!('execution_limits' in run) || run.execution_limits.maxWakeTurns !== 1 || tasks.length !== 1 ||
+      !('permissionProfileId' in tasks[0].agent) || tasks[0].agent.permissionProfileId !== 'read-only') throw new Error('Draft trial requires one read-only task and one wake');
+  const { model, effort } = tasks[0].agent;
+  return { model, effort, maxTurns:1, verifiedEntryPoint:entry };
+}
 
 // Used by both the snapshot runner and the extracted Windows package.
 export function buildInstallationControl(s: Pick<InstallationSpec, 'implementationRoot' | 'realExe' | 'nodeExe' | 'codexConfig'>, binding: ControlBinding) {
