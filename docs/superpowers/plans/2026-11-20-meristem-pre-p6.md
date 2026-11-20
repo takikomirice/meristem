@@ -1,0 +1,55 @@
+# P6前のCoordinator保存と報告後の自動続行 実装計画
+
+> 実装時は superpowers:executing-plans に従い、各チェック項目をテストで確認する。
+
+**目標**　Workerの報告を受けてCoordinatorが成果を保存・監査し、人が次の指示を入力しなくても工程表の後続へ進めるようにする。
+
+**構成**　Workerは担当範囲の編集、検証、相談、報告を担う。Coordinatorは既存の `save_worker_changes` で保存し、候補と統合結果を確認する。次の処理への通知は、既存の報告・実行イベントと、管理対象のApp Serverへの `turn/start` を使う。
+
+**技術構成**　TypeScript、SQLite、Git、Windowsのネイティブ中継、Codex App Server、既存のNode.jsテスト。
+
+**参照**　[v0.3.0設計](../specs/2026-11-19-meristem-v030-design.md)・[P3](2026-11-19-meristem-v030.md#p3割当と残量ポリシーを結合)・[P6](2026-11-19-meristem-v030.md#p6v020-からの更新と-v030-受入)・[小さな工程表の例](../../validation/chat-control/pre-p6-small-plan.md)
+
+## 共通条件
+
+- 既存の依存判定、同時実行上限、割当範囲、ブランチ・送信先の固定、停止手順を利用する。依存を解放するのは統合受入または監査受入とする。工程表の進捗欄はCoordinatorが `write_progress` で更新する。
+- 新しい管理起動の通常経路に適用する。保管済みrunの旧形式の報告・候補・履歴を読み直せるようにする。新しい依存関係や工程表のスキーマ版は追加しない。
+- 機能の範囲は、CoordinatorからWorkerへの指示とWorkerからCoordinatorへの相談・報告、および同じ管理対象の親会話への続行とする。P6の移行、配布、両入口の本受入は既存計画に従う。
+
+## 重点確認
+
+- 正常終了前や担当の差し替え後に保存要求が来たとき、作業ツリーを変更しない。
+- コミット後の通信断で同じ操作が戻ってきたとき、同じ候補SHAを照合する。
+- 検証が別SHAを指しているとき、候補を受理せず後続も開始しない。
+- 親の切替や停止と同時に報告が届いたとき、別会話や停止済みrunには送らない。
+- 未送信の文章があるとき、通知の前後で入力欄の文章が残り、通知と人の送信がそれぞれ一度だけ処理される。
+
+## 1. Workerの報告とCoordinatorのGit保存をつなぐ
+
+**対象ファイル**　`src/mcp.ts`、`src/broker.ts`、`src/git-evidence.ts`、`src/store.ts`、`test/parallel.test.ts`、`test/git-evidence.test.ts`、`test/store.test.ts`
+
+- [ ] 既存fixtureに、編集だけを行ったWorkerが最終報告して終了した後、Coordinatorが保存し、候補を受理できるテストを書く。保存前の受理、実行中・停止のみ・差し替え済みの担当、別runの報告を拒否する。旧runの報告で従来どおり候補を受理できることも確認する。
+- [ ] `npm run build` の後に `node --test dist/test/parallel.test.js dist/test/git-evidence.test.js dist/test/store.test.js` を実行する。新規テストが、終了済みWorkerを保存できないか、Worker由来のpush証拠を求める箇所で失敗することを確認する。
+- [ ] 新しい管理起動では、Workerに既存の構造化報告で `candidate_sha: null` と `push_result.status: not_attempted` を返させる。Workerの検証結果は作業ツリーに対する観測として扱う。Coordinator保存を選ぶrunを開始時の既存の紐付け記録に固定し、旧記録の既定は従来の方式とする。
+- [ ] 既存MCPの `save_worker_changes` に `reportRef` を追加する。新しい方式では、最新の担当の正常終了・後始末と、同じ完了ターンの保存済み報告を照合する。報告が完了で、必須検証名と実行結果が揃っている場合だけ、固定済みの作業ツリー・ブランチ・送信先に対して `GitEvidence.saveWorkerChanges` を使う。保留・停止・担当交代の後は保存を始めない。変更範囲、Gitフック、署名、外部フィルターには既存の判定を使う。
+- [ ] 保存操作の記録に `attemptId`、`reportRef`、`candidateSha`、`branch` を紐付ける。候補SHAはブランチ更新・pushの前に記録し、成功は固定送信先から同じSHAを読み戻して確定する。応答不明時はローカルHEADと送信先を照合する。送信先がすでに候補SHAなら既存の成功を確定し、送信先が進んでいなければ同じコミットだけを再試行できる。別のSHAや参照を確認できない場合は保留する。
+- [ ] 新しい方式の `record_decision: accept_candidate` では `evidenceRefs` に報告と保存操作のIDを、`checks` にCoordinatorが保存済み候補で再実行した必須検証を受け取る。すべての `checked_sha` が候補SHAに一致し、既存の範囲・履歴・remote照合に通った候補を固定する。統合前の再照合では、固定した候補の保存記録と検証結果を使う。
+- [ ] push成功後の応答断、コミット作成後のpush失敗、別SHAの検証、割当外の差分、遠隔ブランチの先行更新をfixtureに追加する。同じ操作でコミットが増えず、候補を確認できない間は後続が解放されないことを確かめる。上記のテストコマンドを再実行し、関連テストがすべて通ることを確認する。
+
+## 2. 管理対象の親へ報告到着を届け、次の応答を始める
+
+**対象ファイル**　`src/wake.ts`、`src/cli.ts`、`native/StdioRelay.cs`、`test/wake.test.ts`、`test/cli-parent-native.test.ts`
+
+- [ ] 管理起動で登録した親のみに、既存の相談イベントまたは正常終了と後始末が確認できた報告を契機として通知するテストを書く。同じイベントの再走査、親が応答中、別会話への切替、停止・接続喪失、起動応答の消失を再現する。`npm run build` の後に `node --test dist/test/wake.test.js dist/test/cli-parent-native.test.js` を実行し、管理起動が通知対象にならない箇所で失敗することを確認する。ネイティブの検証はfixture込みの `npm run build:native` で対象を再ビルドして実行する。
+- [ ] `WakeCoordinator.monitor(runId)` と既存の通知カーソルを再利用する。開始許可を使った管理対象のrunで、接続と登録済みの親の `threadId`・所有プロセス・世代が一致する間だけ、既存の `relay/wake-state` と `relay/wake` を利用できるようにする。入力は「保存済みの相談または報告を読んでください」という固定通知とし、本文はCoordinatorが既存の `get_status` で読む。
+- [ ] 親の応答中は通知を保留し、送信直前に停止状態と同じ会話への接続を再照合する。既存の操作ID、通知カーソル、`clientUserMessageId` を使い、応答不明は再送せず照合に回す。UIの入力欄を操作せず、親の管理対象App Serverに `turn/start` を送る。実機で下書きが残ることと、着信が人の送信と二重にならないことを確認できた入口で有効にする。
+- [ ] 上記のテストを再実行し、正しい親にだけ一度届き、停止後と切断後には新しいターンが始まらないことを確認する。模擬親への通知成功と、CLI・VS Codeの画面での下書き保全は別々に記録する。
+
+## 3. 小さな工程表でP6前の一巡を確認する
+
+**対象ファイル**　`test/parallel.test.ts`、`test/live/v030-cli.ts`、`test/live/v030-ide.ts`、`skills/codex-chat-coordination/SKILL.md`、`skills/codex-chat-coordination/references/plan-and-report.md`
+
+- [ ] [工程表の例](../../validation/chat-control/pre-p6-small-plan.md)と同じ依存関係を、既存の模擬Codex・ローカルbare Gitのfixtureで通す。独立した二件の並列起動、一件だけ統合した時点での監査待ち、監査が失敗した場合の後続保留、監査受入後の後続起動を確認する。通常のGit保存に追加承認が出ず、Workerの報告とCoordinatorの保存操作を照合できることも確認する。
+- [ ] CoordinatorとWorkerの運用ガイドを更新する。Coordinatorが最終報告を受けて保存・検証・統合・進捗更新を行う順序と、候補SHAを指定して監査を依頼する手順を記載する。旧runの手順も参照できるようにする。
+- [ ] ローカルの回帰は `npm run verify` を実行する。実機は試験用のローカルbareを使い、承認された試験環境とモデル枠で既存のCLI・VS Codeの試験入口を使う。各入口で開始後に人が「次へ」と入力せず、報告から保存・監査・次工程の割当まで進むこと、下書きが残ること、無関係な会話への配送が0件であることを記録する。通常経路の追加Git承認、重複ターン、最終SHA、全Workerの停止結果も記録する。
+- [ ] 検証と自己レビューを終え、今回の実装をコミットする。実機の往復が成立した入口と未達事項を[P6](2026-11-19-meristem-v030.md#p6v020-からの更新と-v030-受入)へ引き継ぐ。P6の配布検証と既存環境からの移行確認は別途実施する。
