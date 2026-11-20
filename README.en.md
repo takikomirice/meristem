@@ -52,7 +52,7 @@ Choose comparable tasks and set `pin_initial: true` to fix each trial's setting 
 | Sequential and parallel work | Runs dependent stages in order. Independent scopes and shared resources permit parallel work with two Workers by default, with human-approved expansion in plan version 2. |
 | Corrections and handoffs | Supports corrections in a verified worktree and handoffs to a fresh Worker. Currently, choosing history continuation also starts a fresh thread to avoid inheriting old permission grants. |
 | Coordinator wake after reports | When enabled, resumes the Coordinator after checking saved reports and completion state. Routine monitoring makes no model calls. |
-| Questions and human approval | Lets the Coordinator handle Worker questions while humans decide supported approval requests through the actual approval UI. |
+| Questions and human approval | The Coordinator handles Worker questions. In the managed VS Code parent chat, you can answer approval forms directly in the conversation. Pending requests are also accessible from the Meristem progress menu. |
 | Git acceptance | Distinguishes Worker candidate SHAs from integrated SHAs and checks validation results and actual Git state before releasing the next stage. |
 | Stop and retain work | Confirms owned process termination and retains working files, branches, and reports. Instructions with unknown delivery outcomes are not automatically resent. |
 

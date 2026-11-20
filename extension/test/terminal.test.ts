@@ -520,6 +520,33 @@ test('the run entry, usage and progress are available from VS Code', () => {
   const commands = manifest.contributes.commands.map((item: { command: string }) => item.command);
   for (const name of ['startRun', 'newTerminalRun', 'usage', 'progress', 'stopRun']) assert.ok(commands.includes('meristem.chatControl.' + name), name);
 });
+test('the managed parent chat leaves Worker approvals in chat and shows the pending count', async t => {
+  const loader = require('node:module'), load = loader._load;
+  const commands = new Map<string, (uri: unknown) => Promise<void>>(), notices: string[] = [];
+  class Uri { scheme = 'file'; fsPath = process.cwd(); }
+  const uri = new Uri();
+  const statusBar = { text: '', show() {}, hide() {}, dispose() {} };
+  const api = { Uri, StatusBarAlignment: { Left: 1 }, ProgressLocation: { Notification: 15 },
+    workspace: { ...extensionWorkspace, isTrusted: true, workspaceFolders: [{name:'trial', uri}] },
+    commands: { registerCommand(name: string, command: (uri: unknown) => Promise<void>) { commands.set(name, command); return { dispose() {} }; } },
+    window: { createStatusBarItem: () => statusBar, onDidCloseTerminal: () => ({dispose() {}}),
+      withProgress: (_options: unknown, action: () => Promise<unknown>) => action(),
+      async showInformationMessage(message: string) { notices.push(message); },
+      async showErrorMessage(message: string) { assert.fail(message); } } };
+  t.mock.method(loader, '_load', function(name: string, ...args: unknown[]) { return name === 'vscode' ? api : load.call(loader, name, ...args); });
+  const session = { approvalKeys: ['report-A'], terminals: [], async refresh() {}, dispose() {} };
+  t.mock.method(managedClient, 'connectManaged', async () => session as any);
+  t.mock.method(require('../src/managed-tui'), 'openManagedTerminal', async (_api: unknown, _context: unknown, repository: string, _file: string, attach: (target: object) => Promise<unknown>) => {
+    await attach({runId:'run',pipeName:'pipe',file:'discovery',repository,terminalPid:42}); return {dispose() {}};
+  });
+  delete require.cache[require.resolve('../src/extension')];
+  const extension = require('../src/extension'), subscriptions: { dispose(): void }[] = [];
+  extension.activate({subscriptions});
+  t.after(async () => { subscriptions.forEach(item => item.dispose()); await extension.deactivate(); delete require.cache[require.resolve('../src/extension')]; });
+  await commands.get('meristem.chatControl.newTerminalRun')!(uri);
+  assert.match(statusBar.text, /承認待ち 1件/);
+  assert.ok(!notices.some(message => message.includes('Worker から承認要求')));
+});
 test('start stays in the selected window and skips discovery for missing or cancelled folders', async t => {
   const loader = require('node:module'), original = loader._load, commands = new Map<string, () => Promise<void>>();
   const messages: string[] = [];

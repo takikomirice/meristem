@@ -195,7 +195,7 @@ export function activate(context: vscode.ExtensionContext): void {
             void reviewStart(session);
           }
           const keys = session.approvalKeys ?? [];
-          if (keys.some(key => !announcedRequests.has(key))) {
+          if (expected?.terminalPid === undefined && keys.some(key => !announcedRequests.has(key))) {
             void vscode.window.showInformationMessage('Worker から承認要求が届きました。', '要求を確認').then(choice => {
               if (choice && managed === session) void vscode.commands.executeCommand('meristem.chatControl.reviewRequest');
             });
