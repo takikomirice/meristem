@@ -11,6 +11,14 @@ import { cliPlanChoices, listCliRuns, prepareCliRun, verifyCliArtifacts } from '
 import { openCliSession } from '../../src/cli-session.js';
 import { relayRequest } from '../../src/protocol.js';
 import { serialFixture } from '../fixtures/serial-git.js';
+import { observeParent } from './pre-p6-observation.js';
+
+if (process.argv[2] === '--observe') {
+  const [config, thread] = process.argv.slice(3);
+  const observation = await observeParent('cli', config, thread);
+  writeFileSync(1, JSON.stringify(observation, null, 2) + '\n');
+  process.exit(0);
+}
 
 const { values } = parseArgs({ options: {
   codex: { type: 'string' }, sha256: { type: 'string' }, 'auth-home': { type: 'string' }, evidence: { type: 'string' },

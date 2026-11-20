@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writeFileSync, readFileSync, unlinkSync, mkdtempSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, unlinkSync, mkdirSync, mkdtempSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import type { WorkerRef } from '../src/contracts.js';
+import { readPlan } from '../src/plan.js';
+import { recordedWorkflow } from './live/pre-p6-observation.js';
 import { tmpdir } from 'node:os';
 import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -48,6 +52,158 @@ test('quota controls real reservations, permits registered workers to finish and
 
 const managedPlan = (t: Parameters<typeof planControllerFixture>[0]) => planControllerFixture(t, undefined,
   undefined, undefined, undefined, { enabled: false, threshold: 20, lowMaximum: 1 }, 'managed-session');
+
+for (const failedAudit of [false, true]) {
+  test(`pre-P6 small plan ${failedAudit ? 'holds entry after a failed audit' : 'finishes entry after an accepted audit'}`, async t => {
+    const example = path.resolve('docs/validation/chat-control/pre-p6-small-plan.md');
+    const tasks = readPlan(example).plan.tasks;
+    const stateDirectory = mkdtempSync(path.join(tmpdir(), 'meristem-small-plan-'));
+    const hostExe = path.resolve('.local/chat-control-build/CodexWorkerHost.exe');
+    const realExe = path.resolve('.local/chat-control-build/MockCodex.exe');
+    const hash = (file: string) => createHash('sha256').update(readFileSync(file)).digest('hex');
+    const workerRequests: string[] = [];
+    const runtime = new WorkerRuntime({ stateDirectory, hostExe, hostSha256: hash(hostExe), realExe,
+      realSha256: hash(realExe), authHome: stateDirectory, fixture: true }, undefined, request => workerRequests.push(request.kind));
+    const f = await planControllerFixture(t, (fixture, scope) => {
+      const script = readFileSync(example, 'utf8').match(/```javascript\r?\n([\s\S]+?)```/);
+      assert.ok(script);
+      commitFile(fixture.repository, 'checks.mjs', script[1]);
+      commitFile(fixture.repository, 'audit.mjs', "import './checks.mjs';\nimport { formatLabel } from './src/label.mjs';\n" +
+        "import assert from 'node:assert/strict';\nassert.equal(formatLabel('  Bea  '), 'Bea');\n");
+      Object.assign(fixture.plan, { schema_version: 2, tasks: tasks.map(task => ({
+        ...task, agent: { ...task.agent, model: 'mock', effort: 'low' }
+      })) });
+      fixture.plan.run.max_parallel = 2;
+      scope!.permissionPermit = { allowedProfileIds: ['workspace', 'read-only'], writableRoots: [fixture.trees], allowedReviewers: ['user'] };
+    }, runtime, undefined, undefined, { enabled: false, threshold: 20, lowMaximum: 1 }, 'managed-session');
+    const integration = f.store.plan('run')!.pin.integrationCwd;
+    const instruct = async (taskId: string, text: string) => {
+      const target = await f.create(taskId);
+      t.after(() => runtime.stop(target, 'test_cleanup'));
+      await f.call('send_instruction', { taskId, target, agent: { model: 'mock', effort: 'low' }, text: text + ' fixture-parallel-completion' });
+      return target as WorkerRef;
+    };
+    const check = (cwd: string, names: string[], args = ['checks.mjs', ...names]) => {
+      const result = spawnSync(process.execPath, args, { cwd, encoding: 'utf8', windowsHide: true });
+      assert.ifError(result.error);
+      assert.notEqual(result.status, null);
+      return names.map(name => ({ name, command: ['node', ...args].join(' '), exit_code: result.status,
+        result: result.status === 0 ? 'passed' as const : 'failed' as const,
+        evidence_refs: [(result.status === 0 ? result.stdout : result.stderr).trim().slice(0, 200)] }));
+    };
+    const submit = async (worker: WorkerRef, observations: ReturnType<typeof check>, success: boolean) => {
+      const a = f.store.gitAssignment(worker.attemptId)!;
+      const reportRef = f.ref().operationId;
+      const activeTurn = path.join(a.cwd, 'active-turn.txt'), completeTurn = path.join(a.cwd, 'complete-turn');
+      const turnId = readFileSync(activeTurn, 'utf8');
+      await f.call('report', { operationId: reportRef, taskId: a.taskId, report: {
+        task_id: a.taskId, worker_id: worker.workerId, attempt_id: worker.attemptId, actor_id: worker.threadId,
+        status: success ? 'completed' : 'failed', base_sha: a.baseSha, candidate_sha: null, branch: a.branch,
+        push_result: { status: 'not_attempted', remote: 'origin', branch: a.branch }, checks: observations,
+        summary: success ? 'Assigned checks passed' : 'Nonempty labels must preserve the trimmed input',
+        remaining: success ? [] : ['Correct formatLabel']
+      } }, { actor: worker, turnId });
+      writeFileSync(completeTurn, '');
+      for (let i = 0; i < 100 && !runtime.completedTurn(worker); i++) await delay(50);
+      assert.equal(runtime.completedTurn(worker), turnId);
+      f.store.completedTurn(worker, turnId);
+      await f.broker.releaseCompleted('run', worker);
+      unlinkSync(activeTurn);
+      unlinkSync(completeTurn);
+      return reportRef;
+    };
+    const save = async (worker: WorkerRef, implementation: string) => {
+      const a = f.store.gitAssignment(worker.attemptId)!;
+      mkdirSync(path.join(a.cwd, 'src'), { recursive: true });
+      writeFileSync(path.join(a.cwd, 'src', a.taskId + '.mjs'), implementation);
+      const observations = check(a.cwd, [a.taskId]);
+      assert.equal(observations[0].result, 'passed', observations[0].evidence_refs[0]);
+      const reportRef = await submit(worker, observations, true);
+      const saveRef = f.ref().operationId;
+      const saved = await f.call('save_worker_changes', { taskId: a.taskId, target: worker, expectedHead: a.baseSha,
+        operationId: saveRef, reportRef, message: 'Implement ' + a.taskId });
+      const sha = git(a.cwd, 'rev-parse', 'HEAD');
+      assert.equal(saved.candidateSha, sha);
+      assert.equal(git(f.remote, 'rev-parse', 'refs/heads/' + a.branch), sha);
+      await f.call('record_decision', { taskId: a.taskId, decision: 'accept_candidate', candidateSha: sha,
+        evidenceRefs: [reportRef, saveRef], checks: check(a.cwd, [a.taskId]).map(c => ({ ...c, checked_sha: sha })) });
+      return sha;
+    };
+    const progress = async () => f.call('write_progress', { expectedFileHash: (await f.status()).plan.fileHash });
+    const integrate = async (taskId: string, inputCandidateShas: string[], names: string[]) => {
+      await f.call('record_decision', { taskId, decision: 'prepare_integration', inputCandidateShas, evidenceRefs: [] });
+      for (const sha of inputCandidateShas) git(integration, 'merge', '--no-edit', sha);
+      const sha = git(integration, 'rev-parse', 'HEAD');
+      const outcomes = check(integration, names);
+      assert.equal(outcomes[0].result, 'passed', outcomes[0].evidence_refs[0]);
+      const required = taskId === 'entry'
+        ? [...outcomes.filter(c => c.name !== 'audit'), ...check(integration, ['audit'], ['audit.mjs', 'audit'])]
+        : outcomes;
+      const verified = [...required, { ...outcomes[0], name: 'integration' }].map(c => ({ ...c, checked_sha: sha }));
+      await f.call('record_decision', { taskId, decision: 'accept_integration', integrationSha: sha, checks: verified, evidenceRefs: [] });
+      await progress();
+      return sha;
+    };
+
+    assert.deepEqual((await f.status()).plan.eligible, ['label', 'status']);
+    const label = await instruct('label', 'Implement formatLabel'), status = await instruct('status', 'Implement formatStatus');
+    assert.equal((await f.status()).capacity.activeWorkers, 2);
+    const labelSha = await save(label, failedAudit ? "export const formatLabel = s => s.trim() ? 'Ada' : '(untitled)';"
+      : "export const formatLabel = s => s.trim() || '(untitled)';");
+    if (failedAudit) await integrate('label', [labelSha], ['label']);
+    await assert.rejects(f.create('audit'));
+    const statusSha = await save(status, "export const formatStatus = done => done ? 'done' : 'pending';");
+    const reviewedSha = await integrate('status', failedAudit ? [statusSha] : [labelSha, statusSha], ['label', 'status', 'audit']);
+    assert.deepEqual((await f.status()).plan.eligible, ['audit']);
+    const audit = await instruct('audit', 'Review both functions at ' + reviewedSha);
+    const reviewed = f.store.gitAssignment(audit.attemptId)!;
+    assert.equal(reviewed.baseSha, reviewedSha);
+    const auditChecks = check(reviewed.cwd, ['audit'], ['audit.mjs', 'audit']).map(c => ({ ...c, checked_sha: reviewedSha }));
+    assert.equal(auditChecks[0].result, failedAudit ? 'failed' : 'passed');
+    const reportRef = await submit(audit, auditChecks, !failedAudit);
+    const accept = () => f.call('record_decision', { taskId: 'audit', decision: 'accept_review', integrationSha: reviewedSha, evidenceRefs: [reportRef] });
+    await assert.rejects(f.create('entry'));
+    if (failedAudit) {
+      await assert.rejects(accept());
+      assert.deepEqual((await f.status()).plan.eligible, []);
+      await assert.rejects(f.create('entry'));
+    } else {
+      await accept();
+      await progress();
+      assert.deepEqual((await f.status()).plan.eligible, ['entry']);
+      const entry = await instruct('entry', 'Implement formatEntry');
+      const entrySha = await save(entry, "import {formatLabel} from './label.mjs'; import {formatStatus} from './status.mjs'; " +
+        "export const formatEntry = (s, done) => formatLabel(s) + ' [' + formatStatus(done) + ']';");
+      const finalSha = await integrate('entry', [entrySha], ['label', 'status', 'audit', 'entry']);
+      await f.call('record_decision', { taskId: 'entry', decision: 'finish', evidenceRefs: [] });
+      assert.equal(f.store.run('run').state, 'completed');
+      assert.ok(readFileSync(f.planPath, 'utf8').includes('entry: integrated ' + finalSha));
+      t.diagnostic('Final integration SHA ' + finalSha);
+    }
+    assert.deepEqual(workerRequests, []);
+    const attempts = f.store.attempts('run');
+    assert.equal(attempts.length, failedAudit ? 3 : 4);
+    for (const attempt of attempts) {
+      const registration = JSON.parse(attempt.registration);
+      assert.deepEqual(registration.settings.permissions.writableRoots, registration.taskId === 'audit' ? [] : [registration.cwd]);
+      assert.equal(attempt.state, 'completed');
+      const stop = JSON.parse(attempt.stop_result!);
+      assert.equal(stop.state, 'stopped');
+      assert.ok(stop.evidenceRefs.includes('native_job_empty'));
+    }
+    const observed = recordedWorkflow(path.join(f.root, 'state'), 'run');
+    assert.equal(observed.workers.length, attempts.length);
+    assert.equal(observed.reports.length, attempts.length);
+    assert.equal(observed.reports.find(report => report.reportRef === reportRef)?.status, failedAudit ? 'failed' : 'completed');
+    assert.ok(observed.workers.every(worker => worker.stopResult === 'stopped'));
+    assert.deepEqual(observed.workerRequestsByKind, []);
+    const observedAudit = observed.tasks.find(task => task.taskId === 'audit');
+    assert.equal(observedAudit?.reviewReportRef, failedAudit ? null : reportRef);
+    const observedLabel = observed.tasks.find(task => task.taskId === 'label');
+    assert.equal(observedLabel?.candidateSha, labelSha);
+    assert.ok(observedLabel?.editReportRef && observedLabel?.saveRef);
+  });
+}
 
 async function editedReport(f: Awaited<ReturnType<typeof managedPlan>>) {
   const worker = await f.create('A');

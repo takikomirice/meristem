@@ -10,6 +10,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { availablePipe, pipeRequest, relayRequest, Rpc } from '../src/protocol.js';
 import { fileHash } from '../src/plan.js';
 import { gitScope } from './fixtures/git-scope.js';
+import { observeParent } from './live/pre-p6-observation.js';
 
 type Scope = ReturnType<typeof gitScope>;
 async function until<T>(read: () => T | Promise<T>, accepted: (value: T) => boolean, message: string) {
@@ -131,6 +132,15 @@ for (const scenario of ['deliver', 'switch', 'disconnect', 'stop'] as const) {
     }
     await delay(1100);
     assert.deepEqual(await starts(), expected);
+    if (scenario === 'deliver') {
+      const observed = await observeParent('cli', path.join(f.dir, 'control.json'), f.parent.threadId);
+      assert.equal(observed.relayObservation, 'available');
+      assert.equal(observed.expectedConversationBound, true);
+      assert.equal(observed.visibleUiTurnStarts, 1);
+      assert.equal(observed.acknowledgedStartsInOtherThreads, 0);
+      assert.deepEqual(observed.observedWakeAcknowledgements.map(wake => wake.threads), [[f.parent.threadId]]);
+      assert.equal(observed.workers[0].stopResult, 'stopped');
+    }
   });
 }
 

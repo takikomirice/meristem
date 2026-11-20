@@ -49,6 +49,7 @@ To migrate the example above, set `schema_version: 2` and give each task an `age
 | `create_worker` | `taskId` |
 | `send_instruction` | `taskId`, `target`, `agent: {model, effort}`, `text` |
 | `report` | `taskId`, `report` below |
+| `save_worker_changes` | `taskId`, exact WorkerRef in `target`, assigned base in `expectedHead`, `message`, final `reportRef` for Coordinator-saved runs |
 | `answer_request` | `requestKey`; questions: `answer: {questionId: {answers: ["text"]}}`; human approval: omit `answer` |
 | `record_decision` | `taskId`, `decision`, `evidenceRefs` (1–128 alphanumeric, underscore or hyphen characters per reference). Candidate acceptance takes `candidateSha`. Preparation takes `inputCandidateShas`. Integration takes `integrationSha` and `checks`. Review acceptance takes one `reportRef` in `evidenceRefs` and the reviewed SHA in `integrationSha`. Continuation can name `sourceTaskId`. |
 | `propose_plan_change` | `expectedPlanHash`, `tasks: [{id, depends_on?, completion?, agent?}]`, `reason`, `alternatives`, `recommendation` |
@@ -67,7 +68,7 @@ WorkerRef has five fields: `{ownerId, ownerEpoch, threadId, workerId, attemptId}
 
 ## Report
 
-Copy each required check name from the task's `completion` list into the instruction and the corresponding `checks[].name`. For example, if `completion` is `["ready"]` and the command is `node checks.mjs A`, report `name: "ready"` and `command: "node checks.mjs A"`. Use the tested commit ID in `checked_sha`.
+Copy each required check name from the task's `completion` list into the instruction and the corresponding `checks[].name`. For example, if `completion` is `["ready"]` and the command is `node checks.mjs A`, report `name: "ready"` and `command: "node checks.mjs A"`. The following example is a worktree observation from a new managed workspace Worker. Omit `checked_sha` for uncommitted edits.
 
 A version 2 task with `agent.permissionProfileId: read-only` requires a RunPermit that explicitly lists `read-only` in `allowedProfileIds`. Copy the assigned identities, branch and base into the report below. For a completed review set `candidate_sha: null`, `push_result.status: not_attempted`, and `remaining: []`. In `summary` state what you found. For each planned completion check, give the command you used, its result and exit code, the assigned base in `checked_sha`, and a concrete evidence reference such as a repository path and line at that SHA. If the requirement is “identify differences”, finding a difference can satisfy it. If the requirement is “verify the outputs agree”, a difference is a failed check. Report incomplete work as `failed` or ask for missing input with `needs_input`.
 
@@ -79,21 +80,27 @@ A version 2 task with `agent.permissionProfileId: read-only` requires a RunPermi
   "actor_id": "worker.threadId from the reporting attempt",
   "status": "completed",
   "base_sha": "exact assigned Git SHA",
-  "candidate_sha": "exact committed Git SHA",
+  "candidate_sha": null,
   "branch": "assigned branch",
-  "push_result": {"status": "pushed", "remote": "origin", "branch": "assigned branch"},
+  "push_result": {"status": "not_attempted", "remote": "origin", "branch": "assigned branch"},
   "summary": "What changed and why; concise factual result.",
-  "checks": [{"name": "test", "command": "npm test", "result": "passed", "exit_code": 0, "evidence_refs": ["local-test-log"], "checked_sha": "exact tested Git SHA"}],
+  "checks": [{"name": "test", "command": "npm test", "result": "passed", "exit_code": 0, "evidence_refs": ["local-test-log"]}],
   "remaining": []
 }
 ```
 
-Replace every placeholder with observed data (SHA is 40 or 64 lowercase hex characters). Copy `worker.threadId` from the reporting attempt in `get_status` into `actor_id`. Supply at least one observed evidence reference for each check. On failure use `status: failed`, `candidate_sha: null` when absent, and actual `push_result.status: pushed|failed|not_attempted`; each check retains its actual `passed|failed|not_run` result and exit code or null, even if another step failed. For a question use `status: needs_input` and a nonempty `question`. A successful summary, pushed branch or completed terminal is not acceptance. Coordinator integration checks use the final integration SHA, not the Worker's candidate check records.
+Replace every placeholder with observed data (SHA is 40 or 64 lowercase hex characters). Copy `worker.threadId` from the reporting attempt in `get_status` into `actor_id`. Supply at least one observed evidence reference for each check. On failure use `status: failed` and the actual `passed|failed|not_run` result and exit code or null for each check. For a question use `status: needs_input` and a nonempty `question`.
+
+After normal completion and cleanup the Coordinator saves the edits with the final report reference. Retain the save operation ID and its returned `candidateSha`. Rerun each completion check at that SHA and pass those records with `checked_sha: <candidateSha>` and `evidenceRefs: [reportRef, saveOperationId]` to `record_decision` for `accept_candidate`. After merging, rerun the required checks at the integrated SHA. For a dependent audit, send the integrated SHA in the instruction, confirm the reviewer's assigned base, and adopt its final report with `accept_review` before dispatching its dependents. [Worked parallel example](../../../docs/validation/chat-control/pre-p6-small-plan.md)
 
 Before any check has been attempted, a question report can use `checks: []`. If a check entry is supplied, its `evidence_refs` must contain at least one real reference, including for `not_run`; an empty `evidence_refs: []` is invalid. Plan mode always requires the full structured report. Do not replace a rejected structured report with a summary-only report; inspect the schema and saved operation outcome first.
 
 Use the returned local state/discovery paths for status/stop; never paste the discovery token into a model prompt. Human `authorize` is not a Worker terminal command. Unsupported approvals remain stopped or waiting for their official UI.
 
-For scoped Git permissions, use the exact existing Git paths: `git rev-parse --path-format=absolute --git-common-dir`, `git rev-parse --absolute-git-dir`, and the assigned local bare origin. Request only the paths the operation needs. The worktree directory itself, arbitrary parent directories and network access are outside this approval adapter; do not add them to a Git permission request. The worktree already has its assigned workspace permissions. An unsupported request remains pending and cannot be approved through this adapter.
+## Legacy Git evidence
+
+Use the save policy pinned at run start. Older runs without `coordinatorSave: true` retain their original workflow. For legacy scoped Coordinator saves, call `save_worker_changes` during the live writable assignment with the exact target, expected HEAD and message. For Worker-owned Git, commit and push within the assigned scope. The historical completed workspace report carries the actual committed `candidate_sha`, `push_result: {status: "pushed", remote: "origin", branch: <assigned branch>}`, and checks for that candidate. Verify the clean worktree, base, branch and remote readback before accepting the candidate. Preserve existing report and operation references on resume.
+
+For legacy scoped Git permissions, use the exact existing Git paths: `git rev-parse --path-format=absolute --git-common-dir`, `git rev-parse --absolute-git-dir`, and the assigned local bare origin. Request only the paths the operation needs. The worktree directory itself, arbitrary parent directories and network access are outside this approval adapter; do not add them to a Git permission request. The worktree already has its assigned workspace permissions. An unsupported request remains pending and cannot be approved through this adapter.
 
 The pinned Windows MXC acceptance environment has a separate MSYS `sh.exe` limitation for local pushes. See the [CC-06 transport observation](../../../docs/validation/chat-control/CC-06.md): its trial used Git's standard native `receive-pack` through a command-scoped `remote-ext` endpoint to the same approved local bare repository. This is a fixed trial procedure, not a generic transport fallback. Do not change origin, broaden permissions, enable the protocol globally, or interpret a failed push as success.

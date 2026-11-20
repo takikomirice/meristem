@@ -73,6 +73,14 @@ for (const name of requested) {
 - 両方の実装が統合された後に `audit` が始まる。対象SHAの監査をCoordinatorが受理すると `entry` が始まる。監査失敗の試験では `entry` は待機する。
 - 最終統合で `node checks.mjs label status audit entry` が成功する。全タスクの検証と `integration` を最終SHAに紐付ける。開始後の「次へ」の手入力が0件で、工程表の進捗欄、最終SHA、Workerの終了結果が揃う。
 
+## 実機での記録
+
+親を閉じる前に、試験用の `control.json` の絶対パスと、その親の画面・履歴で確認したスレッドIDを使う。ビルド済みのリポジトリから、CLI は `node dist/test/live/v030-cli.js --observe <control.json> <threadId>`、VS Code は `node dist/test/live/v030-ide.js <control.json> <threadId>` で単発の観測結果を取得できる。
+
+`registeredThreadMatches` で登録済みの親を確認する。通知記録は送信先の会話、所有プロセスの識別子と世代を含む。管理対象の実機では中継イベントの閲覧を所有プロセスに限定するため、外部観測には `relayObservation: owner_only` が出る。各タスクの報告・保存ID・統合SHA、全試行の停止結果、通知操作と応答ターンの記録を照合する。別会話への通知と重複は通知ごとのターンIDと親の履歴で確認する。模擬親などで取得できる中継のイベントは保存件数に上限があり、`firstRetainedEventSequence` が1を超える場合は冒頭の配送を件数から判断できない。Workerの要求は種類別の件数を記録し、Gitに関係する承認の有無は該当する要求と画面で確かめる。
+
+下書きの試験では、開始指示を送ったら親の入力欄に短文を入れる。Workerの報告に承認が必要な場合は、親が最初の応答中に `get_status` で要求を確認し、`answer` を省いた `answer_request` で親チャットに正式なフォームを出す。人は下書きを残したまま回答する。通知直前と親の応答後に入力欄の同じ短文を目視し、一度だけ送る。人が入力した「次へ」の回数、自動通知と短文が該当する親の履歴に現れた回数を記録する。各入口でこの試験を通した後に4タスクを実行する。
+
 <!-- chat-control:plan:start -->
 schema_version: 2
 run:
