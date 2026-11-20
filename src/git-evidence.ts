@@ -11,7 +11,8 @@ export const Checks = z.array(Check).max(32);
 // Internal aggregate only; each wire batch retains the 32-check limit.
 const IntegrationChecks = z.array(Check).max(4097);
 export const TaskReport = z.object({ task_id: Id, worker_id: Id, attempt_id: Id, actor_id: Id, status: z.enum(['completed', 'failed', 'needs_input']), base_sha: Sha, candidate_sha: Sha.nullable(), branch: z.string().min(1).max(512), push_result: z.object({ status: z.enum(['pushed', 'failed', 'not_attempted']), remote: z.literal('origin'), branch: z.string().min(1).max(512) }).strict(), summary: z.string().min(1).max(8192), checks: Checks, remaining: z.array(z.string().min(1).max(2048)).max(32), question: z.string().trim().min(1).max(8192).optional() }).strict();
-export type CandidateEvidence = { candidateSha: string; baseSha: string; branch: string; checks: z.infer<typeof Checks>; remote: 'origin' };
+export type CandidateEvidence = { candidateSha: string; baseSha: string; branch: string; checks: z.infer<typeof Checks>; remote: 'origin'; reportRef?: string; saveRef?: string };
+type SaveCheckpoint = { candidateSha: string; remoteBefore: string | null };
 export type IntegrationEvidence = { inputCandidateShas: string[]; resultSha: string; checks: z.infer<typeof Checks>; acceptedByParentTurnId: string };
 export type GitAssignment = { taskId: string; attemptId: string; cwd: string; branch: string; baseSha: string; scopeBaseSha: string };
 export type RepositoryPin = { repository: string; commonDir: string; origin: string; pushUrl: string; root: string; integrationCwd: string; integrationBranch: string; initialSha: string; runId: string };
@@ -113,7 +114,25 @@ export class GitEvidence {
   }
   // The broker constructs every argument. The caller supplies no command, cwd,
   // pathspec, Git option, ref or remote, and receives no metadata write grant.
-  async saveWorkerChanges(assignment: GitAssignment, expectedHead: string, message: string, checkOwner: () => void, beforeWrite = () => {}) {
+  private async remoteHead(assignment: GitAssignment): Promise<string | null> {
+    const ref = 'refs/heads/' + assignment.branch;
+    const output = await new Promise<string>((resolve, reject) => {
+      execFile('git', ['--no-replace-objects','ls-remote','--heads','--',this.pin.pushUrl,ref],
+        { cwd: assignment.cwd, env: gitEnvironment(), windowsHide:true, encoding:'utf8', timeout:10000, maxBuffer:1024*1024 },
+        (error, stdout) => error ? reject(new Error('Git remote evidence unavailable')) : resolve(stdout.trim()));
+    });
+    if (!output) return null;
+    const [sha, actualRef] = output.split('\t');
+    if (actualRef !== ref) throw new Error('remote branch mismatch');
+    return Sha.parse(sha);
+  }
+  async confirmPublishedCandidate(assignment: GitAssignment, sha: string) {
+    this.assertCandidateHead(assignment,sha);
+    if (await this.remoteHead(assignment) !== sha) throw new Error('candidate not at pinned remote branch');
+    this.assertCandidateHead(assignment,sha);
+  }
+  async saveWorkerChanges(assignment: GitAssignment, expectedHead: string, message: string, checkOwner: () => void, beforeWrite = () => {},
+    journal?: { prior?: SaveCheckpoint; pin(checkpoint: SaveCheckpoint): void }) {
     const { cwd, branch: target, taskId } = assignment;
     const task = this.snapshot.plan.tasks.find(t => t.id === taskId);
     if (!task || taskAgent(task).permissionProfileId === 'read-only' || !message.trim() || message.length > 2048 || message.includes('\0')) throw new Error('writable task and commit message required');
@@ -127,8 +146,26 @@ export class GitEvidence {
     const scoped = (files: string[]) => {
       if (files.some(file => !task.scope.some(root => file === root || file.startsWith(root + '/')))) throw new Error('changes outside task scope');
     };
-    check(Sha.parse(expectedHead));
+    const prior = journal?.prior;
+    Sha.parse(expectedHead);
+    if (journal && expectedHead !== assignment.baseSha) throw new Error('reported worktree base changed');
+    const localHead = prior ? this.worktree(cwd,target,true) : expectedHead;
+    if (prior && localHead !== prior.candidateSha && localHead !== expectedHead) throw new Error('saved candidate HEAD changed');
+    check(localHead);
     this.contains(cwd,expectedHead,[assignment.scopeBaseSha,assignment.baseSha]);
+    const destination = this.pin.pushUrl;
+    if (!(path.isAbsolute(destination) || /^(https|ssh):\/\//i.test(destination) || /^[\w.-]+@[\w.-]+:/.test(destination))) throw new Error('unsupported push destination');
+    if (path.isAbsolute(destination)) {
+      const remote = realpathSync(destination);
+      if (remote.toLowerCase() !== path.resolve(destination).toLowerCase() || git(remote,['rev-parse','--is-bare-repository']) !== 'true') throw new Error('local push requires the pinned bare repository');
+    }
+    const ref = 'refs/heads/' + target;
+    const observed = journal ? await this.remoteHead(assignment) : null;
+    const remoteBefore = prior ? prior.remoteBefore : observed;
+    if (remoteBefore !== null && remoteBefore !== expectedHead) throw new Error('unexpected remote base');
+    if (prior && observed !== remoteBefore && observed !== prior.candidateSha) throw new Error('pinned remote branch changed');
+    if (prior && observed === prior.candidateSha && localHead !== prior.candidateSha) throw new Error('published candidate HEAD changed');
+    if (journal) check(localHead);
     const hooks = git(cwd,['rev-parse','--path-format=absolute','--git-path','hooks']);
     if (['pre-commit','prepare-commit-msg','commit-msg','post-commit','pre-push','post-index-change','reference-transaction']
         .some(name => existsSync(path.join(hooks,name)))) throw new Error('configured Git hooks require review');
@@ -159,53 +196,52 @@ export class GitEvidence {
       const attributes = parts(run(['check-attr','--stdin','-z','filter'],true,paths));
       if (attributes.length !== files.length * 3 || attributes.some((v,i) => i % 3 === 2 && v !== 'unspecified' && v !== 'unset')) throw new Error('filtered path requires review');
     }
-    const destination = this.pin.pushUrl;
-    if (!(path.isAbsolute(destination) || /^(https|ssh):\/\//i.test(destination) || /^[\w.-]+@[\w.-]+:/.test(destination))) throw new Error('unsupported push destination');
-    if (path.isAbsolute(destination)) {
-      const remote = realpathSync(destination);
-      if (remote.toLowerCase() !== path.resolve(destination).toLowerCase() || git(remote,['rev-parse','--is-bare-repository']) !== 'true') throw new Error('local push requires the pinned bare repository');
-    }
     scoped(parts(run(['diff','--cached','--name-only','--no-renames','-z',assignment.scopeBaseSha,'--'],true)));
-    check(expectedHead);
-    beforeWrite();
-    if (files.length) {
+    check(localHead);
+    if (!prior) beforeWrite();
+    if (!prior && files.length) {
       // Stage only the task paths already inspected. A concurrently created file
       // in another directory cannot be swept into the index.
       run(['add','-A','--pathspec-from-file=-','--pathspec-file-nul'],false,paths);
     }
     const tree = Sha.parse(run(['write-tree']));
     scoped(parts(run(['diff','--name-only','--no-renames','-z',assignment.scopeBaseSha,tree,'--'],true)));
-    const ref = 'refs/heads/' + target;
-    let sha = expectedHead;
-    if (tree !== run(['rev-parse',expectedHead+'^{tree}'])) {
+    let sha = prior?.candidateSha ?? expectedHead;
+    if (prior) {
+      if (tree !== run(['rev-parse',sha+'^{tree}']) || run(['diff','--name-only','--']) || run(['ls-files','--others','--exclude-standard'])) throw new Error('saved candidate worktree changed');
+    } else if (tree !== run(['rev-parse',expectedHead+'^{tree}'])) {
       check(expectedHead);
       sha = Sha.parse(run(['-c','commit.gpgSign=false','commit-tree',tree,'-p',expectedHead,'-m',message]));
-      run(['update-ref',ref,sha,expectedHead]);
     }
+    if (!prior) journal?.pin({candidateSha:sha, remoteBefore});
+    if (localHead !== sha) run(['update-ref',ref,sha,expectedHead]);
     check(sha);
     // Leave the receiving repository's verification settings intact for local pushes.
-    const args = ['--no-replace-objects','-c','push.followTags=false','push','--no-verify','--recurse-submodules=no','--',destination,sha+':'+ref];
-    await new Promise<void>((resolve,reject) => execFile('git',args,{cwd,env:gitEnvironment(),windowsHide:true,timeout:30000},error=>error ? reject(new Error('scoped push unconfirmed')) : resolve()));
+    if (!journal || observed !== sha) {
+      // Only advance the exact observed ref from the commit parent (or create an absent ref).
+      const lease = journal ? ['--force-with-lease='+ref+':'+(remoteBefore ?? '')] : [];
+      const args = ['--no-replace-objects','-c','push.followTags=false','push','--no-verify','--recurse-submodules=no',...lease,'--',destination,sha+':'+ref];
+      await new Promise<void>((resolve,reject) => execFile('git',args,{cwd,env:gitEnvironment(),windowsHide:true,timeout:30000},error=>error ? reject(new Error('scoped push unconfirmed')) : resolve()));
+    }
+    if (journal && await this.remoteHead(assignment) !== sha) throw new Error('saved candidate not at pinned remote branch');
     check(sha);
     return { candidateSha:sha, branch:target, pushResult:'pushed' };
   }
-  async verifyCandidate(taskId: string, input: unknown, assignment: GitAssignment): Promise<CandidateEvidence> {
+  async verifyCandidate(taskId: string, input: unknown, assignment: GitAssignment, saved?: {candidateSha:string; checks:unknown}): Promise<CandidateEvidence> {
     const report = TaskReport.parse(input), task = this.snapshot.plan.tasks.find(t => t.id === taskId);
-    if (!task || taskAgent(task).permissionProfileId === 'read-only' || report.task_id !== taskId || report.status !== 'completed' || report.question || report.remaining.length || report.base_sha !== assignment.baseSha || report.branch !== assignment.branch || report.attempt_id !== assignment.attemptId || report.push_result.status !== 'pushed' || report.push_result.branch !== assignment.branch) throw new Error('candidate report mismatch');
-    validateChecks(report.checks, task.completion);
+    if (!task || taskAgent(task).permissionProfileId === 'read-only' || report.task_id !== taskId || report.status !== 'completed' || report.question || report.remaining.length || report.base_sha !== assignment.baseSha || report.branch !== assignment.branch || report.attempt_id !== assignment.attemptId || report.push_result.status !== (saved ? 'not_attempted' : 'pushed') || saved && report.candidate_sha !== null || report.push_result.branch !== assignment.branch) throw new Error('candidate report mismatch');
+    const checks = validateChecks(saved ? saved.checks : report.checks, task.completion);
     const sha = this.worktree(assignment.cwd, assignment.branch);
-    if (sha !== report.candidate_sha) throw new Error('candidate HEAD changed');
+    if (sha !== (saved?.candidateSha ?? report.candidate_sha)) throw new Error('candidate HEAD changed');
+    if (saved && checks.some(check => check.checked_sha !== sha || !check.command.trim() || check.evidence_refs.some(ref => !ref.trim()))) throw new Error('checks require evidence for the saved candidate SHA');
     this.contains(assignment.cwd, sha, [assignment.baseSha]);
     this.contains(assignment.cwd, sha, [assignment.scopeBaseSha]);
     const files = git(assignment.cwd, ['diff', '--name-only', '-z', '--no-renames', assignment.scopeBaseSha, sha, '--'], true).split('\0').filter(Boolean);
     if (files.some(file => !task.scope.some(p => file === p || file.startsWith(p + '/')))) throw new Error('candidate changes outside task scope');
-    const remote = await new Promise<string>((resolve, reject) => {
-      execFile('git', ['--no-replace-objects', 'ls-remote', '--exit-code', '--heads', '--', this.pin.pushUrl, `refs/heads/${assignment.branch}`], { cwd: assignment.cwd, env: gitEnvironment(), windowsHide: true, encoding: 'utf8', timeout: 10000, maxBuffer: 1024 * 1024 }, (error, stdout) => error ? reject(new Error('Git remote evidence unavailable')) : resolve(stdout.trim()));
-    });
-    if (remote.split(/\s+/)[0] !== sha) throw new Error('candidate not at pinned remote branch');
+    if (await this.remoteHead(assignment) !== sha) throw new Error('candidate not at pinned remote branch');
     // Recheck after remote I/O, including clean state and original assignment.
     if (this.worktree(assignment.cwd, assignment.branch) !== sha) throw new Error('candidate changed during verification');
-    return { candidateSha: sha, baseSha: assignment.baseSha, branch: assignment.branch, checks: report.checks, remote: 'origin' };
+    return { candidateSha: sha, baseSha: assignment.baseSha, branch: assignment.branch, checks, remote: 'origin' };
   }
   verifyReview(report: z.infer<typeof TaskReport>, assignment: GitAssignment, required: string[], integrations: string[]) {
     if (report.status !== 'completed' || !report.summary.trim() || report.remaining.length || report.question ||
@@ -223,7 +259,7 @@ export class GitEvidence {
     return { integrationSha: head, checks: verified };
   }
 }
-function validateChecks(input: unknown, required: string[], integration = false) {
+export function validateChecks(input: unknown, required: string[], integration = false) {
   const checks = (integration ? IntegrationChecks : Checks).parse(input);
   if (new Set(checks.map(c => c.name)).size !== checks.length || checks.some(c => c.result !== 'passed' || c.exit_code !== 0) || required.some(name => !checks.some(c => c.name === name))) throw new Error('required checks have not passed');
   return checks;

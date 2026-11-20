@@ -25,6 +25,17 @@ test('history_reuse_requires_cleanup_current_cwd_and_git_head', () => {
   assert.throws(() => f.evidence.reuseWorktree({ ...f.assignment, cwd: f.repository }, []));
   writeFileSync(path.join(f.assignment.cwd, 'dirty'), 'dirty'); assert.throws(() => f.evidence.reuseWorktree(f.assignment, []));
 });
+
+test('Coordinator save rejects changes outside the assignment before recording a candidate', async () => {
+  const f = setup(), assignment = f.evidence.createWorktree('B','next',[]);
+  writeFileSync(path.join(assignment.cwd,'outside.txt'),'unassigned');
+  let pinned = false;
+  await assert.rejects(f.evidence.saveWorkerChanges(assignment,assignment.baseSha,'save',()=>{},undefined,
+    {pin() { pinned = true; }}),/outside task scope/);
+  assert.equal(pinned,false);
+  assert.equal(git(assignment.cwd,'rev-parse','HEAD'),assignment.baseSha);
+  assert.equal(git(f.remote,'for-each-ref','refs/heads/'+assignment.branch),'');
+});
 test('dependent_base_contains_all_integrations', () => {
   const f = setup(); assert.throws(() => f.evidence.createWorktree('B', 'early', [f.candidate]));
   git(f.pin.integrationCwd, 'merge', '--ff-only', f.candidate);

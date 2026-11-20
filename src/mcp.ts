@@ -48,7 +48,7 @@ const schemas = {
   resume_worker_history: HistoryResume,
   answer_request: Operation.extend({ requestKey: z.string().min(1).max(512), answer: z.record(z.string(), z.object({ answers: z.array(z.string().max(8192)).min(1).max(10) }).strict()).optional() }).strict(),
   start_run: z.object({ planPath: z.string().min(1).max(4096).optional(), operationId: Id }).strict(),
-  save_worker_changes: Operation.extend({taskId:Id, target:Worker, expectedHead:Sha, message:z.string().trim().min(1).max(2048)}).strict(),
+  save_worker_changes: Operation.extend({taskId:Id, target:Worker, expectedHead:Sha, message:z.string().trim().min(1).max(2048), reportRef:Id.optional()}).strict(),
   create_worker: Operation.extend({ taskId: Id }).strict(),
   send_instruction: Operation.extend({ taskId: Id, target: Worker, agent: z.object({ model: ModelId, effort: Id }).strict(), text: z.string().min(1).max(65536) }).strict(),
   get_status: z.object({ runId: Id, taskId: Id.optional(), afterEventSeq: z.number().int().nonnegative().optional(), attemptOffset: z.number().int().nonnegative().optional(), reportOffset: z.number().int().nonnegative().optional(), requestOffset: z.number().int().nonnegative().optional() }).strict(),
@@ -67,6 +67,7 @@ export type ToolName = keyof typeof schemas;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export class McpController {
   private plan?: PlanControl;
+  private savingAttempts = new Set<string>();
   constructor(private store: Store, private broker: Broker, private runtime: ManagedRuntime, private runId: string, private parent: ActorRef, private scope: FixtureScope, private routingHistory?: import('./routing-summary.js').RoutingHistory, private parentSessionId?: string) {
     if (scope.modelRoutingSummary?.sha256 !== routingHistory?.reference.sha256 || scope.modelRoutingSummary?.path !== routingHistory?.reference.path ||
       (routingHistory && !scope.plan)) throw new Error('routing summary scope mismatch');
@@ -113,6 +114,10 @@ export class McpController {
   private scopeHash(): string {
     return this.diagnoseScope().scopeHash;
   }
+  private saveModeForBinding() {
+    const enabled = this.store.binding(this.runId) ? this.store.coordinatorSave(this.runId) : !!this.parentSessionId && !!this.store.usageRecord(this.runId);
+    return enabled ? {coordinatorSave:true} : {};
+  }
   private diagnoseScope() {
     const digest = <T extends {windowBindingId: string}>(scope: T) => {
       if (!this.parentSessionId) return { scopeHash: hash(scope), targetHash: undefined };
@@ -129,7 +134,7 @@ export class McpController {
       if (this.routingHistory && this.routingHistory.repositoryKey !== createHash('sha256').update(stored.pin.commonDir.toLowerCase()).digest('hex')) throw new Error('routing summary repository pin changed');
       const routing = this.modelRoutingPermit();
       const usagePolicy = this.store.usageRecord(this.runId)?.policy;
-      return digest({ ...this.scope, ...(usagePolicy && {usagePolicy, scopedGitSave:true}), planPath: realpathSync(this.scope.planPath), planHash: stored.bindingHash, pin: stored.pin, ...(routing ? { modelRouting: routing } : {}) });
+      return digest({ ...this.scope, ...(usagePolicy && {usagePolicy, scopedGitSave:true}), ...this.saveModeForBinding(), planPath: realpathSync(this.scope.planPath), planHash: stored.bindingHash, pin: stored.pin, ...(routing ? { modelRouting: routing } : {}) });
     }
     if (this.scope.fixture !== true || !path.isAbsolute(this.scope.planPath) || !this.scope.assignments.length || this.scope.assignments.length > 128 || new Set(this.scope.assignments.map(a => a.workerId)).size !== this.scope.assignments.length) throw new Error('explicit fixture scope required');
     const git = (cwd: string, args: string[]) => {
@@ -164,7 +169,7 @@ export class McpController {
     const policy = this.store.usageRecord(this.runId)?.policy;
     const planScope = (this.parentSessionId || policy) && stored ? { planVersion: stored.snapshot.plan.schema_version,
       integrationBranch: stored.pin.integrationBranch, gitDestination: stored.pin.pushUrl,
-      worktreesRoot: stored.pin.root, ...(policy && {usagePolicy:policy, scopedGitSave:true}), requestedMaximum: stored.snapshot.plan.run.max_parallel,
+      worktreesRoot: stored.pin.root, ...(policy && {usagePolicy:policy, scopedGitSave:true}), ...this.saveModeForBinding(), requestedMaximum: stored.snapshot.plan.run.max_parallel,
       approvedMaximum: Math.min(stored.snapshot.plan.run.max_parallel, this.store.effectiveParallelLimit(this.runId)) } : undefined;
     const scope = { ...this.scope, ...(targetHash ? { targetHash } : {}), ...(planScope ? { planScope } : {}), planHash: this.plan ? this.store.plan(this.runId)!.bindingHash : createHash('sha256').update(readFileSync(this.scope.planPath)).digest('hex'),
       ...(routing ? { modelRouting: routing } : {}) };
@@ -195,6 +200,20 @@ export class McpController {
     const state = this.store.run(this.runId).state;
     if (state === 'active') return this.startFromControl(operationId, scopeHash);
     if (state !== 'needs_reconcile' && state !== 'stopped') throw new Error('run cannot resume');
+    // A stopped broker may have lost its acknowledgement after Git received the commit.
+    // The authenticated resume may confirm published refs, but cannot initiate a push.
+    if (this.plan && this.store.coordinatorSave(this.runId)) {
+      const generation = this.store.run(this.runId).stop_generation;
+      for (const operation of this.store.unconfirmedSaves(this.runId)) {
+        const {remoteBefore, ...checkpoint} = JSON.parse(operation.result!);
+        const assignment = this.store.gitAssignment(checkpoint.attemptId);
+        if (!assignment || assignment.branch !== checkpoint.branch) throw new Error('saved assignment changed');
+        await this.plan.git().confirmPublishedCandidate(assignment,Sha.parse(checkpoint.candidateSha));
+        if (this.store.run(this.runId).stop_generation !== generation || this.store.binding(this.runId)?.id !== saved.id ||
+            this.startPreview().scopeHash !== scopeHash) throw new Error('resume scope changed during reconciliation');
+        this.store.operationResult(operation.id,'settled',{...checkpoint,pushResult:'pushed'});
+      }
+    }
     if (saved.scope_hash !== scopeHash || saved.state !== 'consumed') {
       this.store.replaceBinding(randomUUID(), this.runId, operationId, this.parent, scopeHash, preview.scope, true);
     }
@@ -454,35 +473,54 @@ export class McpController {
     if (requestToAnswer && requestToAnswer.kind !== 'question' && requestToAnswer.state === 'pending' && this.runtime.presentRequest) delete args.answer;
     // Presenting human consent must not invalidate the revision of the suspended tool call.
     const prepared = this.store.prepareOperation(ref, hash({ name, args, actor: identity.actor }), !(name === 'answer_request' && args.answer === undefined));
-    if (!prepared.fresh) return prepared.operation.result ? JSON.parse(prepared.operation.result) : { state: prepared.operation.state };
+    const reportedSave = name === 'save_worker_changes' && this.store.coordinatorSave(this.runId);
+    const reconcileSave = reportedSave && prepared.operation.state === 'sent_unknown' && !!prepared.operation.result;
+    if (!prepared.fresh && !reconcileSave) return prepared.operation.result ? JSON.parse(prepared.operation.result) : { state: prepared.operation.state };
     const humanRequest = args.answer === undefined ? requestToAnswer : undefined;
     if (!['stop_run', 'stop_worker', 'retire_worker', 'resume_run', 'report'].includes(name) && !this.broker.canWake(this.runId) && !(humanRequest && this.broker.canReviewRequest(this.runId, humanRequest))) {
-      this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' }); throw new Error('run is stopped');
+      if (!reconcileSave) this.store.operationResult(args.operationId, 'cancelled', { state: 'cancelled' });
+      throw new Error('run is stopped');
     }
     let result: any;
     if (name === 'save_worker_changes') {
-      // A Coordinator can save only the current, live, writable assignment from its consumed start permit.
       const plan = this.plan, target = args.target as WorkerRef;
+      const generation = this.store.run(this.runId).stop_generation;
+      const prior = reconcileSave ? JSON.parse(prepared.operation.result!) : undefined;
+      const bindingId = binding.id;
       const assertOwner = () => {
         const row = this.store.attempts(this.runId).find(item=>item.id === target.attemptId);
         const reg: Registration | undefined = row && JSON.parse(row.registration);
         const state = this.store.planStates(this.runId)[args.taskId];
         if (!plan || !this.store.usageRecord(this.runId) || !reg || !sameWorker(reg.worker,target) || reg.taskId !== args.taskId || state?.attemptId !== target.attemptId ||
-            state.state !== 'assigned' || !['running','idle','waiting_input','waiting_approval'].includes(row!.state) || !this.broker.canWake(this.runId) ||
-            this.store.binding(this.runId)?.state !== 'consumed' || !scopeValid || state.reviewPlanHash || state.hold ||
+            state.state !== 'assigned' || !this.broker.canWake(this.runId) || this.store.run(this.runId).stop_generation !== generation ||
+            this.store.binding(this.runId)?.id !== bindingId || !scopeValid || state.reviewPlanHash || state.hold ||
             reg.settings?.permissions.permissionProfileId === 'read-only') throw new Error('current writable assignment required');
         plan.assertCurrent();
+        if (reportedSave) {
+          plan.completedEditReport(args.taskId,target,args.reportRef);
+          const existing = this.store.savedCandidateOperation(this.runId,target.attemptId);
+          if (existing && existing.id !== args.operationId || prior && prior.stopGeneration !== generation) throw new Error('save operation or stop generation changed');
+        } else if (args.reportRef || !['running','idle','waiting_input','waiting_approval'].includes(row!.state)) throw new Error('live assignment required');
       };
+      if (this.savingAttempts.has(target.attemptId)) {
+        if (prepared.fresh) this.store.operationResult(args.operationId,'cancelled',{state:'cancelled'});
+        throw new Error('assignment save in progress');
+      }
+      this.savingAttempts.add(target.attemptId);
       try {
         assertOwner();
         const assignment = this.store.gitAssignment(target.attemptId);
         const reg = registrations.find(r=>sameWorker(r.reg.worker,target))?.reg;
         if (!assignment || !reg || assignment.cwd !== reg.cwd || assignment.branch !== reg.branch || assignment.taskId !== reg.taskId) throw new Error('Git assignment mismatch');
-        result = await plan!.git().saveWorkerChanges(assignment,args.expectedHead,args.message,assertOwner, () => this.store.operationState(args.operationId,'sent_unknown'));
+        const identity = {kind:'worker_save', attemptId:target.attemptId, reportRef:args.reportRef, branch:assignment.branch, stopGeneration:generation};
+        const saved = await plan!.git().saveWorkerChanges(assignment,args.expectedHead,args.message,assertOwner,
+          () => { if (!reportedSave) this.store.operationState(args.operationId,'sent_unknown'); },
+          reportedSave ? { prior, pin: checkpoint => this.store.operationResult(args.operationId,'sent_unknown',{...identity,...checkpoint}) } : undefined);
+        result = reportedSave ? {...identity,...saved} : saved;
       } catch (error) {
         if (this.store.operation(args.operationId).state === 'prepared') this.store.operationResult(args.operationId,'cancelled',{state:'cancelled'});
         throw error;
-      }
+      } finally { this.savingAttempts.delete(target.attemptId); }
     } else if (name === 'create_worker') {
       let assignment = this.scope.assignments.find(a => a.workerId === args.taskId);
       let historySource: HistorySource | undefined;
@@ -617,7 +655,7 @@ export function createMcpServer(invoke: (name: string, args: unknown, metadata: 
   const server = new McpServer({ name: 'meristem-chat-control', version: '0.0.0' });
   for (const [name, schema] of Object.entries(schemas)) server.registerTool(name, {
     description: name === 'start_run' ? 'Start the selected plan. In a managed parent conversation omit planPath to use the plan selected by the user.' : name === 'answer_request' ? 'For a pending Worker approval, call with requestKey and omit answer to show the human a confirmation in this Codex chat. Only a Worker question takes an answer from the Coordinator.'
-      : name === 'save_worker_changes' ? 'Coordinator only. Commit and push the assigned Worker worktree to its approved branch and destination. Use the exact current target and Git HEAD. No shell command or metadata write access is granted.' : name === 'hold_task' ? 'Park a task for a blocking consultation or plan change. Use replacesDecisionId to replace a stale hold reason. Parent only.'
+      : name === 'save_worker_changes' ? 'Coordinator only. Save the exact target and expected HEAD to the approved branch and destination. In new managed runs supply the final reportRef after confirmed completion. Retry an unconfirmed push with the identical operation and arguments. Legacy scoped saves use the live assignment.' : name === 'hold_task' ? 'Park a task for a blocking consultation or plan change. Use replacesDecisionId to replace a stale hold reason. Parent only.'
       : name === 'resume_task' ? 'Validate hold resolutions, applied plan changes and Git, then prepare a task for explicit create_worker and send_instruction. Parent only.'
       : name === 'get_worker_history' ? 'Read a page of official Codex history for a saved attempt. Select the exact WorkerRef from get_status. Parent only.'
       : name === 'resume_worker_history' ? 'Reconcile one stopped attempt against Codex, Git and delivery records and prepare a fresh-thread handoff. Afterwards explicitly create_worker and send_instruction. Parent only.'
@@ -625,7 +663,7 @@ export function createMcpServer(invoke: (name: string, args: unknown, metadata: 
       : name === 'apply_plan_change' ? 'Apply the exact human-approved plan diff after parking affected attempts. Parent only.'
       : name === 'reconcile_plan' ? 'Unfreeze a plan after restoring its approved contents. Parent only.'
       : name === 'retire_worker' ? 'Stop only the exact worker attempt and keep the run active after confirmed cleanup. Does not complete its task or delete its worktree or logs. Parent only.'
-      : name === 'record_decision' ? 'Parent only. For code, accept the candidate and then the checked integration. For a read-only review, inspect the saved report and call accept_review with its reportRef in evidenceRefs and the reviewed SHA in integrationSha. Both final decisions release dependencies.' : `Fixture-scoped ${name}; caller identity comes from native ownership and Codex metadata.`,
+      : name === 'record_decision' ? 'Parent only. For a Coordinator-saved candidate, pass both report and save operation IDs in evidenceRefs and rerun all required checks with checked_sha set to candidateSha. Accept the checked integration to release dependencies. For a read-only review, accept_review releases dependencies using its reportRef in evidenceRefs and the reviewed SHA in integrationSha.' : `Fixture-scoped ${name}; caller identity comes from native ownership and Codex metadata.`,
     inputSchema: schema,
     annotations: { readOnlyHint: ['get_status', 'get_decisions', 'get_worker_history'].includes(name), openWorldHint: false }
   }, async (args: unknown, extra: RequestHandlerExtra<ServerRequest, ServerNotification>): Promise<CallToolResult> => {

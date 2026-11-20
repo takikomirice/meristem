@@ -45,6 +45,132 @@ test('quota controls real reservations, permits registered workers to finish and
   assert.equal(git(a.cwd,'ls-remote','origin','refs/heads/'+a.branch).split(/\s/)[0],saved.candidateSha);
   assert.deepEqual(await f.call('save_worker_changes',save),saved);
 });
+
+const managedPlan = (t: Parameters<typeof planControllerFixture>[0]) => planControllerFixture(t, undefined,
+  undefined, undefined, undefined, { enabled: false, threshold: 20, lowMaximum: 1 }, 'managed-session');
+
+async function editedReport(f: Awaited<ReturnType<typeof managedPlan>>) {
+  const worker = await f.create('A');
+  const a=f.store.gitAssignment(worker.attemptId)!;
+  await f.call('send_instruction',{taskId:'A',target:worker,agent:{model:'mock',effort:'low'},text:'Edit a.txt'});
+  writeFileSync(path.join(a.cwd,'a.txt'),'scoped change');
+  git(a.cwd,'diff','--check');
+  const reportRef = f.ref().operationId;
+  const report = { task_id:'A', worker_id:worker.workerId, attempt_id:worker.attemptId, actor_id:worker.threadId,
+    status:'completed', base_sha:a.baseSha, candidate_sha:null, branch:a.branch,
+    push_result:{status:'not_attempted', remote:'origin', branch:a.branch}, summary:'edited',
+    checks:[{...checks[0],command:'git diff --check'}], remaining:[] };
+  await f.call('report', { operationId:reportRef, taskId:'A', report }, {actor:worker, turnId:'done'});
+  const save = { taskId:'A', target:worker, expectedHead:a.baseSha, message:'Save assigned change', reportRef };
+  return { a, worker, reportRef, save };
+}
+
+test('Coordinator saves the completed turn and binds acceptance to its save and checked SHA', async t => {
+  const f = await managedPlan(t);
+  const instructions = t.mock.method(f.runtime,'send');
+  const {a, worker, reportRef, save} = await editedReport(f);
+  const instruction = instructions.mock.calls[0].arguments[1] ?? '';
+  assert.match(instruction,/"candidate_sha":null/);
+  assert.match(instruction,/"status":"not_attempted"/);
+  await assert.rejects(f.call('save_worker_changes',save));
+  assert.equal(git(a.cwd,'rev-parse','HEAD'), a.baseSha);
+  f.store.completedTurn(worker,'done');
+  await assert.rejects(f.call('save_worker_changes',save));
+  await f.broker.releaseCompleted('run',worker);
+  const decision = {taskId:'A', decision:'accept_candidate', candidateSha:a.baseSha, evidenceRefs:[reportRef]};
+  await assert.rejects(f.call('record_decision', decision));
+  f.store.createRun('other-run');
+  const foreign = {runId:'other-run', operationId:'another-run-report', expectedRevision:0};
+  const other = {...worker, attemptId:'other-attempt', threadId:'other-thread'};
+  const reg = JSON.parse(f.store.attempts('run')[0].registration);
+  f.store.register({...reg, cwd:f.repository, taskId:'other-task', runId:foreign.runId, assignmentId:'other-assignment',
+    worker:other, binding:{...reg.binding,worker:other}});
+  f.store.prepareOperation(foreign,'a'.repeat(64));
+  f.store.saveReport(foreign,other,'done',f.store.latestReport('run',worker.attemptId)!.report);
+  await assert.rejects(f.call('save_worker_changes',{...save, reportRef:foreign.operationId}),/completed turn report/);
+  const op = {...f.ref(), ...save};
+  const saved = await f.call('save_worker_changes',op);
+  assert.equal(git(a.cwd,'ls-remote','origin','refs/heads/'+a.branch).split(/\s/)[0],saved.candidateSha);
+  assert.deepEqual(await f.call('save_worker_changes',op),saved);
+  const accept = {...decision, candidateSha:saved.candidateSha, evidenceRefs:[op.operationId, reportRef]};
+  await assert.rejects(f.call('record_decision',{...accept, checks:[{...checks[0], checked_sha:a.baseSha}]}));
+  const verified = [{...checks[0], checked_sha:saved.candidateSha}];
+  for (const incomplete of [{command:' '},{evidence_refs:[' ']}]) {
+    await assert.rejects(f.call('record_decision',{...accept, checks:[{...verified[0],...incomplete}]}));
+  }
+  await assert.rejects(f.call('record_decision',{...accept, checks:verified, evidenceRefs:[reportRef]}));
+  git(a.cwd,'diff','--check',a.baseSha,saved.candidateSha);
+  await f.call('record_decision',{...accept, checks:verified});
+  await assert.rejects(f.call('record_decision',{...accept, checks:[{...verified[0],evidence_refs:['replacement']}]}),/already accepted/);
+  assert.deepEqual(f.store.planStates('run').A.candidate?.checks,verified);
+  assert.deepEqual((await f.status()).plan.eligible,[]);
+  git(f.store.plan('run')!.pin.integrationCwd,'merge','--ff-only',saved.candidateSha);
+  await f.call('record_decision',{taskId:'A', decision:'accept_integration', integrationSha:saved.candidateSha, checks:verified, evidenceRefs:[]});
+  assert.deepEqual((await f.status()).plan.eligible,['B']);
+});
+for (const failure of ['checkpoint persisted', 'lost acknowledgement', 'stopped after push', 'push rejected', 'remote advanced'] as const) {
+  test(`Coordinator reconciles the original candidate after ${failure}`, async t => {
+    const f = await managedPlan(t), {a, worker, save} = await editedReport(f);
+    f.store.completedTurn(worker,'done'); await f.broker.releaseCompleted('run',worker);
+    const op = {...f.ref(), ...save}, ref = 'refs/heads/' + a.branch;
+    const hook = path.join(f.remote,'hooks','pre-receive');
+    const pushRejected = failure === 'push rejected' || failure === 'remote advanced';
+    if (!pushRejected) {
+      const persist = f.store.operationResult.bind(f.store);
+      t.mock.method(f.store,'operationResult',(id: string, state: Parameters<typeof persist>[1], result: unknown) => {
+        if (id === op.operationId && state === 'settled' && failure !== 'checkpoint persisted') throw new Error('response lost');
+        persist(id,state,result);
+        if (id === op.operationId && state === 'sent_unknown' && failure === 'checkpoint persisted') throw new Error('response lost');
+      });
+    } else writeFileSync(hook,'#!/bin/sh\nexit 1\n',{mode:0o755});
+    await assert.rejects(f.call('save_worker_changes',op),pushRejected ? /push/ : /response lost/);
+    const record = f.store.operation(op.operationId);
+    assert.equal(record.state,'sent_unknown');
+    const candidate = JSON.parse(record.result!).candidateSha;
+    assert.notEqual(candidate,a.baseSha);
+    assert.equal(git(a.cwd,'rev-parse','HEAD'),failure === 'checkpoint persisted' ? a.baseSha : candidate);
+    assert.deepEqual((await f.status()).plan.eligible,[]);
+    if (!pushRejected) t.mock.restoreAll();
+    else unlinkSync(hook);
+    if (failure === 'remote advanced') {
+      const other = commitFile(f.repository,'original.txt','other');
+      git(f.repository,'push','origin',other+':'+ref);
+      await assert.rejects(f.call('save_worker_changes',op));
+      assert.equal(git(f.remote,'rev-parse',ref),other);
+    } else {
+      if (failure === 'stopped after push') {
+        await f.broker.stopRun('run');
+        await f.controller.resumeFromControl('resume', f.controller.startPreview().scopeHash);
+        assert.equal(f.store.operation(op.operationId).state,'settled');
+      }
+      assert.equal((await f.call('save_worker_changes',op)).candidateSha,candidate);
+      assert.equal(git(f.remote,'rev-parse',ref),candidate);
+    }
+    assert.equal(git(a.cwd,'rev-list','--count',a.baseSha+'..HEAD'),'1');
+  });
+}
+
+test('stopped and superseded attempts cannot save their reported edits', async t => {
+  const f = await managedPlan(t), {a, worker, save} = await editedReport(f);
+  await f.call('retire_worker',{target:worker});
+  await assert.rejects(f.call('save_worker_changes',save));
+  await f.call('record_decision',{taskId:'A', decision:'handoff_new', evidenceRefs:[]});
+  await f.create('A');
+  await assert.rejects(f.call('save_worker_changes',save));
+  assert.equal(git(a.cwd,'rev-parse','HEAD'),a.baseSha);
+});
+test('a hold or a different completed turn leaves the reported worktree untouched', async t => {
+  const f = await managedPlan(t), {a, worker, save} = await editedReport(f);
+  f.store.completedTurn(worker,'later-turn'); await f.broker.releaseCompleted('run',worker);
+  await assert.rejects(f.call('save_worker_changes',save),/completed turn report/);
+  f.store.completedTurn(worker,'done');
+  const c = coordination(f), decision = c.propose('A');
+  c.control.holdTask(f.ref(),'A',decision.id);
+  await assert.rejects(f.call('save_worker_changes',save),/current writable assignment/);
+  assert.equal(git(a.cwd,'rev-parse','HEAD'),a.baseSha);
+  assert.equal(git(a.cwd,'diff','--cached','--name-only'),'');
+  assert.equal(git(f.remote,'for-each-ref','refs/heads/'+a.branch),'');
+});
 function coordination(f: Awaited<ReturnType<typeof parallel>>) {
   const control = new PlanControl(f.store, 'run', () => f.broker.canWake('run'));
   const decisions = new DecisionService(f.store, () => {}, () => undefined);

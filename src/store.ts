@@ -326,6 +326,18 @@ export class Store {
   binding(runId: string): any {
     return this.db.prepare('SELECT * FROM run_bindings WHERE run_id=?').get(runId);
   }
+  coordinatorSave(runId: string): boolean {
+    const binding = this.binding(runId);
+    return binding ? JSON.parse(binding.scope).planScope?.coordinatorSave === true : false;
+  }
+  savedCandidateOperation(runId: string, attemptId: string) {
+    return this.db.prepare(`SELECT * FROM operations WHERE run_id=? AND json_extract(result,'$.kind')='worker_save'
+      AND json_extract(result,'$.attemptId')=? AND state IN ('sent_unknown','settled')`).get(runId, attemptId) as StoredOperation | undefined;
+  }
+  unconfirmedSaves(runId: string) {
+    return this.db.prepare(`SELECT * FROM operations WHERE run_id=? AND state='sent_unknown'
+      AND json_extract(result,'$.kind')='worker_save'`).all(runId) as StoredOperation[];
+  }
   requestBinding(id: string, runId: string, operationId: string, parent: unknown, scopeHash: string, scope: unknown): void {
     this.db.prepare("INSERT INTO run_bindings VALUES(?,?,?,?,?,?,'pending',NULL)").run(id, runId, operationId, JSON.stringify(parent), scopeHash, JSON.stringify(scope));
   }

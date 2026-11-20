@@ -9,7 +9,7 @@ import type { RoutingHistory } from '../../src/routing-summary.js';
 
 export async function planControllerFixture(t: { after(fn: () => void): void }, configure?: (f: ReturnType<typeof serialFixture>, scope?: FixtureScope) => void, managedRuntime?: ManagedRuntime,
   approve?: (controller: McpController, pending: any, fixture: ReturnType<typeof serialFixture>, startRun: () => Promise<any>) => Promise<void>,
-  routingHistory?: (fixture: ReturnType<typeof serialFixture>) => RoutingHistory, usagePolicy?: import('../../src/usage.js').UsagePolicy) {
+  routingHistory?: (fixture: ReturnType<typeof serialFixture>) => RoutingHistory, usagePolicy?: import('../../src/usage.js').UsagePolicy, parentSessionId?: string) {
   const f = serialFixture();
   const scope = { fixture: true, plan: true, planPath: f.planPath, repositoryPath: f.repository, repositoryId: 'repo', windowBindingId: 'window', branchScope: ['cc05-integration'], assignments: [] } as FixtureScope;
   configure?.(f, scope); f.savePlan();
@@ -24,14 +24,14 @@ export async function planControllerFixture(t: { after(fn: () => void): void }, 
   };
   const history = routingHistory?.(f);
   if (history) scope.modelRoutingSummary = history.reference;
-  const broker = new Broker(store, runtime), controller = new McpController(store, broker, runtime, 'run', parent.actor, scope, history);
+  const broker = new Broker(store, runtime), controller = new McpController(store, broker, runtime, 'run', parent.actor, scope, history, parentSessionId);
   const ref = () => ({ runId: 'run', operationId: randomUUID(), expectedRevision: store.run('run').revision });
   const call = (name: string, args: any = {}, who = parent) => controller.call(name, { ...ref(), ...args }, { ...who, actor: { ownerId: who.actor.ownerId, ownerEpoch: who.actor.ownerEpoch, threadId: who.actor.threadId } });
   const start = { planPath: f.planPath, operationId: 'start' };
   const startRun = () => controller.call('start_run', start, parent);
   const pending = await startRun();
   if (approve) await approve(controller, pending, f, startRun);
-  else controller.authorize(pending.bindingId);
+  else controller.authorize(pending.bindingId, parentSessionId ? controller.startPreview().scopeHash : undefined);
   await startRun();
   const create = (taskId: string) => call('create_worker', { taskId });
   const status = () => controller.call('get_status', { runId: 'run' }, parent);

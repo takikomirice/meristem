@@ -8,6 +8,26 @@ import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../src/store.js';
 
 export function stateDirectory() { return mkdtempSync(path.join(tmpdir(), 'meristem-cc01-')); }
+test('save mode and candidate checkpoints remain scoped to their original run on reopen', () => {
+  const dir = stateDirectory();
+  let store = new Store(dir, process.cwd());
+  for (const runId of ['old','managed']) {
+    store.createRun(runId,{enabled:false,threshold:20,lowMaximum:1});
+    const planScope = runId === 'old' ? {scopedGitSave:true} : {scopedGitSave:true,coordinatorSave:true};
+    store.requestBinding(runId,runId,'start',{},'a'.repeat(64),{planScope});
+  }
+  const op = {runId:'managed', operationId:'save', expectedRevision:0};
+  store.prepareOperation(op,'b'.repeat(64));
+  store.operationResult('save','sent_unknown',{kind:'worker_save', attemptId:'attempt', reportRef:'report', branch:'assigned', candidateSha:'c'.repeat(40)});
+  store.close();
+  store = new Store(dir, process.cwd());
+  try {
+    assert.equal(store.coordinatorSave('old'),false);
+    assert.equal(store.coordinatorSave('managed'),true);
+    assert.equal(store.savedCandidateOperation('old','attempt'),undefined);
+    assert.equal(store.savedCandidateOperation('managed','attempt')?.id,'save');
+  } finally { store.close(); }
+});
 test('a terminal starts at its own registration and distinguishes later consultations', t => {
   const store = new Store(stateDirectory(), process.cwd()); t.after(() => store.close());
   store.createRun('run');

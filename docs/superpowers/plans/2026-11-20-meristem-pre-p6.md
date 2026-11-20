@@ -28,13 +28,15 @@
 
 **対象ファイル**　`src/mcp.ts`、`src/broker.ts`、`src/git-evidence.ts`、`src/store.ts`、`test/parallel.test.ts`、`test/git-evidence.test.ts`、`test/store.test.ts`
 
-- [ ] 既存fixtureに、編集だけを行ったWorkerが最終報告して終了した後、Coordinatorが保存し、候補を受理できるテストを書く。保存前の受理、実行中・停止のみ・差し替え済みの担当、別runの報告を拒否する。旧runの報告で従来どおり候補を受理できることも確認する。
-- [ ] `npm run build` の後に `node --test dist/test/parallel.test.js dist/test/git-evidence.test.js dist/test/store.test.js` を実行する。新規テストが、終了済みWorkerを保存できないか、Worker由来のpush証拠を求める箇所で失敗することを確認する。
-- [ ] 新しい管理起動では、Workerに既存の構造化報告で `candidate_sha: null` と `push_result.status: not_attempted` を返させる。Workerの検証結果は作業ツリーに対する観測として扱う。Coordinator保存を選ぶrunを開始時の既存の紐付け記録に固定し、旧記録の既定は従来の方式とする。
-- [ ] 既存MCPの `save_worker_changes` に `reportRef` を追加する。新しい方式では、最新の担当の正常終了・後始末と、同じ完了ターンの保存済み報告を照合する。報告が完了で、必須検証名と実行結果が揃っている場合だけ、固定済みの作業ツリー・ブランチ・送信先に対して `GitEvidence.saveWorkerChanges` を使う。保留・停止・担当交代の後は保存を始めない。変更範囲、Gitフック、署名、外部フィルターには既存の判定を使う。
-- [ ] 保存操作の記録に `attemptId`、`reportRef`、`candidateSha`、`branch` を紐付ける。候補SHAはブランチ更新・pushの前に記録し、成功は固定送信先から同じSHAを読み戻して確定する。応答不明時はローカルHEADと送信先を照合する。送信先がすでに候補SHAなら既存の成功を確定し、送信先が進んでいなければ同じコミットだけを再試行できる。別のSHAや参照を確認できない場合は保留する。
-- [ ] 新しい方式の `record_decision: accept_candidate` では `evidenceRefs` に報告と保存操作のIDを、`checks` にCoordinatorが保存済み候補で再実行した必須検証を受け取る。すべての `checked_sha` が候補SHAに一致し、既存の範囲・履歴・remote照合に通った候補を固定する。統合前の再照合では、固定した候補の保存記録と検証結果を使う。
-- [ ] push成功後の応答断、コミット作成後のpush失敗、別SHAの検証、割当外の差分、遠隔ブランチの先行更新をfixtureに追加する。同じ操作でコミットが増えず、候補を確認できない間は後続が解放されないことを確かめる。上記のテストコマンドを再実行し、関連テストがすべて通ることを確認する。
+- [x] 既存fixtureに、編集だけを行ったWorkerが最終報告して終了した後、Coordinatorが保存し、候補を受理できるテストを書く。保存前の受理、実行中・停止のみ・差し替え済みの担当、別runの報告を拒否する。旧runの報告で従来どおり候補を受理できることも確認する。
+- [x] `npm run build` の後に `node --test dist/test/parallel.test.js dist/test/git-evidence.test.js dist/test/store.test.js` を実行する。新規テストが、終了済みWorkerを保存できないか、Worker由来のpush証拠を求める箇所で失敗することを確認する。
+- [x] 新しい管理起動では、Workerに既存の構造化報告で `candidate_sha: null` と `push_result.status: not_attempted` を返させる。Workerの検証結果は作業ツリーに対する観測として扱う。Coordinator保存を選ぶrunを開始時の既存の紐付け記録に固定し、旧記録の既定は従来の方式とする。
+- [x] 既存MCPの `save_worker_changes` に `reportRef` を追加する。新しい方式では、最新の担当の正常終了・後始末と、同じ完了ターンの保存済み報告を照合する。報告が完了で、必須検証名と実行結果が揃っている場合だけ、固定済みの作業ツリー・ブランチ・送信先に対して `GitEvidence.saveWorkerChanges` を使う。保留・停止・担当交代の後は保存を始めない。変更範囲、Gitフック、署名、外部フィルターには既存の判定を使う。
+- [x] 保存操作の記録に `attemptId`、`reportRef`、`candidateSha`、`branch` を紐付ける。候補SHAはブランチ更新・pushの前に記録し、成功は固定送信先から同じSHAを読み戻して確定する。応答不明時はローカルHEADと送信先を照合する。送信先がすでに候補SHAなら既存の成功を確定し、送信先が進んでいなければ同じコミットだけを再試行できる。別のSHAや参照を確認できない場合は保留する。
+- [x] 新しい方式の `record_decision: accept_candidate` では `evidenceRefs` に報告と保存操作のIDを、`checks` にCoordinatorが保存済み候補で再実行した必須検証を受け取る。すべての `checked_sha` が候補SHAに一致し、既存の範囲・履歴・remote照合に通った候補を固定する。統合前の再照合では、固定した候補の保存記録と検証結果を使う。
+- [x] push成功後の応答断、コミット作成後のpush失敗、別SHAの検証、割当外の差分、遠隔ブランチの先行更新をfixtureに追加する。同じ操作でコミットが増えず、候補を確認できない間は後続が解放されないことを確かめる。上記のテストコマンドを再実行し、関連テストがすべて通ることを確認する。
+
+**検証結果（2026-11-20）**　ビルドと指定の3テストファイルは72件すべて成功。受理済みの検証証拠を差し替えられないことも個別に確認した。追加の `npm test` は45件中44件成功し、配布 ZIP の生成は単独で再実行しても試験の180秒制限に達した。
 
 ## 2. 管理対象の親へ報告到着を届け、次の応答を始める
 

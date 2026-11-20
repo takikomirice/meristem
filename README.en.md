@@ -18,6 +18,8 @@ Ask the conversation you want as Coordinator to start Meristem. In the original 
 
 Live acceptance of Worker reporting and automatic continuation of the Coordinator is pending. [P5 implementation and validation](docs/superpowers/plans/2026-11-19-meristem-v030.md)
 
+In new managed runs, implementation Workers edit their worktree and report their checks. After the Worker completes and cleanup is confirmed, the Coordinator calls `save_worker_changes` with the final report’s `reportRef`. It reruns the required checks on the saved commit and accepts the candidate with both operation IDs in `evidenceRefs` and the commit SHA in each `checked_sha`. Accepting the integration releases dependent tasks.
+
 ## Features
 
 Meristem loads on demand when you select one of its commands. To use the v0.3.0 development extension, right-click a version 2 Markdown plan in Explorer and select **「Meristem: このウィンドウで新しい Codex 親チャットを開く」** to open a new official Codex Coordinator in the integrated terminal. The confirmation shows the tasks, number of concurrent Workers and file permissions. The Meristem progress item in the status bar opens usage, approval requests and stop controls.

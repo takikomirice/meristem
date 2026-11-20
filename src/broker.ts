@@ -5,7 +5,7 @@ import { Store, type Attempt, type PlanTaskState } from './store.js';
 import { RequestFailure } from './failures.js';
 import { draftPlanChange, readPlan, samePlanProse, eligibleTasks, writePlanRevision, writeProgress, fileHash, taskAgent, type PlanChange, type PlanSnapshot } from './plan.js';
 import { READ_ONLY_PROFILE, resolveTaskPermissions, type RunPermissionPermit } from './permissions.js';
-import { GitEvidence, pinRepository, TaskReport, Checks, type GitAssignment } from './git-evidence.js';
+import { GitEvidence, pinRepository, TaskReport, Checks, validateChecks, type GitAssignment } from './git-evidence.js';
 import { realpathSync } from 'node:fs';
 import type { HumanRequest } from './requests.js';
 import type { HistorySource } from './workers.js';
@@ -264,20 +264,50 @@ export class PlanControl {
     const state = this.store.planStates(this.runId)[taskId];
     if (state?.hold || state?.attemptId !== worker.attemptId) throw new Error('held or stale attempt report');
     if (state.reviewPlanHash && (state.state !== 'assigned' || state.reviewPlanHash !== this.store.plan(this.runId)?.snapshot.planHash)) throw new Error('review attempt or plan is no longer current');
-    this.assignedReport(taskId, worker, input);
+    const { report } = this.assignedReport(taskId, worker, input);
+    if (this.store.coordinatorSave(this.runId) && (report.candidate_sha !== null || report.push_result.status !== 'not_attempted' || report.push_result.branch !== report.branch)) throw new Error('Worker must report worktree observations before Coordinator save');
   }
   private assignedReport(taskId: string, worker: WorkerRef, input: unknown) {
     const report = TaskReport.parse(input), assignment = this.store.gitAssignment(worker.attemptId);
     if (!assignment || report.task_id !== taskId || report.worker_id !== worker.workerId || report.attempt_id !== worker.attemptId || report.actor_id !== worker.threadId || assignment.taskId !== taskId || assignment.attemptId !== worker.attemptId || assignment.baseSha !== report.base_sha || assignment.branch !== report.branch || (report.question && report.status !== 'needs_input')) throw new Error('report metadata or assignment mismatch');
     return { report, assignment };
   }
-  async candidate(taskId: string) {
+  completedEditReport(taskId: string, worker: WorkerRef, reportRef: string | undefined) {
+    const row = this.latest(taskId), state = this.store.planStates(this.runId)[taskId];
+    if (!row || row.id !== worker.attemptId || state?.attemptId !== row.id || state.dispatch || state.hold || state.reviewPlanHash ||
+        this.store.pendingBlockingTaskIds(this.runId).has(taskId)) throw new Error('current writable assignment required');
+    this.cleanCompletion(row.id);
+    const reg = JSON.parse(row.registration) as Registration, stop = Stop.parse(JSON.parse(row.stop_result!));
+    const saved = this.store.latestReport(this.runId, row.id);
+    if (!sameWorker(reg.worker,worker) || !sameWorker(stop.worker,worker) || !stop.evidenceRefs.length ||
+        !saved || saved.operationId !== reportRef || saved.turnId !== row.completed_turn_id) throw new Error('completed turn report and confirmed cleanup required');
+    const {report, assignment} = this.assignedReport(taskId,worker,saved.report);
+    const task = this.store.plan(this.runId)!.snapshot.plan.tasks.find(t => t.id === taskId);
+    if (!task || taskAgent(task).permissionProfileId === 'read-only' || reg.cwd !== assignment.cwd || reg.branch !== assignment.branch ||
+        report.status !== 'completed' || report.remaining.length || report.question || report.candidate_sha !== null ||
+        report.push_result.branch !== assignment.branch || report.push_result.status !== 'not_attempted') throw new Error('completed worktree report required');
+    validateChecks(report.checks,task.completion);
+    return assignment;
+  }
+  async candidate(taskId: string, decision?: {evidenceRefs?: string[]; checks?: unknown}) {
     this.assertCurrent();
     if (this.store.planStates(this.runId)[taskId]?.hold || this.store.pendingBlockingTaskIds(this.runId).has(taskId)) throw new Error('held candidate');
     const row = this.latest(taskId); if (!row) throw new Error('no candidate attempt'); this.cleanCompletion(row.id);
     const report = this.store.latestReport(this.runId, row.id), assignment = this.store.gitAssignment(row.id);
     if (!report || !assignment || report.turnId !== row.completed_turn_id) throw new Error('report does not match completed turn');
-    const candidate = await this.git().verifyCandidate(taskId, report.report, assignment);
+    let candidate;
+    if (this.store.coordinatorSave(this.runId)) {
+      const fixed = this.store.planStates(this.runId)[taskId]?.candidate;
+      const operation = this.store.savedCandidateOperation(this.runId,row.id);
+      const save = operation?.result && JSON.parse(operation.result);
+      const refs = decision ? decision.evidenceRefs : [fixed?.reportRef, fixed?.saveRef];
+      if (!operation || operation.state !== 'settled' || save?.pushResult !== 'pushed' || save.branch !== assignment.branch ||
+          save.reportRef !== report.operationId || refs?.length !== 2 || !refs.includes(report.operationId) || !refs.includes(operation.id)) throw new Error('report and settled save references required');
+      this.completedEditReport(taskId,(JSON.parse(row.registration) as Registration).worker,report.operationId);
+      const checks = decision ? decision.checks : fixed?.checks;
+      candidate = { ...await this.git().verifyCandidate(taskId,report.report,assignment,{candidateSha:save.candidateSha, checks}),
+        reportRef:report.operationId, saveRef:operation.id };
+    } else candidate = await this.git().verifyCandidate(taskId, report.report, assignment);
     this.assertCurrent();
     if (this.store.planStates(this.runId)[taskId]?.hold || this.store.pendingBlockingTaskIds(this.runId).has(taskId) || this.latest(taskId)?.id !== row.id) throw new Error('candidate attempt changed or held');
     return candidate;
@@ -508,7 +538,8 @@ export class PlanControl {
           args.sourceTaskId !== undefined || args.modelAssessment !== undefined) throw new Error('accept_review requires only the report reference and reviewed SHA');
     } else if (args.decision === 'accept_candidate') {
       if (pending) throw new Error('integration inputs are fixed');
-      const candidate = await this.candidate(args.taskId);
+      if (state?.candidate?.saveRef) throw new Error('saved candidate already accepted');
+      const candidate = await this.candidate(args.taskId,args);
       guard();
       if (candidate.candidateSha !== args.candidateSha || state?.integrationSha || (state?.candidate && state.candidate.candidateSha !== candidate.candidateSha)) throw new Error('candidate SHA mismatch or already integrated');
       nextState = { state: 'candidate_accepted', attemptId: this.latest(args.taskId)!.id, candidate, revisionPlanHash: state?.revisionPlanHash };
@@ -662,19 +693,23 @@ export class Broker {
       }
     }
     let text = command.text;
-    if (!previous && (state?.revisionPlanHash || state?.reviewPlanHash)) {
+    const coordinatorSave = this.store.coordinatorSave(command.ref.runId);
+    if (!previous && (state?.revisionPlanHash || state?.reviewPlanHash || coordinatorSave)) {
       const task = this.store.plan(command.ref.runId)?.snapshot.plan.tasks.find(task => task.id === reg.taskId);
-      if (state.attemptId !== row.id || !task) throw new Error('revised task assignment mismatch');
+      if (state?.attemptId !== row.id || !task) throw new Error('revised task assignment mismatch');
       const instructions = [];
       if (state.revisionPlanHash) instructions.push(`承認済み工程表の改訂: ${state.revisionPlanHash}`);
-      if (state.reviewPlanHash) {
+      if (state.reviewPlanHash || coordinatorSave) {
         const assignment = this.store.gitAssignment(row.id);
         if (!assignment) throw new Error('read-only assignment unavailable');
         const reportFields = { task_id: task.id, worker_id: worker.workerId, attempt_id: worker.attemptId, actor_id: worker.threadId,
           base_sha: assignment.baseSha, candidate_sha: null, branch: assignment.branch,
           push_result: { status: 'not_attempted', remote: 'origin', branch: assignment.branch } };
-        instructions.push('読み取り専用の担当です。base_sha の内容を調べ、以下の割当情報を使って report を提出してください。', JSON.stringify(reportFields),
-          'summary に結論を書き、各必須検証の command、result、exit_code、checked_sha、evidence_refs を示してください。未確認や不合格の項目はそのまま報告してください。');
+        instructions.push(state.reviewPlanHash ? '読み取り専用の担当です。base_sha の内容を調べ、以下の割当情報を使って report を提出してください。' :
+          '担当範囲を編集し、作業ツリー上で必須検証を実行して report を提出してください。コミットと push は報告後に Coordinator が行います。',
+          JSON.stringify(reportFields), state.reviewPlanHash ?
+          'summary に結論を書き、各必須検証の command、result、exit_code、checked_sha、evidence_refs を示してください。未確認や不合格の項目はそのまま報告してください。' :
+          '各必須検証の command、result、exit_code、evidence_refs を記録してください。');
       }
       instructions.push('以下の依存関係と必須検証を今回の指示に適用してください。', JSON.stringify({ id: task.id, depends_on: task.depends_on, completion: task.completion }));
       text = instructions.join('\n') + '\n\n' + text;
