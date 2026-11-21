@@ -1,0 +1,12 @@
+{
+  "name": "meristem-local",
+  "interface": { "displayName": "Meristem" },
+  "plugins": [
+    {
+      "name": "meristem",
+      "source": { "source": "local", "path": "./plugins/meristem" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "name": "meristem",
+  "version": "0.2.0",
+  "description": "On-demand file inspection and plan validation for Git workspaces on Windows.",
+  "license": "MIT",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Meristem",
+    "shortDescription": "Read a file with a Worker or validate a plan.",
+    "developerName": "Meristem",
+    "category": "Productivity"
+  }
+}

@@ -10,6 +10,50 @@ internal static class MockCodex {
     static readonly JavaScriptSerializer Json=new JavaScriptSerializer { MaxJsonLength=10*1024*1024 };
     static void Write(object o) { Console.WriteLine(Json.Serialize(o)); }
     static string Quote(string value) { return "\""+value.Replace("\"","\\\"")+"\""; }
+    static object Identity(Process p) {
+        return new {pid=p.Id,created=p.StartTime.ToUniversalTime().ToFileTimeUtc().ToString(System.Globalization.CultureInfo.InvariantCulture)};
+    }
+    static void InspectTurn(Dictionary<string,object> request, Dictionary<string,object> p, Dictionary<string,object> config) {
+        var input=(Dictionary<string,object>)((System.Collections.IList)p["input"])[0];
+        string[] lines=((string)input["text"]).Split('\n');
+        string file=(string)Json.Deserialize<Dictionary<string,object>>(lines[lines.Length-1])["file"];
+        string name=Path.GetFileName(file), prefix=Path.Combine("inspect-fixture",name);
+        var thread=p["threadId"]; string turn=Guid.NewGuid().ToString();
+        var profile=(Dictionary<string,object>)config["permissions.meristem-read-only"];
+        var filesystem=(Dictionary<string,object>)profile["filesystem"];
+        using(var app=Process.GetCurrentProcess())
+        using(var descendant=Process.Start(new ProcessStartInfo(System.Reflection.Assembly.GetExecutingAssembly().Location,"ticker "+Quote(Path.GetFullPath(prefix+".ticker"))){UseShellExecute=false,CreateNoWindow=true})) {
+            string record=prefix+".processes";
+            int sends=File.Exists(record)?1+Convert.ToInt32(Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(record))["sends"]):1;
+            string home=Environment.GetEnvironmentVariable("CODEX_HOME");
+            File.WriteAllText(record,Json.Serialize(new { app=Identity(app),descendant=Identity(descendant),thread,turn,sends,
+                deniedAuthHome=filesystem.ContainsKey(home)&&Object.Equals(filesystem[home],"deny") }));
+        }
+        if(name=="lost.txt") Environment.Exit(23);
+        Write(new {method="turn/started",@params=new {threadId=thread,turn=new {id=turn,status="inProgress"}}});
+        if(name=="malformed.txt") Write(new {method="turn/started",@params=new {threadId=thread,turn=new {id="invalid turn id",status="inProgress"}}});
+        Action<object,string,string,string> message=delegate(object threadId,string turnId,string phase,string text) {
+            Write(new {method="item/completed",@params=new {threadId,turnId,item=new {type="agentMessage",phase,text}}});
+        };
+        message("other-thread",turn,"final_answer","FOREIGN THREAD");
+        message(thread,"other-turn","final_answer","FOREIGN TURN");
+        message(thread,turn,"commentary","PRIVATE COMMENTARY");
+        Write(new {method="item/agentMessage/delta",@params=new {threadId=thread,turnId=turn,delta="PRIVATE DELTA"}});
+        if(name=="question.txt") Write(new {id="need-user",method="item/tool/requestUserInput",@params=new {threadId=thread,turnId=turn,itemId="question",questions=new[]{new {id="q",question="private question"}}}});
+        if(name=="approval.txt") Write(new {id="need-user",method="item/fileChange/requestApproval",@params=new {threadId=thread,turnId=turn,itemId="change"}});
+        if(name=="status-wait.txt") Write(new {method="thread/status/changed",@params=new {threadId=thread,status=new {type="active", activeFlags=new[]{"waitingOnUserInput"}}}});
+        Action finish=delegate {
+            if(name!="foreign.txt")message(thread,turn,"final_answer",File.ReadAllText(file));
+            if(name=="duplicate.txt")message(thread,turn,"final_answer","AMBIGUOUS");
+            Write(new {method="turn/completed",@params=new {threadId=thread,turn=new {id=turn,status="completed"}}});
+        };
+        if(name.StartsWith("hold-")) ThreadPool.QueueUserWorkItem(delegate {
+            while(!File.Exists(prefix+".finish"))Thread.Sleep(30);
+            finish();
+        });
+        else finish(); // completion can precede the turn/start acknowledgement
+        Write(new {id=request["id"],result=new {turn=new {id=name=="ack-mismatch.txt"?"different-turn":turn,status="inProgress"}}});
+    }
     static void Forward(Stream source,Stream destination) {var bytes=new byte[8192];int count;while((count=source.Read(bytes,0,bytes.Length))>0){destination.Write(bytes,0,count);destination.Flush();}}
     static void RunMcp(string executable,string helper,string file) {
         var config=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText(file));
@@ -61,6 +105,20 @@ internal static class MockCodex {
         }
     }
     static int Main(string[] args) {
+        if(args.Length==2 && args[0]=="login" && args[1]=="status") return InteractiveFixture(args);
+        int cwdArg=Array.IndexOf(args,"-C");
+        if(args.Length>0 && args[0]=="sandbox" && cwdArg>=0 && cwdArg+1<args.Length && Directory.Exists(Path.Combine(args[cwdArg+1],"inspect-fixture"))) {
+            string prefix=Path.Combine(args[cwdArg+1],"inspect-fixture","sandbox");
+            if(File.Exists(prefix+".readable-control"))return 42;
+            if(File.Exists(Path.Combine(args[cwdArg+1],"inspect-fixture","hold-sandbox"))) {
+                using(var app=Process.GetCurrentProcess())
+                using(var descendant=Process.Start(new ProcessStartInfo(System.Reflection.Assembly.GetExecutingAssembly().Location,"ticker "+Quote(prefix+".ticker")){UseShellExecute=false,CreateNoWindow=true})) {
+                    File.WriteAllText(prefix+".processes",Json.Serialize(new {app=Identity(app),descendant=Identity(descendant)}));
+                    Thread.Sleep(Timeout.Infinite);
+                }
+            }
+            return 0;
+        }
         if (Path.GetFileNameWithoutExtension(System.Reflection.Assembly.GetExecutingAssembly().Location)=="MockInteractiveCodex") {
             int result=InteractiveFixture(args); if(result>=0)return result;
         }
@@ -242,7 +300,7 @@ internal static class MockCodex {
                     if(readOnly) {
                         var profile=threadConfig==null||!threadConfig.ContainsKey("permissions.meristem-read-only")?null:threadConfig["permissions.meristem-read-only"] as Dictionary<string,object>;
                         var filesystem=profile==null||!profile.ContainsKey("filesystem")?null:profile["filesystem"] as Dictionary<string,object>;
-                        if(filesystem==null||filesystem.Count!=1||!filesystem.ContainsValue("deny")||!Object.Equals(profile["extends"],":read-only")||
+                        if(filesystem==null||filesystem.Count==0||!System.Linq.Enumerable.All(filesystem.Values,value=>Object.Equals(value,"deny"))||!Object.Equals(profile["extends"],":read-only")||
                            !Object.Equals(threadConfig["default_permissions"],"meristem-read-only")) {
                             Write(new {id=m["id"],error=new {code=-32602,message="invalid read-only profile"}});continue;
                         }
@@ -262,6 +320,7 @@ internal static class MockCodex {
                     result=settings; break;
                 case "thread/resume": result=new { thread=new { id=p["threadId"], parentThreadId=(string)null, cwd=Directory.GetCurrentDirectory(), modelProvider="mock", status=new { type="idle" } }, model="mock", reasoningEffort="low" }; break;
                 case "turn/start":
+                    if(Directory.Exists("inspect-fixture")) { InspectTurn(m,p,threadConfig);continue; }
                     if(File.Exists("observed-settings.json")) {
                         var observed=Json.Deserialize<Dictionary<string,object>>(File.ReadAllText("observed-settings.json"));
                         if(!observed.ContainsKey("threadId")) observed["threadId"]=p["threadId"];

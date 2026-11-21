@@ -1,11 +1,112 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { homedir, tmpdir } from 'node:os';
 
 const sha256 = file => createHash('sha256').update(readFileSync(file)).digest('hex');
+
+test('on-demand plugin runs from an extracted marketplace without the development checkout', async t => {
+  const { sidebarExecutable } = await import('../dist/src/on-demand-setup.js');
+  let officialCodex, unavailable;
+  try { officialCodex = sidebarExecutable(path.join(homedir(), '.vscode/extensions')); }
+  catch (error) { unavailable = 'Official VS Code extension executable unavailable: ' + error.message; }
+  const temporary = realpathSync.native(tmpdir()), root = mkdtempSync(path.join(temporary, 'Meristem package '));
+  t.after(() => {
+    assert.equal(path.dirname(realpathSync.native(root)), temporary);
+    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  });
+  const release = path.join(root, 'build'), extracted = path.join(root, 'unpacked');
+  const codexHome = path.join(root, 'codex'), workspace = path.join(root, 'work tree');
+  mkdirSync(codexHome); mkdirSync(workspace);
+  const profile = path.join(root, 'user');
+  const env = { ...process.env, USERPROFILE: profile, CODEX_HOME: codexHome, NODE_PATH: '', NODE_OPTIONS: '',
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: path.join(root, 'gitconfig') };
+  const run = (exe, args, cwd = root) => {
+    const result = spawnSync(exe, args, { cwd, env, encoding: 'utf8', windowsHide: true, timeout: 180000 });
+    assert.equal(result.status, 0, String(result.error ?? '') + result.stderr + result.stdout);
+    return result.stdout.trim();
+  };
+  const config = path.join(codexHome, 'config.toml');
+  env.APPDATA = path.join(profile, 'AppData/Roaming');
+  const settings = path.join(env.APPDATA, 'Code/User/settings.json');
+  mkdirSync(path.dirname(settings), { recursive: true });
+  const mcp = '[mcp_servers.existing]\ncommand = "other-tool"\n';
+  const preference = '{"editor.fontSize":19,"chatgpt.localeOverride":"ja"}';
+  writeFileSync(config, mcp);
+  writeFileSync(settings, preference);
+  run('git', ['init', '--quiet'], workspace);
+  const userFile = path.join(workspace, 'work.txt');
+  writeFileSync(userFile, 'saved work\n');
+  run('git', ['add', 'work.txt'], workspace);
+  run('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Saved work'], workspace);
+  const commit = run('git', ['rev-parse', 'HEAD'], workspace);
+  const extensions = path.join(profile, '.vscode/extensions'), version = '1.2.3';
+  const relativeLocation = 'openai.chatgpt-' + version + '-win32-x64';
+  const extension = path.join(extensions, relativeLocation), workerExe = path.join(extension, 'bin/windows-x86_64/codex.exe');
+  mkdirSync(path.dirname(workerExe), { recursive: true });
+  copyFileSync('.local/chat-control-build/MockCodex.exe', workerExe);
+  writeFileSync(path.join(extensions, 'extensions.json'), JSON.stringify([{ identifier: { id: 'openai.chatgpt' }, version, relativeLocation }]));
+  writeFileSync(path.join(extension, 'package.json'), JSON.stringify({ publisher: 'openai', name: 'chatgpt', version }));
+  mkdirSync(path.join(workspace, 'inspect-fixture'));
+  writeFileSync(path.join(workspace, 'model-catalog.json'), JSON.stringify({ first: {
+    data: [{ model: 'gpt-6-luna', supportedReasoningEfforts: [{ reasoningEffort: 'low' }] }], nextCursor: null
+  } }));
+  const license = path.join(root, 'node-license.txt'), checksums = path.join(root, 'SHA256SUMS.txt');
+  writeFileSync(license, 'Test fixture only\n');
+  writeFileSync(checksums, sha256(process.execPath) + '  win-x64/node.exe\n');
+  const artifact = JSON.parse(run('powershell.exe', ['-NoProfile', '-File', path.resolve('scripts/package-release.ps1'),
+    '-PluginOnly', '-OutputDirectory', release, '-NodeExe', process.execPath, '-NodeLicensePath', license, '-NodeChecksumsPath', checksums]));
+  assert.equal(readFileSync(artifact.checksums, 'utf8').trim(), sha256(artifact.zip) + '  ' + path.basename(artifact.zip));
+  env.MERISTEM_TEST_ARCHIVE = artifact.zip;
+  env.MERISTEM_TEST_UNPACK = extracted;
+  run('powershell.exe', ['-NoProfile', '-Command', 'Add-Type -AssemblyName System.IO.Compression.FileSystem; [IO.Compression.ZipFile]::ExtractToDirectory($env:MERISTEM_TEST_ARCHIVE,$env:MERISTEM_TEST_UNPACK)']);
+  const marketplace = path.join(extracted, artifact.name), plugin = path.join(marketplace, 'plugins/meristem');
+  const runtime = path.join(plugin, 'runtime');
+  const manifest = JSON.parse(readFileSync(path.join(plugin, '.codex-plugin/plugin.json'), 'utf8'));
+  assert.deepEqual(Object.keys(manifest).filter(key => /mcp|hook/i.test(key)), []);
+  assert.equal(sha256(path.join(runtime, 'node/node.exe')), sha256(process.execPath));
+  assert.equal(sha256(path.join(runtime, 'node/LICENSE.txt')), sha256(license));
+  for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'node_modules/zod/LICENSE', 'node_modules/typescript/LICENSE.txt']) {
+    assert.equal(sha256(path.join(runtime, file)), sha256(path.resolve(file)));
+  }
+  assert.ok(existsSync(path.join(runtime, '.local/chat-control-build/CodexWorkerHost.exe')));
+  const skill = path.join(plugin, 'skills/meristem');
+  const launcher = path.join(skill, 'meristem.ps1');
+  assert.ok(readFileSync(path.join(skill, 'SKILL.md'), 'utf8').includes('meristem.ps1'));
+  const inspectOne = pluginRoot => {
+    const token = '確認値 ' + randomUUID();
+    writeFileSync(path.join(workspace, 'one.txt'), token);
+    const result = run('powershell.exe', ['-NoProfile', '-File', path.join(pluginRoot, 'skills/meristem/meristem.ps1'), 'inspect', 'one.txt'], workspace);
+    assert.deepEqual(JSON.parse(result), { status: 'completed', file: 'one.txt', summary: token });
+  };
+  inspectOne(plugin);
+  const inspect = spawnSync('powershell.exe', ['-NoProfile', '-File', launcher, 'inspect', 'missing.txt'], {
+    cwd: workspace, env, encoding: 'utf8', windowsHide: true, timeout: 30000
+  });
+  assert.notEqual(inspect.status, 0);
+  assert.equal(inspect.stdout.trim(), '');
+  assert.match(inspect.stderr, /^invalid_file$/m);
+  await t.test('official CLI installs, runs the cached skill, and removes it', { skip: unavailable }, () => {
+    const codex = (...args) => JSON.parse(run(officialCodex, ['plugin', ...args, '--json'], workspace));
+    const id = 'meristem@meristem-local';
+    assert.equal(codex('marketplace', 'add', marketplace).marketplaceName, 'meristem-local');
+    const installed = codex('add', id);
+    assert.equal(installed.pluginId, id);
+    assert.ok(path.relative(codexHome, installed.installedPath).startsWith('plugins' + path.sep));
+    assert.equal(codex('list', '--marketplace', 'meristem-local').installed.find(p => p.pluginId === id)?.enabled, true);
+    inspectOne(installed.installedPath);
+    assert.equal(codex('remove', id).pluginId, id);
+    assert.equal(existsSync(installed.installedPath), false);
+    assert.equal(codex('marketplace', 'remove', 'meristem-local').marketplaceName, 'meristem-local');
+  });
+  assert.equal(readFileSync(config, 'utf8').trim(), mcp.trim());
+  assert.equal(readFileSync(settings, 'utf8'), preference);
+  assert.equal(readFileSync(userFile, 'utf8'), 'saved work\n');
+  assert.equal(run('git', ['rev-parse', 'HEAD'], workspace), commit);
+});
 
 test('VSIX includes license and notices, excludes private state, and never overwrites an artifact', () => {
   mkdirSync('.local', { recursive: true });

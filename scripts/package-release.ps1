@@ -3,9 +3,11 @@ param(
     [Parameter(Mandatory=$true)][string]$NodeExe,
     [Parameter(Mandatory=$true)][string]$NodeLicensePath,
     [Parameter(Mandatory=$true)][string]$NodeChecksumsPath,
-    [string]$VsixPath
+    [string]$VsixPath,
+    [switch]$PluginOnly
 )
 $ErrorActionPreference = 'Stop'
+if ($VsixPath -and $PluginOnly) { throw 'Choose one packaging mode' }
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 function Get-Sha256([string]$file) {
     $stream = [IO.File]::OpenRead($file)
@@ -16,12 +18,10 @@ function Get-Sha256([string]$file) {
 function Assert-PlainPath([string]$value) {
     $current = [IO.Path]::GetFullPath($value)
     while ($current) {
-        if (Test-Path -LiteralPath $current) {
-            if ((Get-Item -LiteralPath $current -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse path rejected' }
+        if ([IO.File]::Exists($current) -or [IO.Directory]::Exists($current)) {
+            if ([IO.File]::GetAttributes($current) -band [IO.FileAttributes]::ReparsePoint) { throw 'Reparse path rejected' }
         }
-        $parent = Split-Path -Parent $current
-        if ($parent -eq $current) { break }
-        $current = $parent
+        $current = [IO.Path]::GetDirectoryName($current)
     }
 }
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -56,14 +56,23 @@ $nodeHash = Get-Sha256 $NodeExe
 $nodeRecords = @(Get-Content -Encoding UTF8 -LiteralPath $NodeChecksumsPath | Where-Object { $_ -match '^[a-f0-9]{64}\s+win-x64/node\.exe$' })
 if ($nodeRecords.Count -ne 1 -or $nodeRecords[0].Substring(0,64) -ne $nodeHash) { throw 'Node executable differs from the supplied official checksum' }
 $name = 'meristem-v' + $package.version + '-windows-x64'
+if ($PluginOnly) { $name = 'meristem-plugin-v' + $package.version + '-windows-x64' }
 $payloadRoot = Join-Path $output ('payload/' + $name)
+$archiveRoot = $payloadRoot
+if ($PluginOnly) {
+    $pluginManifest = Join-Path $repoRoot 'plugins/meristem/.codex-plugin/plugin.json'
+    Assert-PlainPath $pluginManifest
+    if ((Get-Content -LiteralPath $pluginManifest -Raw -Encoding UTF8 | ConvertFrom-Json).version -ne $package.version) { throw 'Plugin and runtime versions must match' }
+    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot 'dist/src/on-demand.js') -PathType Leaf)) { throw 'Build the on-demand CLI before packaging the plugin' }
+    $payloadRoot = Join-Path $archiveRoot 'plugins/meristem/runtime'
+}
 [void][IO.Directory]::CreateDirectory($payloadRoot)
-function Copy-PayloadFile([string]$source, [string]$relative) {
-    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { throw "Required release input missing: $relative" }
+function Copy-PayloadFile([string]$source, [string]$relative, [string]$destinationRoot = $payloadRoot) {
+    if (-not [IO.File]::Exists($source)) { throw "Required release input missing: $relative" }
     Assert-PlainPath $source
-    $target = [IO.Path]::GetFullPath((Join-Path $payloadRoot $relative))
-    if (-not $target.StartsWith($payloadRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Release path escapes payload' }
-    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $target))
+    $target = [IO.Path]::GetFullPath([IO.Path]::Combine($destinationRoot, $relative))
+    if (-not $target.StartsWith($destinationRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Release path escapes payload' }
+    [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($target))
     [IO.File]::Copy($source, $target, $false)
 }
 function Copy-PayloadTree([string]$source, [string]$relative) {
@@ -74,10 +83,27 @@ function Copy-PayloadTree([string]$source, [string]$relative) {
         if (-not $item.PSIsContainer) { Copy-PayloadFile $item.FullName ($relative + '/' + $item.FullName.Substring($source.Length + 1)) }
     }
 }
-foreach ($relative in @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'package.json', 'package-lock.json', 'scripts/install.ps1', 'scripts/uninstall.ps1', 'scripts/meristem.ps1', 'extension/package.json')) {
+$documents = @('LICENSE', 'THIRD_PARTY_NOTICES.md', 'package.json', 'package-lock.json')
+$compiled = @('dist/src')
+$executables = @('CodexWorkerHost.exe')
+if ($PluginOnly) {
+    Copy-PayloadFile (Join-Path $repoRoot 'plugins/marketplace.json') '.agents/plugins/marketplace.json' $archiveRoot
+    Copy-PayloadFile (Join-Path $repoRoot 'plugins/meristem/README.md') 'README.md' $archiveRoot
+    foreach ($relative in @('.codex-plugin/plugin.json', 'skills/meristem/SKILL.md', 'skills/meristem/meristem.ps1')) {
+        $entry = 'plugins/meristem/' + $relative
+        Copy-PayloadFile (Join-Path $repoRoot $entry) $entry $archiveRoot
+    }
+} else {
+    $documents += @('scripts/install.ps1', 'scripts/uninstall.ps1', 'scripts/meristem.ps1', 'extension/package.json')
+    $compiled += 'extension/dist/src'
+    $executables += @('CodexRelay.exe', 'MeristemControl.exe', 'MeristemTerminal.exe')
+}
+foreach ($relative in $documents) {
     Copy-PayloadFile (Join-Path $repoRoot $relative) $relative
 }
-foreach ($guide in @(@('INSTALL.ja.md','README.md'), @('INSTALL.en.md','README.en.md'))) {
+$guides = @(@('INSTALL.ja.md','README.md'), @('INSTALL.en.md','README.en.md'))
+if ($PluginOnly) { $guides = @() }
+foreach ($guide in $guides) {
     $guideSource = Join-Path $repoRoot ('docs/releases/' + $guide[0])
     Assert-PlainPath $guideSource
     $text = [IO.File]::ReadAllText($guideSource)
@@ -86,7 +112,7 @@ foreach ($guide in @(@('INSTALL.ja.md','README.md'), @('INSTALL.en.md','README.e
 }
 Copy-PayloadFile $NodeExe 'node/node.exe'
 Copy-PayloadFile $NodeLicensePath 'node/LICENSE.txt'
-foreach ($relative in @('dist/src', 'extension/dist/src')) {
+foreach ($relative in $compiled) {
     $files = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot $relative) -Filter '*.js' -File)
     if (-not $files.Count) { throw "Build JavaScript before packaging: $relative" }
     foreach ($file in $files) { Copy-PayloadFile $file.FullName ($relative + '/' + $file.Name) }
@@ -98,7 +124,7 @@ if ($VsixPath) {
     $native = Join-Path $output 'native'
     & (Join-Path $PSScriptRoot 'build-native.ps1') -OutputDirectory $native | Out-Null
 }
-foreach ($exe in @('CodexRelay.exe', 'CodexWorkerHost.exe', 'MeristemControl.exe', 'MeristemTerminal.exe')) {
+foreach ($exe in $executables) {
     $relative = '.local/chat-control-build/' + $exe
     Copy-PayloadFile (Join-Path $native $exe) $relative
 }
@@ -115,25 +141,28 @@ foreach ($entry in $lock.packages | Sort-Object path) {
     Copy-PayloadTree $source $relative
     $dependencyRoots += $relative
 }
-$vsix = Join-Path $output ('meristem-chat-control-' + $package.version + '.vsix')
-if ($VsixPath) { $vsix = $VsixPath }
-& (Join-Path $PSScriptRoot 'write-extension-archive.ps1') -OutputPath $vsix -PayloadRoot $payloadRoot
-if ($VsixPath) { Write-Output $vsix; return }
-Copy-PayloadFile $vsix ([IO.Path]::GetFileName($vsix))
+$vsix = $null
+if (-not $PluginOnly) {
+    $vsix = Join-Path $output ('meristem-chat-control-' + $package.version + '.vsix')
+    if ($VsixPath) { $vsix = $VsixPath }
+    & (Join-Path $PSScriptRoot 'write-extension-archive.ps1') -OutputPath $vsix -PayloadRoot $payloadRoot
+    if ($VsixPath) { Write-Output $vsix; return }
+    Copy-PayloadFile $vsix ([IO.Path]::GetFileName($vsix))
+}
 $sourceCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Source commit unavailable' }
 $sourceTree = (& git -C $repoRoot rev-parse 'HEAD^{tree}').Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Source tree unavailable' }
 $sourceDirty = [bool](& git -C $repoRoot status --porcelain --untracked-files=normal)
 $hashes = [ordered]@{}
-foreach ($file in Get-ChildItem -LiteralPath $payloadRoot -File -Recurse -Force | Sort-Object FullName) {
-    $relative = $file.FullName.Substring($payloadRoot.Length + 1).Replace('\','/')
+foreach ($file in Get-ChildItem -LiteralPath $archiveRoot -File -Recurse -Force | Sort-Object FullName) {
+    $relative = $file.FullName.Substring($archiveRoot.Length + 1).Replace('\','/')
     $hashes[$relative] = Get-Sha256 $file.FullName
 }
 $manifest = [ordered]@{ version = $package.version; platform = 'windows-x64'; sourceCommit = $sourceCommit; sourceTree = $sourceTree; sourceDirty = $sourceDirty; nodeVersion = $nodeVersion; nodeSha256 = $nodeHash; nodeLicenseSource = ('https://raw.githubusercontent.com/nodejs/node/' + $nodeVersion + '/LICENSE'); files = $hashes }
-[IO.File]::WriteAllText((Join-Path $payloadRoot 'release-manifest.json'), (($manifest | ConvertTo-Json -Depth 5) + "`n"), (New-Object Text.UTF8Encoding($false)))
+[IO.File]::WriteAllText((Join-Path $archiveRoot 'release-manifest.json'), (($manifest | ConvertTo-Json -Depth 5) + "`n"), (New-Object Text.UTF8Encoding($false)))
 $zip = Join-Path $output ($name + '.zip')
-[IO.Compression.ZipFile]::CreateFromDirectory($payloadRoot, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
-$sums = @($zip, $vsix) | ForEach-Object { (Get-Sha256 $_) + '  ' + [IO.Path]::GetFileName($_) }
+[IO.Compression.ZipFile]::CreateFromDirectory($archiveRoot, $zip, [IO.Compression.CompressionLevel]::Optimal, $true)
+$sums = @($zip, $vsix) | Where-Object { $_ } | ForEach-Object { (Get-Sha256 $_) + '  ' + [IO.Path]::GetFileName($_) }
 [IO.File]::WriteAllText((Join-Path $output 'SHA256SUMS.txt'), (($sums -join "`n") + "`n"), (New-Object Text.UTF8Encoding($false)))
 [ordered]@{ name = $name; zip = $zip; vsix = $vsix; checksums = (Join-Path $output 'SHA256SUMS.txt'); sourceCommit = $sourceCommit; sourceTree = $sourceTree; sourceDirty = $sourceDirty; files = $hashes.Count } | ConvertTo-Json -Compress

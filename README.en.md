@@ -10,6 +10,10 @@ Keep the standard Codex extension as the Coordinator and monitor Workers in VS C
 
 > This is an experimental tool for developers. It has been tested in dedicated VS Code profiles; everyday use in your normal profile and reliable operation across a broad range of environments are not guaranteed.
 
+## On-demand plugin
+
+The Windows x64 on-demand plugin runs a read-only Worker to inspect one repository file. The extracted package can be added to the official Codex CLI as a local marketplace. Returning the result to the originating conversation in the ordinary sidebar still awaits a live trial. The [on-demand validation record](docs/validation/chat-control/on-demand-sidebar.md) includes the installation and removal commands and the sidebar acceptance steps.
+
 ## Using the official CLI in the development build
 
 Open `powershell.exe` from the Windows Run dialog and change to the repository named by your version 2 plan. With the official Codex CLI on PATH and signed in to ChatGPT, run a command such as `& 'C:\Tools\Meristem\scripts\meristem.ps1' start` using the location of your Meristem build. On first use it detects the plan and opens the official TUI in a separate console. The original PowerShell stays open for management. For approvals, Meristem checks that the interactive shell was launched by Explorer, directly or through a supported Windows Terminal process.

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isUtf8 } from 'node:buffer';
-import { readFileSync, realpathSync, writeFileSync, renameSync, unlinkSync, lstatSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync, renameSync, unlinkSync, lstatSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { parseDocument, visit, isAlias } from 'yaml';
 import { z } from 'zod';
@@ -8,6 +8,7 @@ import { AgentChoice, Hash, Id, ModelId, DisplayName, ExecutionLimits, ModelRout
 import { sameAgentChoice } from './model-routing.js';
 
 export const fileHash = (text: string | Buffer) => createHash('sha256').update(text).digest('hex');
+const maxPlanBytes = 262144;
 const absolute = z.string().min(1).max(4096).refine(p => path.isAbsolute(p) && !/[\x00-\x1f]/.test(p));
 const relative = z.string().min(1).max(512).refine(p => !p.includes('\\') && !p.includes(':') && !p.startsWith('/') && p.split('/').every(s => s && s !== '..' && s !== '.' && s.toLowerCase() !== '.git') && !/[\x00-\x1f*?\[\]]/.test(p));
 const Task = z.object({ id: Id, depends_on: z.array(Id).max(128), scope: z.array(relative).min(1).max(128), conflicts_with: z.array(Id).max(128), agent: z.object({ model: ModelId, effort: Id }).strict(), continuation: z.discriminatedUnion('mode', [z.object({ mode: z.literal('new') }).strict(), z.object({ mode: z.literal('same'), after: Id }).strict(), z.object({ mode: z.literal('parent_decides') }).strict()]).default({ mode: 'new' }), completion: z.array(z.string().min(1).max(128)).min(1).max(32) }).strict();
@@ -72,7 +73,7 @@ function parsePlan(text: string): Plan {
   return plan;
 }
 function snapshot(planPath: string, bytes: Buffer): PlanSnapshot {
-  if (bytes.length > 262144) throw new Error('plan file too large');
+  if (bytes.length > maxPlanBytes) throw new Error('plan file too large');
   if (!isUtf8(bytes)) throw new Error('plan must be UTF-8');
   const text = bytes.toString('utf8'), area = region(text, 'plan');
   const regions = [area];
@@ -85,6 +86,7 @@ function snapshot(planPath: string, bytes: Buffer): PlanSnapshot {
 }
 export function readPlan(planPath: string): PlanSnapshot {
   const canonical = realpathSync(planPath);
+  if (statSync(canonical).size > maxPlanBytes) throw new Error('plan file too large');
   return snapshot(canonical, readFileSync(canonical));
 }
 export function samePlanProse(current: PlanSnapshot, observed: PlanSnapshot): boolean {

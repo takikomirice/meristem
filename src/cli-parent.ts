@@ -18,7 +18,10 @@ const help = `対象リポジトリのPowerShellで meristem.ps1 start を実行
   resume   保存済みのrunと親会話を選んで明示的に再接続
   status   選んだrunの状態とWorkerの終了結果を表示
   usage    公式の利用枠と同時に動かせるWorker数を表示
-別のコンソールに公式TUIが開きます。この管理端末で start（開始の確認）、answer（相談・承認への回答）、stop（停止）が使えます。`;
+start で別のコンソールに公式TUIが開きます。この管理端末で start（開始の確認）、answer（相談・承認への回答）、stop（停止）が使えます。
+単発コマンドは対象リポジトリ内の相対パスを指定します。
+  inspect <ファイル>  読み取り専用Workerの調査結果を返す
+  run <工程表>        版2の工程表の割当候補を表示（編集の実機承認待ち）`;
 type ConsoleUI = { ask(text: string): Promise<string>; show(text: string): void };
 type Request = (method: string, params?: Record<string, unknown>) => Promise<Record<string, any>>;
 type ParentControl = { request: Request; parent(threadId: string): Promise<ActorRef> };

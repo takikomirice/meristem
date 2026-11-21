@@ -406,6 +406,45 @@ export async function serve(configPath: string): Promise<void> {
   process.stdin.once('end', () => { void close(); });
 }
 export async function main(args: string[]): Promise<void> {
+  if (args[0] === 'inspect' || args[0] === 'run') {
+    const [command, file] = args;
+    if (args.length !== 2 || !file) {
+      console.error(`usage: meristem ${command} <repository-relative file>`);
+      process.exitCode = 1;
+      return;
+    }
+    if (command === 'run') {
+      const { previewOnDemandPlan } = await import('./on-demand-setup.js');
+      try {
+        console.log(JSON.stringify(previewOnDemandPlan(file)));
+        process.exitCode = 2;
+      } catch {
+        console.error('invalid_plan');
+        process.exitCode = 1;
+      }
+      return;
+    }
+    const { inspectFile, InspectError } = await import('./on-demand.js');
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    process.once('SIGINT', cancel);
+    process.once('SIGTERM', cancel);
+    try {
+      console.log(JSON.stringify(await inspectFile(file, { signal: controller.signal })));
+    } catch (error) {
+      if (error instanceof InspectError) {
+        const cleanup = error.cleanupUnconfirmed && error.code !== 'stop_unconfirmed' ? ' stop_unconfirmed' : '';
+        console.error(error.code + cleanup);
+      } else {
+        console.error('inspect_failed');
+      }
+      process.exitCode = 1;
+    } finally {
+      process.off('SIGINT', cancel);
+      process.off('SIGTERM', cancel);
+    }
+    return;
+  }
   if (args[0] === 'terminal') {
     const { terminalMain } = await import('./cli-parent.js');
     await terminalMain(args.slice(1));

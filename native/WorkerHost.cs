@@ -21,6 +21,7 @@ internal sealed class WorkerHost : IDisposable
     private readonly List<Dictionary<string,object>> events=new List<Dictionary<string,object>>();
     private long eventSeq;
     private volatile bool stopping, completionCleaned;
+    private readonly bool oneShot;
     private int exitCode;
     private readonly Dictionary<string,object> managed;
     private readonly string jobId=Guid.NewGuid().ToString("N");
@@ -29,16 +30,34 @@ internal sealed class WorkerHost : IDisposable
     private static Thread Background(ThreadStart action) { var thread=new Thread(action); thread.IsBackground=true; thread.Start(); return thread; }
     private static void Forward(Stream source,Stream destination) { var buffer=new byte[8192]; int count; while((count=source.Read(buffer,0,buffer.Length))>0) { destination.Write(buffer,0,count); destination.Flush(); } }
     private void AddEvent(string text) { lock(gate) { events.Add(new Dictionary<string,object>{{"seq",++eventSeq},{"text",text}}); if(events.Count>256) events.RemoveAt(0); } }
+    private void OwnerDisconnected() {
+        lock(gate) {
+            if(stopping)return;
+            stopping=true;
+            if(oneShot) {
+                try { exitCode=child.StopAndConfirm(5000)?86:125; }
+                catch { exitCode=125; child.CloseJob(); }
+            } else child.CloseJob();
+        }
+        stoppedSignal.Set();
+    }
     private WorkerHost(string mode, string pipeName, string executable, string cwd, string fixtureRoot, string[] args, bool watchBrokerInput, string managedConfig) {
         if (!System.Text.RegularExpressions.Regex.IsMatch(pipeName ?? "", "^meristem-(cc00r|cc01-worker)-[a-zA-Z0-9-]{1,90}$")) throw new InvalidOperationException("invalid fixture pipe");
         if (String.IsNullOrEmpty(cwd) || !Path.IsPathRooted(cwd) || !Directory.Exists(cwd)) throw new InvalidOperationException("absolute existing fixture cwd required");
         if (String.IsNullOrEmpty(executable) || !Path.IsPathRooted(executable) || !File.Exists(executable)) throw new InvalidOperationException("absolute fixture executable required");
         this.pipeName=pipeName; this.cwd=Path.GetFullPath(cwd);
+        System.Diagnostics.Process callingShell=null;
         if(mode=="codex-managed") {
             if(!watchBrokerInput || args.Length!=0 || !Path.IsPathRooted(managedConfig??"")) throw new InvalidOperationException("managed configuration and broker channel required");
             managed=Program.Parse(File.ReadAllText(managedConfig,Encoding.UTF8));
             foreach(string key in new[]{"ownerId","ownerEpoch","workerId","attemptId"}) if(!System.Text.RegularExpressions.Regex.IsMatch(Program.Text(managed,key)??"","^[a-zA-Z0-9_-]{1,128}$"))throw new InvalidOperationException("invalid managed identity");
-            using(var owner=System.Diagnostics.Process.GetProcessById(Convert.ToInt32(managed["brokerPid"]))) if(LocalPipe.Created(owner)!=Program.Text(managed,"brokerCreated")) throw new InvalidOperationException("broker identity mismatch");
+            using(var owner=System.Diagnostics.Process.GetProcessById(Convert.ToInt32(managed["brokerPid"]))) {
+                if(LocalPipe.Created(owner)!=Program.Text(managed,"brokerCreated")) throw new InvalidOperationException("broker identity mismatch");
+                oneShot=managed.ContainsKey("watchCallingShell") && Object.Equals(managed["watchCallingShell"],true);
+                if(oneShot) {
+                    if(!McpPeer.IsLauncher(owner) || (callingShell=McpPeer.VerifiedParent(owner))==null) throw new InvalidOperationException("calling process identity unavailable");
+                }
+            }
             if(!String.Equals(Program.Hash(executable),Program.Text(managed,"realSha256"),StringComparison.OrdinalIgnoreCase) || !String.Equals(Path.GetFullPath(executable),Program.Text(managed,"realExecutable"),StringComparison.OrdinalIgnoreCase) || !String.Equals(this.cwd,Program.Text(managed,"cwd"),StringComparison.OrdinalIgnoreCase))throw new InvalidOperationException("managed executable identity mismatch");
             agent=Program.Text(managed,"model")+" / "+Program.Text(managed,"effort");
             bool managedProfile=managed.ContainsKey("managedProfile") && Object.Equals(managed["managedProfile"],true);
@@ -78,6 +97,11 @@ internal sealed class WorkerHost : IDisposable
             child=new ProcessTree(relayExe,new[]{"app-server"},this.cwd);
         } else throw new InvalidOperationException("unknown worker mode");
         if (!child.Assigned) throw new InvalidOperationException("worker job assignment not confirmed");
+        if(callingShell!=null) Background(delegate {
+            // The verified process handle remains pinned across PID reuse.
+            using(callingShell) callingShell.WaitForExit();
+            OwnerDisconnected();
+        });
         AddEvent(mode=="fixture"?"Worker process entered its dedicated job.":"Dedicated Codex App Server entered its worker job.");
         // Never allow a verbose child to block on stdout/stderr. Protocol and credentials are discarded.
         Drain(child.Error);
@@ -85,8 +109,7 @@ internal sealed class WorkerHost : IDisposable
             // Exactly one broker owns RPC. No UI IDs, management ID rewriting, or synthetic replies.
             Background(delegate {
                 try { Forward(Console.OpenStandardInput(),child.Input); } catch {}
-                lock(gate) { stopping=true; child.CloseJob(); }
-                stoppedSignal.Set();
+                OwnerDisconnected();
             });
             Background(delegate {
                 try {
@@ -100,8 +123,7 @@ internal sealed class WorkerHost : IDisposable
                         }
                     }
                 } catch {
-                    lock(gate) { stopping=true; child.CloseJob(); }
-                    stoppedSignal.Set();
+                    OwnerDisconnected();
                 }
             });
         } else if(watchBrokerInput) Background(delegate {
@@ -119,10 +141,15 @@ internal sealed class WorkerHost : IDisposable
                 lock(gate) {
                     if(managed==null) {child.CloseJob();completionCleaned=true;}
                     // Preserve an unexpected App Server exit for bounded broker diagnostics.
-                    else if(!stopping) {exitCode=childExit;stopping=true;child.StopAndConfirm(5000);stoppedSignal.Set();}
+                    else if(!stopping) {
+                        stopping=true;
+                        bool empty=child.StopAndConfirm(5000);
+                        exitCode=oneShot?(empty?86:125):childExit;
+                        stoppedSignal.Set();
+                    }
                 }
                 AddEvent("Worker process exit observed; cleanup confirmation required.");
-            } catch { if(managed!=null){child.CloseJob();stoppedSignal.Set();} }
+            } catch { if(managed!=null){if(oneShot)exitCode=125;child.CloseJob();stoppedSignal.Set();} }
         });
     }
     private static bool Within(string root,string path) { string prefix=Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar; return Path.GetFullPath(path).StartsWith(prefix,StringComparison.OrdinalIgnoreCase); }

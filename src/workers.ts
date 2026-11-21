@@ -77,35 +77,69 @@ async function verifyChatGptAccount(rpc: Rpc) {
 }
 const inside = (root: string, child: string) => { const relative = path.relative(root.toLowerCase(), child.toLowerCase()); return !relative || !relative.startsWith('..' + path.sep) && relative !== '..' && !path.isAbsolute(relative); };
 const pathsOverlap = (a: string, b: string) => inside(a, b) || inside(b, a);
-export function verifyIsolation(config: RuntimeConfig, cwd: string, taskProfile: 'workspace' | 'read-only' = 'workspace'): { denied: true; sandboxExitCode: number; worktreeWriteDenied?: true } {
+function isolationProbe(config: RuntimeConfig, cwd: string, taskProfile: 'workspace' | 'read-only', privateHome?: string) {
   if (taskProfile !== 'workspace' && taskProfile !== 'read-only') throw new Error('unsupported isolation task profile');
-  const canary = path.join(config.stateDirectory, `isolation-${randomUUID()}`);
-  const visible = path.join(cwd, `.meristem-isolation-${randomUUID()}`);
+  const nonce = randomUUID();
+  const canary = path.join(config.stateDirectory, 'isolation-' + nonce);
+  const visible = path.join(cwd, '.meristem-isolation-' + nonce);
+  const quote = (value: string) => "'" + value.replace(/'/g, "''") + "'";
+  const readOnly = taskProfile === 'read-only';
+  const profileId = readOnly ? READ_ONLY_PROFILE : 'meristem-managed';
+  const base = readOnly ? ':read-only' : ':workspace';
+  const script = [
+    "$ErrorActionPreference='Stop'",
+    `if([IO.File]::ReadAllText(${quote(visible)}) -ne 'visible'){exit 41}`,
+    `try{[void][IO.File]::ReadAllText(${quote(canary)});exit 42}catch [System.UnauthorizedAccessException]{}catch{exit 43}`,
+    ...(readOnly ? [`try{[IO.File]::WriteAllText(${quote(visible)},'changed');exit 44}catch [System.UnauthorizedAccessException]{}catch{exit 45}`] : []),
+    'exit 0',
+  ].join('; ');
+  const denied = [...new Set([realpathSync(config.stateDirectory), ...(privateHome ? [privateHome] : [])])];
+  const profile = `permissions.${profileId}={extends=${JSON.stringify(base)},filesystem={${denied.map(root => JSON.stringify(root) + '="deny"').join(',')}}}`;
+  const args = ['sandbox', '-C', cwd, '-P', profileId, '-c', profile, ...Object.entries(sandboxOverrides(config)).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]), path.join(process.env.WINDIR!, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), '-NoProfile', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')];
+  return {nonce, canary, visible, args};
+}
+export function verifyIsolation(config: RuntimeConfig, cwd: string, taskProfile: 'workspace' | 'read-only' = 'workspace'): { denied: true; sandboxExitCode: number; worktreeWriteDenied?: true } {
+  const {canary, visible, args} = isolationProbe(config, cwd, taskProfile);
   writeFileSync(canary, 'private-control-canary', { mode: 0o600, flag: 'wx' });
   let visibleCreated = false;
   try {
     writeFileSync(visible, 'visible', { flag: 'wx' }); visibleCreated = true;
-    const quote = (value: string) => "'" + value.replace(/'/g, "''") + "'";
-    const readOnly = taskProfile === 'read-only';
-    const profileId = readOnly ? READ_ONLY_PROFILE : 'meristem-managed';
-    const base = readOnly ? ':read-only' : ':workspace';
-    const script = [
-      "$ErrorActionPreference='Stop'",
-      `if([IO.File]::ReadAllText(${quote(visible)}) -ne 'visible'){exit 41}`,
-      `try{[void][IO.File]::ReadAllText(${quote(canary)});exit 42}catch [System.UnauthorizedAccessException]{}catch{exit 43}`,
-      ...(readOnly ? [`try{[IO.File]::WriteAllText(${quote(visible)},'changed');exit 44}catch [System.UnauthorizedAccessException]{}catch{exit 45}`] : []),
-      'exit 0',
-    ].join('; ');
-    const profile = `permissions.${profileId}={extends=${JSON.stringify(base)},filesystem={${JSON.stringify(realpathSync(config.stateDirectory))}="deny"}}`;
-    const result = spawnSync(config.realExe, ['sandbox', '-C', cwd, '-P', profileId, '-c', profile, ...Object.entries(sandboxOverrides(config)).flatMap(([key, value]) => ['-c', `${key}=${JSON.stringify(value)}`]), path.join(process.env.WINDIR!, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'), '-NoProfile', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { env: { ...process.env, CODEX_HOME: config.authHome }, windowsHide: true, encoding: 'utf8', timeout: 30000 });
+    const result = spawnSync(config.realExe, args, { env: { ...process.env, CODEX_HOME: config.authHome }, windowsHide: true, encoding: 'utf8', timeout: 30000 });
     if (result.status !== 0) throw new Error(`child control-state isolation not confirmed (exit ${result.status ?? 'unknown'}, ${result.error ? (result.error as NodeJS.ErrnoException).code : 'process_rejected'})`);
-    return { denied: true, sandboxExitCode: result.status, ...(readOnly ? { worktreeWriteDenied: true } : {}) };
+    return { denied: true, sandboxExitCode: result.status, ...(taskProfile === 'read-only' ? { worktreeWriteDenied: true } : {}) };
   } finally { if (visibleCreated) unlinkSync(visible); unlinkSync(canary); }
+}
+export class IsolationFailure extends Error {
+  constructor(readonly exitCode: number) { super(`child control-state isolation not confirmed (exit ${exitCode})`); }
+}
+async function verifyOwnedIsolation(config: RuntimeConfig, cwd: string, privateHome: string, env: NodeJS.ProcessEnv, signal?: AbortSignal) {
+  const {nonce, args} = isolationProbe(config, cwd, 'read-only', privateHome);
+  const host = spawn(config.hostExe, ['--probe-read-only', config.realExe, config.realSha256, config.stateDirectory, cwd, nonce, ...args],
+    {cwd, env, windowsHide:true, stdio:['pipe','ignore','ignore']});
+  // EOF asks the native owner to stop its Job, confirm zero processes, and remove the canaries.
+  const cancel = () => host.stdin.end();
+  host.stdin.on('error', () => {});
+  signal?.addEventListener('abort', cancel, {once:true});
+  let timedOut = false;
+  const timeout = setTimeout(() => { timedOut = true; cancel(); }, 30_000);
+  const fallback = setTimeout(() => host.kill(), 40_000);
+  try {
+    const code = await new Promise<number | null>((resolve,reject) => { host.once('error', reject); host.once('close', resolve); });
+    if (code === 125 || code === null) throw new Error('sandbox probe cleanup unconfirmed');
+    signal?.throwIfAborted();
+    if (timedOut && (code === 0 || code === 130)) throw new IsolationFailure(124);
+    if (code !== 0) throw new IsolationFailure(code);
+  } finally {
+    clearTimeout(timeout); clearTimeout(fallback);
+    signal?.removeEventListener('abort', cancel);
+  }
 }
 export type HistorySource = { threadId: string; modelProvider: string };
 export type Assignment = { cwd: string; workerId: string; model: string; effort: string; permissionProfileId?: string; permissionPermit?: RunPermissionPermit; identity?: Omit<WorkerRef, 'threadId'>; previous?: WorkerRef; historySource?: HistorySource; gitApprovalRoots?: string[]; initialFallback?: AgentChoice };
 type Identity = { pipeName: string; hostPid: number; hostCreated: string; childPid: number; childCreated: string; jobId: string };
-type Live = { worker: WorkerRef; child: ChildProcessWithoutNullStreams; rpc: Rpc; identity: Identity; assignment: Assignment; settings: AppliedTaskSettings; activity: TerminalActivity; provider: string; mcpServer?: string; disabledServers?: string[]; turnId?: string; turnRequested?: boolean; complete: boolean; sending: boolean; lastCompletion?: { id: string; complete: boolean }; pendingRequest: boolean; requests: WorkerRequests; stopping?: Promise<StopResult>; result?: StopResult };
+type Inspection = { acknowledgedTurn?: string; final?: { turnId: string; text: string }; ambiguous?: boolean };
+type StartOptions = { signal?: AbortSignal; watchCallingShell?: boolean; captureFinalAnswer?: boolean; onPreflightCheck?: (check: 'read_only_isolation' | 'chatgpt_account') => void };
+type Live = { worker: WorkerRef; child: ChildProcessWithoutNullStreams; rpc: Rpc; identity: Identity; assignment: Assignment; settings: AppliedTaskSettings; activity: TerminalActivity; provider: string; mcpServer?: string; disabledServers?: string[]; turnId?: string; turnRequested?: boolean; complete: boolean; sending: boolean; lastCompletion?: { id: string; complete: boolean }; pendingRequest: boolean; requests: WorkerRequests; inspection?: Inspection; stopping?: Promise<StopResult>; result?: StopResult };
 const historyPageSize = 8;
 const historyCursor = z.string().min(1).max(8192);
 export const HistorySelection = z.object({ target: Worker, cursor: historyCursor.optional() }).strict();
@@ -184,6 +218,15 @@ async function catalogChoice(rpc: Rpc, choice: AgentChoice, fallback?: AgentChoi
     return fallback;
   }
 }
+async function closeHost(rpc: Rpc, child: ChildProcessWithoutNullStreams) {
+  rpc.close();
+  if (child.pid === undefined) return;
+  for (let i = 0; i < 120 && child.exitCode === null && child.signalCode === null; i++) await delay(50);
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill();
+    for (let i = 0; i < 40 && child.exitCode === null && child.signalCode === null; i++) await delay(50);
+  }
+}
 export class WorkerRuntime {
   private live = new Map<string, Live>();
   private brokerCreated: string;
@@ -206,7 +249,8 @@ export class WorkerRuntime {
     }
     return env;
   }
-  async start(assignment: Assignment): Promise<WorkerRef> {
+  async start(assignment: Assignment, options: StartOptions = {}): Promise<WorkerRef> {
+    options.signal?.throwIfAborted();
     Id.parse(assignment.workerId); ModelId.parse(assignment.model); Id.parse(assignment.effort);
     if (assignment.initialFallback) {
       AgentChoice.parse(assignment.initialFallback);
@@ -216,8 +260,16 @@ export class WorkerRuntime {
     const agent = { model: assignment.model, effort: assignment.effort, permissionProfileId: assignment.permissionProfileId ?? 'workspace' };
     const permissions = resolveTaskPermissions(agent, assignment.permissionPermit ?? { allowedProfileIds: ['workspace'], writableRoots: [cwd], allowedReviewers: ['user'] }, cwd);
     const readOnly = permissions.permissionProfileId === READ_ONLY_PROFILE;
+    if (options.watchCallingShell && (!readOnly || !this.config.managedProfile || this.config.mcp)) throw new Error('one-shot worker requires an isolated read-only profile');
+    if (options.captureFinalAnswer && !options.watchCallingShell) throw new Error('final answer requires a one-shot worker');
+    const privateHome = options.watchCallingShell ? realpathSync(this.config.authHome) : undefined;
+    if (privateHome && inside(privateHome, cwd)) throw new Error('worker cwd overlaps authentication home');
     const approvalPolicy = readOnly ? readOnlyApproval : 'on-request';
     const managedOverrides = permissionOverrides(state, permissions.writableRoots, permissions.permissionProfileId);
+    if (privateHome) {
+      const profile = managedOverrides['permissions.' + permissions.permissionProfileId] as { filesystem: Record<string,string> };
+      profile.filesystem[privateHome] = 'deny';
+    }
     if (readOnly && assignment.gitApprovalRoots?.length) throw new Error('read-only worker cannot request Git grants');
     const approvalRoots = (assignment.gitApprovalRoots ?? []).map(root => realpathSync(root));
     if (approvalRoots.some(root => state.toLowerCase() === root.toLowerCase() || state.toLowerCase().startsWith(root.toLowerCase() + path.sep) || root.toLowerCase().startsWith(state.toLowerCase() + path.sep))) throw new Error('Git approval cannot include management state');
@@ -232,13 +284,18 @@ export class WorkerRuntime {
     const historySource = previous ? { threadId: previous.worker.threadId, modelProvider: previous.provider } : assignment.historySource;
     if (historySource) { Id.parse(historySource.threadId); ModelId.parse(historySource.modelProvider); }
     if (pathsOverlap(state, cwd)) throw new Error('management state must be outside worker cwd');
-    if (!this.config.fixture) verifyIsolation(this.config, cwd, readOnly ? 'read-only' : 'workspace');
+    if (!this.config.fixture) {
+      if (privateHome) await verifyOwnedIsolation(this.config, cwd, privateHome, this.appServerEnv(), options.signal);
+      else verifyIsolation(this.config, cwd, readOnly ? 'read-only' : 'workspace');
+      if (readOnly) options.onPreflightCheck?.('read_only_isolation');
+    }
+    options.signal?.throwIfAborted();
     if (this.config.mcp && createHash('sha256').update(readFileSync(this.config.mcp.entryPoint)).digest('hex') !== this.config.mcp.entrySha256) throw new Error('MCP entry identity mismatch');
     const base = assignment.identity ?? { workerId: assignment.workerId, attemptId: randomUUID(), ownerId: randomUUID(), ownerEpoch: randomUUID() };
     Worker.parse({ ...base, threadId: 'pending' });
     if (base.workerId !== assignment.workerId) throw new Error('assignment identity mismatch');
     const pipeName = `meristem-cc01-worker-${randomUUID()}`, configPath = path.join(state, base.attemptId + '.json');
-    writeFileSync(configPath, JSON.stringify({ ...base, brokerPid: process.pid, brokerCreated: this.brokerCreated, realExecutable: this.config.realExe, realSha256: this.config.realSha256, cwd, model: assignment.model, effort: assignment.effort, ...(this.config.managedProfile && {managedProfile:true}), ...(this.config.mcp ? { mcp: { ...this.config.mcp, nodeExecutable: process.execPath, nodeSha256: createHash('sha256').update(readFileSync(process.execPath)).digest('hex') } } : {}) }), { flag: 'wx' });
+    writeFileSync(configPath, JSON.stringify({ ...base, brokerPid: process.pid, brokerCreated: this.brokerCreated, realExecutable: this.config.realExe, realSha256: this.config.realSha256, cwd, model: assignment.model, effort: assignment.effort, ...(options.watchCallingShell && {watchCallingShell:true}), ...(this.config.managedProfile && {managedProfile:true}), ...(this.config.mcp ? { mcp: { ...this.config.mcp, nodeExecutable: process.execPath, nodeSha256: createHash('sha256').update(readFileSync(process.execPath)).digest('hex') } } : {}) }), { flag: 'wx' });
     const child = spawn(this.config.hostExe, ['--mode', 'codex-managed', '--pipe', pipeName, '--exe', this.config.realExe, '--cwd', cwd, '--config', configPath, '--broker-stdin', 'true'], { cwd, env: this.appServerEnv(), windowsHide: true, stdio: 'pipe' });
     let entry: Live | undefined;
     const rpc = new Rpc(child, message => {
@@ -246,6 +303,13 @@ export class WorkerRuntime {
       if (message.id !== undefined) {
         entry.pendingRequest = true;
         try { const request = entry.requests.add(message, entry.turnId); this.onState(entry.worker, request.kind === 'question' && request.state === 'pending' ? 'waiting_input' : 'waiting_approval'); } catch { this.onState(entry.worker, 'unknown'); return; }
+      }
+      else if (entry.inspection && message.method === 'thread/status/changed' && message.params?.threadId === entry.worker.threadId) {
+        const status = message.params.status;
+        if (status?.type === 'active' && Array.isArray(status.activeFlags)) {
+          if (status.activeFlags.includes('waitingOnApproval')) this.onState(entry.worker, 'waiting_approval');
+          else if (status.activeFlags.includes('waitingOnUserInput')) this.onState(entry.worker, 'waiting_input');
+        }
       }
       else if (message.method === 'thread/settings/updated' && !entry.stopping && message.params?.threadId === entry.worker.threadId) {
         const settings = message.params.threadSettings;
@@ -258,6 +322,11 @@ export class WorkerRuntime {
       else if (message.method === 'item/started' || message.method === 'item/completed') {
         if (!entry.stopping && !entry.complete && entry.turnId && message.params?.threadId === entry.worker.threadId && message.params?.turnId === entry.turnId) {
           entry.activity.record(message.method, message.params.item);
+          const item = message.params.item;
+          if (entry.inspection && message.method === 'item/completed' && item?.type === 'agentMessage' && item.phase === 'final_answer' && typeof item.text === 'string') {
+            if (entry.inspection.final) entry.inspection.ambiguous = true;
+            else entry.inspection.final = {turnId:entry.turnId, text:terminalText(item.text, 8192).trim()};
+          }
         }
       }
       else if (message.method === 'item/autoApprovalReview/completed') {
@@ -271,7 +340,9 @@ export class WorkerRuntime {
         if (!entry.pendingRequest && !entry.stopping) this.onState(entry.worker, entry.complete ? 'completed' : 'running');
       }
       else if (message.method === 'turn/started' && message.params?.threadId === entry.worker.threadId && typeof message.params?.turn?.id === 'string' && !entry.stopping) {
-        entry.turnId = Id.parse(message.params.turn.id); entry.complete = false;
+        const turn = Id.safeParse(message.params.turn.id);
+        if (!turn.success) { this.onState(entry.worker, 'unknown'); return; }
+        entry.turnId = turn.data; entry.complete = false;
       }
       else if (message.method === 'turn/completed' && message.params?.threadId === entry.worker.threadId && typeof message.params?.turn?.id === 'string') {
         if (message.params.turn.status !== 'completed') entry.requests.cancelTurn(message.params.turn.id);
@@ -284,11 +355,13 @@ export class WorkerRuntime {
         }
       }
     });
+    const abortStart = () => rpc.close();
+    options.signal?.addEventListener('abort', abortStart, {once:true});
     try {
       await rpc.call('initialize', { clientInfo: { name: 'meristem-cc01', version: '0.0.0' }, capabilities: { experimentalApi: true } }); rpc.notify('initialized');
       const ordinaryProfile = this.config.managedProfile ? await managedProfileOverrides(rpc, cwd) : undefined;
       const mcpServer = this.config.mcp && (ordinaryProfile?.serverName ?? 'meristem');
-      if (this.config.managedProfile) await verifyChatGptAccount(rpc);
+      if (this.config.managedProfile) { await verifyChatGptAccount(rpc); options.onPreflightCheck?.('chatgpt_account'); }
       const fallback = await catalogChoice(rpc, assignment, assignment.initialFallback);
       if (fallback) {
         assignment = { ...assignment, ...fallback, initialFallback: undefined };
@@ -297,7 +370,7 @@ export class WorkerRuntime {
       const overrides = { ...sandboxOverrides(this.config), ...managedOverrides, ...ordinaryProfile?.disabled, model_reasoning_effort: assignment.effort, ...(readOnly ? readOnlyFeatures : approvalRoots.length ? { 'features.request_permissions_tool': true, 'features.exec_permission_approvals': true } : {}), ...(mcpServer && this.config.mcp ? { ['mcp_servers.' + mcpServer]: { command: process.execPath, args: [this.config.mcp.entryPoint, '--pipe', this.config.mcp.pipeName] } } : {}) };
       // This target has no verified grant-reset API. Never resume persisted grants.
       // Keep the verified Git worktree and source reference; start an independent thread.
-      const thread = await rpc.call('thread/start', { cwd, ephemeral: false, runtimeWorkspaceRoots: [cwd], model: assignment.model, ...(this.config.managedProfile && {modelProvider:'openai'}), allowProviderModelFallback: false, permissions: permissions.permissionProfileId, approvalsReviewer: permissions.approvalsReviewer, approvalPolicy, config: overrides,
+      const thread = await rpc.call('thread/start', { cwd, ephemeral: !!options.watchCallingShell, runtimeWorkspaceRoots: [cwd], model: assignment.model, ...(this.config.managedProfile && {modelProvider:'openai'}), allowProviderModelFallback: false, permissions: permissions.permissionProfileId, approvalsReviewer: permissions.approvalsReviewer, approvalPolicy, config: overrides,
         ...(historySource ? { developerInstructions: `Continue the assigned task in this verified Git worktree. Previous task thread reference: ${historySource.threadId}. Conversation and permission grants have not been resumed. Use the new task instruction and committed files; consult the coordinator for missing context.` } : {}) });
       if (thread.activePermissionProfile?.id !== permissions.permissionProfileId || thread.activePermissionProfile.extends !== (readOnly ? ':read-only' : ':workspace')) throw new Error('managed permission profile not confirmed');
       if (readOnly && !isDeepStrictEqual(thread.sandbox, { type: 'readOnly', networkAccess: false })) throw new Error('read-only sandbox not confirmed');
@@ -320,12 +393,15 @@ export class WorkerRuntime {
       if (!status?.ok || !status.jobAssigned || status.hostPid !== child.pid) throw new Error('worker identity unavailable');
       const identity = { pipeName, hostPid: Number(status.hostPid), hostCreated: String(status.hostCreated), childPid: Number(status.pid), childCreated: String(status.childCreated), jobId: String(status.jobId) };
       entry = { worker, child, rpc, identity, mcpServer, disabledServers:ordinaryProfile?.servers, assignment: { ...assignment, cwd }, settings: { agent, permissions, history: historySource ? 'fresh_handoff' : 'new', ...(historySource ? { sourceThreadId: historySource.threadId } : {}), ...(fallback ? { initialFallback: 'agent_not_in_catalog' } : {}) }, activity: new TerminalActivity({ model: agent.model, effort: agent.effort }), provider: thread.thread.modelProvider, complete: false, sending: false, pendingRequest: false, requests: new WorkerRequests(worker, cwd, this.onRequest, approvalRoots, environmentId) };
+      if (options.captureFinalAnswer) entry.inspection = {};
+      options.signal?.throwIfAborted();
       child.once('close', () => { if (entry && !entry.stopping && !entry.result) this.onState(entry.worker, 'unknown'); });
       this.live.set(worker.attemptId, entry); return { ...worker };
     } catch (error) {
-      rpc.close(); for (let i = 0; i < 100 && child.exitCode === null && child.signalCode === null; i++) await delay(50);
-      if (child.exitCode === null && child.signalCode === null) child.kill(); throw error;
-    }
+      await closeHost(rpc, child);
+      if (child.pid && options.watchCallingShell && child.exitCode !== 86) throw new Error('worker startup cleanup unconfirmed');
+      throw error;
+    } finally { options.signal?.removeEventListener('abort', abortStart); }
   }
   private get(worker: WorkerRef): Live {
     const entry = this.live.get(worker.attemptId); if (!entry || !sameWorker(entry.worker, worker)) throw new Error('worker identity mismatch'); return entry;
@@ -403,6 +479,12 @@ export class WorkerRuntime {
     }
   }
   completedTurn(worker: WorkerRef): string | undefined { const entry = this.get(worker); return entry.complete ? entry.turnId : undefined; }
+  inspectionSummary(worker: WorkerRef): string | undefined {
+    const entry = this.get(worker), result = entry.inspection;
+    if (entry.pendingRequest || !entry.complete || !result?.final || result.ambiguous ||
+        result.acknowledgedTurn !== entry.turnId || result.final.turnId !== entry.turnId) return undefined;
+    return result.final.text || undefined;
+  }
   pendingRequests() { return [...this.live.values()].flatMap(entry => entry.requests.list()); }
   presentRequest(worker: WorkerRef, key: string) { return this.get(worker).requests.present(key); }
   waitForInput(worker: WorkerRef, text: string, turnId: string): void {
@@ -471,6 +553,7 @@ export class WorkerRuntime {
       const result = await entry.rpc.call('turn/start', { threadId: worker.threadId, input: [{ type: 'text', text }], model: choice.model, effort: choice.effort });
       entry.assignment.model = choice.model; entry.assignment.effort = choice.effort;
       entry.turnId = Id.parse(result.turn?.id); entry.complete = entry.lastCompletion?.id === entry.turnId && entry.lastCompletion.complete;
+      if (entry.inspection) entry.inspection.acknowledgedTurn = entry.turnId;
       if (entry.lastCompletion?.id === entry.turnId && !entry.stopping && (!entry.complete || !entry.pendingRequest)) this.onState(entry.worker, entry.complete ? 'completed' : 'failed');
       if (fallback) return 'agent_not_in_catalog';
     } catch (error) {
@@ -512,7 +595,15 @@ export class WorkerRuntime {
         const reason = entry.rpc.failureReason;
         if (reason && reason !== 'owner_closed') evidenceRefs.push(`rpc_${reason}`);
         if (Number.isInteger(entry.child.exitCode)) evidenceRefs.push(`host_exit_${entry.child.exitCode}`);
-        entry.rpc.close(); entry.result = { worker, state: 'unknown', evidenceRefs: [...evidenceRefs, 'cleanup_unconfirmed'] };
+        if (entry.inspection) {
+          await closeHost(entry.rpc, entry.child);
+          // Only the one-shot host emits 86, after stopping its Job and measuring zero members.
+          if (entry.child.exitCode === 86) {
+            entry.result = {worker, state:'stopped', evidenceRefs:[...evidenceRefs, 'native_job_empty', 'native_creation_identity']};
+            return entry.result;
+          }
+        } else entry.rpc.close();
+        entry.result = { worker, state: 'unknown', evidenceRefs: [...evidenceRefs, 'cleanup_unconfirmed'] };
       }
       return entry.result;
     })();

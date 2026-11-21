@@ -23,10 +23,29 @@ function contains(root: string, file: string) {
   const relative = path.relative(root, file);
   return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative);
 }
+function gitExecutable() {
+  if (process.platform !== 'win32') return 'git';
+  // Windows also searches the calling process's working directory for a bare
+  // executable. Choose an installed Git before inspecting the requested repository.
+  for (const entry of (process.env.PATH ?? '').split(path.delimiter)) {
+    const directory = entry.replace(/^"(.*)"$/, '$1');
+    if (!/^[a-z]:[\\/]/i.test(directory)) continue;
+    const candidate = path.join(directory, 'git.exe');
+    if (!statSync(candidate, { throwIfNoEntry: false })?.isFile()) continue;
+    const resolved = realpathSync.native(candidate);
+    let ancestor = path.dirname(resolved);
+    while (!existsSync(path.join(ancestor, '.git'))) {
+      const parent = path.dirname(ancestor);
+      if (parent === ancestor) return resolved;
+      ancestor = parent;
+    }
+  }
+  throw new Error('Git for Windows の実行ファイルを PATH で確認できません。');
+}
 function git(cwd: string, args: string[]) {
   const env = { ...process.env };
   for (const name of Object.keys(env)) if (/^GIT_/i.test(name)) delete env[name];
-  const result = childProcess.spawnSync('git', ['-C', cwd, ...args], { env, windowsHide: true, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 10000 });
+  const result = childProcess.spawnSync(gitExecutable(), ['-C', cwd, ...args], { env, windowsHide: true, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024, timeout: 10000 });
   if (result.status !== 0) throw new Error('Gitリポジトリを確認できません。対象の作業フォルダーで実行してください。');
   return result.stdout;
 }
