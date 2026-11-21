@@ -4,6 +4,7 @@ import path from 'node:path';
 import { addAbortListener } from 'node:events';
 import { sameWorker, type AgentChoice, type WorkerRef } from './contracts.js';
 import { RequestFailure } from './failures.js';
+import { inspectDisplay } from './inspect-display.js';
 import { inspectAgent, onDemandRuntime, resolveOnDemandFile } from './on-demand-setup.js';
 import { IsolationFailure, WorkerRuntime, type Assignment, type RuntimeConfig } from './workers.js';
 
@@ -19,6 +20,7 @@ export function readOnlyAssignment(repository: string, agent: AgentChoice): Assi
 }
 
 type InspectOptions = { cwd?:string; signal?:AbortSignal; timeoutMs?:number; agent?:AgentChoice;
+  display?:typeof inspectDisplay;
   config?:(repository:string, stateDirectory:string) => RuntimeConfig };
 
 export async function inspectFile(relativeFile: string, options: InspectOptions = {}) {
@@ -41,6 +43,7 @@ export async function inspectFile(relativeFile: string, options: InspectOptions 
   }
   let state: string | undefined, runtime: WorkerRuntime | undefined, worker: WorkerRef | undefined;
   let outcome: InspectError | undefined;
+  let display: ReturnType<typeof inspectDisplay> | undefined;
   let failure: InspectCode = 'start_failed';
   try {
     checkDeadline();
@@ -56,6 +59,8 @@ export async function inspectFile(relativeFile: string, options: InspectOptions 
       else if (event === 'unknown') cancel('delivery_unknown');
       else if (event === 'failed' || event === 'limit_reached' || event === 'authentication_required') cancel('result_unavailable');
     });
+    display = (options.display ?? inspectDisplay)(config.hostExe, config.realExe);
+    display('starting');
     checkDeadline();
     worker = await runtime.start(readOnlyAssignment(target.repository, options.agent ?? inspectAgent),
       {signal, watchCallingShell:true, captureFinalAnswer:true});
@@ -76,6 +81,7 @@ export async function inspectFile(relativeFile: string, options: InspectOptions 
       // The ACK to this single send and its exact completed turn are both required.
       // Never resend, including loss of the connection between dispatch and ACK.
       await Promise.race([runtime.send(worker, prompt), interrupted]);
+      display('running');
       await Promise.race([completed, interrupted]);
     } finally { listener[Symbol.dispose](); }
     checkDeadline();
@@ -96,14 +102,20 @@ export async function inspectFile(relativeFile: string, options: InspectOptions 
     }
     throw outcome;
   } finally {
+    let cleaned = false;
     try {
-      if (runtime && worker && (await runtime.stop(worker, 'inspect_exit')).state !== 'stopped') {
-        throw new InspectError(outcome?.code ?? 'stop_unconfirmed', true);
+      try {
+        if (runtime && worker && (await runtime.stop(worker, 'inspect_exit')).state !== 'stopped') {
+          throw new InspectError(outcome?.code ?? 'stop_unconfirmed', true);
+        }
+      } finally {
+        clearTimeout(timer);
+        subscription?.[Symbol.dispose]();
+        if (state) rmSync(state, {recursive:true, force:true, maxRetries:4, retryDelay:100});
       }
+      cleaned = true;
     } finally {
-      clearTimeout(timer);
-      subscription?.[Symbol.dispose]();
-      if (state) rmSync(state, {recursive:true, force:true, maxRetries:4, retryDelay:100});
+      display?.(cleaned && !outcome ? 'completed' : 'failed');
     }
   }
 }

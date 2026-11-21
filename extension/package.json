@@ -8,6 +8,7 @@
   "private": true,
   "engines": { "vscode": "^1.90.0" },
   "main": "./dist/src/extension.js",
+  "activationEvents": ["onStartupFinished"],
   "contributes": { "menus": { "explorer/context": [
     { "command": "meristem.chatControl.newTerminalRun", "when": "resourceScheme == file && resourceExtname == .md && isWorkspaceTrusted" }
   ] }, "commands": [

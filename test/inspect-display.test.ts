@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
+import { mkdtempDisposableSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { test } from 'node:test';
+import { connectInspectDisplay } from '../src/inspect-display.js';
+
+test('uses only the descriptor of the sidebar owner, even with another registered window', async t => {
+  using directory = mkdtempDisposableSync(path.join(tmpdir(), 'inspect-display-'));
+  const id = randomUUID(), pipe = '\\\\.\\pipe\\meristem-inspect-display-' + id;
+  const server = createServer();
+  server.listen(pipe);
+  await once(server, 'listening');
+  t.after(() => server.close());
+  writeFileSync(path.join(directory.path, '101.txt'), id);
+  writeFileSync(path.join(directory.path, '103.txt'), pipe);
+  assert.equal(connectInspectDisplay(directory.path, '102'), undefined);
+  assert.equal(connectInspectDisplay(directory.path, '103'), undefined);
+  assert.equal(connectInspectDisplay(directory.path, '../101'), undefined);
+  const accepted = once(server, 'connection');
+  const socket = connectInspectDisplay(directory.path, '101');
+  assert.ok(socket);
+  const [peer] = await accepted;
+  t.after(() => { socket.destroy(); peer.destroy(); });
+  const closed = once(socket, 'close');
+  peer.write('invalid reverse traffic');
+  await closed;
+});

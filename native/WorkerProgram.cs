@@ -12,6 +12,26 @@ internal static class WorkerProgram
             stream.Write(bytes,0,bytes.Length);
         }
     }
+    // A shell can share a repository with several windows. Only the Code process
+    // that actually launched this sidebar's Codex can own its display.
+    private static int DisplayOwner(string codex) {
+        var child = Process.GetCurrentProcess();
+        try {
+            for (int depth = 0; depth < 32; depth++) {
+                using (var current = child) {
+                    child = McpPeer.VerifiedParent(current);
+                    if (child == null) return 1;
+                    if (String.Equals(current.MainModule.FileName, codex, StringComparison.OrdinalIgnoreCase)) {
+                        if (!String.Equals(child.ProcessName, "Code", StringComparison.OrdinalIgnoreCase)) return 1;
+                        Console.WriteLine(child.Id);
+                        return 0;
+                    }
+                    if (String.Equals(current.ProcessName, "Code", StringComparison.OrdinalIgnoreCase)) return 1;
+                }
+            }
+        } finally { if (child != null) child.Dispose(); }
+        return 1;
+    }
     private static int ProbeReadOnly(string[] args) {
         Guid nonce;
         if(args.Length<17 || !Console.IsInputRedirected || !Path.IsPathRooted(args[1]) ||
@@ -60,6 +80,7 @@ internal static class WorkerProgram
                 using(var process=System.Diagnostics.Process.GetProcessById(Int32.Parse(args[1])))Console.WriteLine(LocalPipe.Created(process));
                 return 0;
             }
+            if(args.Length==2 && args[0]=="--display-owner") return DisplayOwner(args[1]);
             if(args.Length>0 && args[0]=="--probe-read-only") return ProbeReadOnly(args);
             return WorkerHost.Run(args);
         }

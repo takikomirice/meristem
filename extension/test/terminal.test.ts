@@ -7,6 +7,63 @@ import * as controlClient from '../src/control-client';
 import * as managedClient from '../src/managed-client';
 import { createServer, Socket } from 'node:net';
 import { reviewWorkerRequest } from '../src/approval';
+import { listenForInspections, showInspection } from '../src/inspect-terminal';
+import { existsSync, mkdtempDisposableSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
+test('parallel inspect calls keep separate read-only terminals and retain early and final states', async t => {
+  const panes: { pty: import('vscode').Pseudoterminal; name: string; focused?: boolean }[] = [];
+  const api = {
+    EventEmitter: class {
+      private listeners = new Set<(value: string) => void>();
+      event = (listener: (value: string) => void) => { this.listeners.add(listener); return { dispose: () => this.listeners.delete(listener) }; };
+      fire(value: string) { for (const listener of this.listeners) listener(value); }
+      dispose() { this.listeners.clear(); }
+    },
+    window: { createTerminal(options: typeof panes[number]) {
+      panes.push(options);
+      return { show(preserveFocus: boolean) { options.focused = !preserveFocus; } };
+    } }
+  } as unknown as typeof import('vscode');
+  let closes = 0;
+  const server = createServer(socket => {
+    showInspection(api, socket, () => panes.length + 1);
+    socket.on('close', () => closes++);
+  });
+  await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const port = (server.address() as import('node:net').AddressInfo).port;
+  async function send(frames: string) {
+    const socket = new Socket();
+    const closed = new Promise<void>(resolve => socket.once('close', () => resolve()));
+    socket.connect(port, '127.0.0.1', () => socket.end(frames));
+    await closed;
+  }
+  await send('not-a-state\n');
+  const first = new Socket();
+  t.after(() => first.destroy());
+  first.connect(port, '127.0.0.1', () => first.write('starting\nrunning\n'));
+  for (let i = 0; !panes.length && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(panes.length, 1);
+  await send('starting\n');
+  assert.equal(panes.length, 2);
+  first.end('completed\n');
+  for (let i = 0; closes < 3 && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 5));
+  assert.equal(closes, 3);
+  assert.deepEqual(panes.map(pane => pane.name), ['Worker inspect #1', 'Worker inspect #2']);
+  function text(pane: typeof panes[number]) {
+    assert.equal(pane.focused, false);
+    assert.equal(pane.pty.handleInput, undefined);
+    const lines: string[] = [];
+    pane.pty.onDidWrite(line => lines.push(line));
+    pane.pty.open(undefined);
+    pane.pty.close();
+    return lines.join('');
+  }
+  assert.match(text(panes[0]), /起動しています。\r\nWorker がファイルを確認しています。\r\nWorker の終了を確認/);
+  assert.match(text(panes[1]), /表示接続が切れました/);
+});
 
 const extensionWorkspace = { workspaceFolders: [], registerTextDocumentContentProvider() { return { dispose() {} }; } };
 
@@ -516,9 +573,20 @@ test('confirmed_stop_and_published_events_update_the_remaining_terminal',async t
 });
 test('the run entry, usage and progress are available from VS Code', () => {
   const manifest = require('../../package.json');
-  assert.ok(!(manifest.activationEvents ?? []).some((event: string) => event === '*' || event === 'onStartupFinished' || event.startsWith('workspaceContains:')), 'ordinary windows should not activate Meristem');
+  assert.deepEqual(manifest.activationEvents, ['onStartupFinished'], 'register the optional in-process terminal display after startup');
   const commands = manifest.contributes.commands.map((item: { command: string }) => item.command);
   for (const name of ['startRun', 'newTerminalRun', 'usage', 'progress', 'stopRun']) assert.ok(commands.includes('meristem.chatControl.' + name), name);
+});
+test('opening the display listener leaves the terminal panel idle and disposal removes its registration', async () => {
+  using home = mkdtempDisposableSync(path.join(tmpdir(), 'meristem-view-'));
+  const descriptor = path.join(home.path, 'Meristem', 'inspect-display', process.pid + '.txt');
+  const api = { window: { createTerminal() { assert.fail('no inspection was requested'); } } } as unknown as typeof import('vscode');
+  const listener = listenForInspections(api, home.path);
+  try {
+    for (let i = 0; !existsSync(descriptor) && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert.match(readFileSync(descriptor, 'utf8'), /^[a-f\d-]{36}$/);
+  } finally { listener.dispose(); }
+  assert.equal(existsSync(descriptor), false);
 });
 test('the managed parent chat leaves Worker approvals in chat and shows the pending count', async t => {
   const loader = require('node:module'), load = loader._load;

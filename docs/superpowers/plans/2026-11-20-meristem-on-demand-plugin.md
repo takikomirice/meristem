@@ -39,7 +39,7 @@
 - [x] 模擬 Codex でテストを先に作る。正常時は Worker 1人・指示1回、同じ Worker の完了ターンに属する結果1件、終了確認後にのみ成功とする。存在しないファイル、リポジトリ外を指す相対パスやジャンクションは起動前に拒否する。質問・承認待ちや配信結果不明を完了として扱わず、不明な指示を再送しない。
 - [x] 単発 CLI から読み取り専用の担当を起動し、対象ファイルと調査目的を渡す。Worker の最終テキストを、自分が起動した attempt・thread・turn と照合して返す。Worker が返した文字列は調査結果として扱う。モデルによる開始許可の代行や、既存の人用 `start` の呼び出しは追加しない。
 - [x] 取消、タイムアウト、親シェルの強制終了も模擬試験に含める。子孫プロセスまで終了したことを Job・PID・生成時刻で照合する。同じリポジトリで A/B が同時に実行しても、A の取消で B の Worker を終了させない。
-- [ ] `npm run build:native`、`npm run build`、`node --test dist/test/on-demand.test.js dist/test/workers.test.js` を実行する。モデルを使う受入では、専用の小さなファイルに毎回異なる値を置き、親から値を教えずに Worker の結果が同じ応答へ返ることを確認する。実モデルの枠はこの試行用に決める。
+- [x] `npm run build:native`、`npm run build`、`node --test dist/test/on-demand.test.js dist/test/workers.test.js` を実行する。2026-11-21、専用ファイルの値を親から教えず、実 Worker の結果が同じ応答に返り、値が一致した。1回送信、再送0回。[実機記録](../../validation/chat-control/on-demand-sidebar.md)
 
 ## 3. プラグインとして追加・削除できるようにする
 

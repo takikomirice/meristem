@@ -10,6 +10,7 @@ Use the PowerShell script `meristem.ps1` beside this installed `SKILL.md`. Resol
 | Request | Action |
 | --- | --- |
 | 「Meristem でこのファイルを確認して」 | Run `inspect` once for the named file. Wait for the original shell call to finish and report the summary from its completed JSON result to this conversation. |
+| 「この2ファイルを別々の Worker で確認して」 | Start one `inspect` call per file in parallel within the requested Worker limit. Wait for each original call, match its returned file to the request, and report each finding separately. If a Worker says it could not read its file, report that inspection as unsuccessful. |
 | 「Meristem で実装して」 | Run `run` on the agreed plan file to validate it. |
 | 「この計画を実装して」 with two independent tasks | Select Meristem and validate the agreed plan with `run`. Use the plan already selected by the user. If equally plausible files exist, ask which one to use. If the plan exists only in the conversation, save the agreed plan in the repository before invoking `run`. |
 | A one-line correction | Make the requested edit directly. |

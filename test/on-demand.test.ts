@@ -71,9 +71,11 @@ test('rejects invalid or external target before runtime discovery', async t => {
 });
 
 test('returns only one final answer for the acknowledged attempt and stops the whole Job', async t => {
-  const {root, inspect} = repo(t), token = randomUUID();
+  const {root, config} = repo(t), token = randomUUID(), states: string[] = [];
   writeFileSync(path.join(root,'one.txt'), token + ' api_key=secret-fixture');
-  assert.deepEqual(await inspect('one.txt'), {status:'completed', file:'one.txt', summary:token + ' [redacted]'});
+  const result = await inspectFile('one.txt', {cwd:root, config, agent, display: () => state => states.push(state)});
+  assert.deepEqual(result, {status:'completed', file:'one.txt', summary:token + ' [redacted]'});
+  assert.deepEqual(states, ['starting', 'running', 'completed']);
   const record = await evidence(root, 'one.txt');
   assert.equal(record.sends, 1);
   assert.equal(record.deniedAuthHome, true);
@@ -81,12 +83,13 @@ test('returns only one final answer for the acknowledged attempt and stops the w
 });
 
 test('CLI core distinguishes unverified sandbox isolation before starting or sending a turn', async t => {
-  const {root, config} = repo(t);
+  const {root, config} = repo(t), states: string[] = [];
   writeFileSync(path.join(root,'one.txt'),'value');
   writeFileSync(path.join(root,'inspect-fixture','sandbox.readable-control'),'');
-  await assert.rejects(inspectFile('one.txt', {cwd:root, agent,
+  await assert.rejects(inspectFile('one.txt', {cwd:root, agent, display: () => state => states.push(state),
     config:(repository, state) => ({...config(repository, state), fixture:false})}), errorCode('isolation_unverified'));
   assert.equal(existsSync(path.join(root,'inspect-fixture','one.txt.processes')), false);
+  assert.deepEqual(states, ['starting','failed']);
 });
 
 test('rejects foreign results, ambiguous final messages, waits and unknown sends without retrying', async t => {

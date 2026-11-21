@@ -8,6 +8,7 @@ import { connectManaged, type HistoryTarget, type ManagedSession } from './manag
 import { sidebarTarget, confirmStart, usageText } from './run-window';
 import { openManagedTerminal } from './managed-tui';
 import { reviewWorkerRequest } from './approval';
+import { listenForInspections } from './inspect-terminal';
 
 const fixtures=new Map<vscode.Terminal,{connection:ControlConnection,binding:TerminalBinding}>();
 let managed: ManagedSession | undefined;
@@ -35,6 +36,12 @@ function historyReason(reason: string) {
 }
 
 export function activate(context: vscode.ExtensionContext): void {
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA && vscode.env?.appHost === 'desktop' && !vscode.env.remoteName) {
+    const localAppData = process.env.LOCALAPPDATA;
+    const listen = () => context.subscriptions.push(listenForInspections(vscode, localAppData));
+    if (vscode.workspace.isTrusted) listen();
+    else context.subscriptions.push(vscode.workspace.onDidGrantWorkspaceTrust(listen));
+  }
   const historyDocuments = new Map<string, string>();
   context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('meristem-history', {
     provideTextDocumentContent: uri => historyDocuments.get(uri.toString()) ?? ''

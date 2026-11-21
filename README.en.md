@@ -12,7 +12,7 @@ Keep the standard Codex extension as the Coordinator and monitor Workers in VS C
 
 ## On-demand plugin
 
-The Windows x64 on-demand plugin runs a read-only Worker to inspect one repository file. The extracted package can be added to the official Codex CLI as a local marketplace. Returning the result to the originating conversation in the ordinary sidebar still awaits a live trial. The [on-demand validation record](docs/validation/chat-control/on-demand-sidebar.md) includes the installation and removal commands and the sidebar acceptance steps.
+Ask Meristem to inspect a file in the Codex sidebar. The Windows x64 plugin starts a read-only Worker and returns its result to that conversation. To check two files in parallel, ask for a separate Worker for each. With the matching Meristem Chat Control VSIX installed in that VS Code profile, each Worker gets its own tab in the bottom terminal panel, such as `Worker inspect #1` and `Worker inspect #2`. [Setup and live validation](docs/validation/chat-control/on-demand-sidebar.md)
 
 ## Using the official CLI in the development build
 

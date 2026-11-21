@@ -12,7 +12,7 @@
 
 ## オンデマンド版プラグイン
 
-単一ファイルを読み取り専用ワーカーに確認させる用途には、Windows x64 用のオンデマンド版プラグインもあります。展開した配布物をローカルマーケットプレースとして公式 Codex CLI に追加できます。通常のサイドバーで元の会話に結果が返ることは、実機での確認待ちです。導入・削除のコマンドと受入手順は[オンデマンド版の検証記録](docs/validation/chat-control/on-demand-sidebar.md)にまとめています。
+普段の Codex サイドバーで「Meristem でこのファイルを確認して」と頼むと、読み取り専用ワーカーが結果を同じ会話に返します。「この2ファイルを別々の Worker で確認して」と頼むと、ファイルごとに並行して確認できます。対応する Meristem Chat Control 拡張（VSIX）を同じ VS Code プロファイルに入れると、下部のターミナルに `Worker inspect #1`、`Worker inspect #2` のように1人ずつタブが開きます。[導入手順と実機検証記録](docs/validation/chat-control/on-demand-sidebar.md)
 
 ## 開発版で公式CLIを使う
 
